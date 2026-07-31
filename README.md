@@ -73,7 +73,7 @@ Four command-line entry points are installed:
 | `cf86-server` | Hosts the game session. |
 | `cf86-web` | Web client — the radio in a browser tab. |
 | `cf86-text` | Text client — same session, typed instead of spoken. |
-| `cf86-radio` | Python-based voice client via pygame. [May require extra setup.](#pygame-system-dependencies) |
+| `cf86-pygame` | Python-based voice client via pygame. [May require extra setup.](#pygame-system-dependencies) |
 
 Run them with `uv run` (no need to activate the virtualenv):
 
@@ -85,7 +85,7 @@ Then **one** of:
 ```bash
 uv run cf86-web
 uv run cf86-text
-uv run cf86-radio
+uv run cf86-pygame
 ```
 
 If running the web client, open the URL it prints in a browser (typically [http://127.0.0.1:8000](http://127.0.0.1:8000)).
@@ -102,7 +102,7 @@ To do it by hand instead, or to add your own, drop `.z3`–`.z8` files into
 
 ### pygame System Dependencies
 
-When running the `cf86-radio` client (which uses pygame), audio capture and playback go through PortAudio,
+When running the `cf86-pygame` client (which uses pygame), audio capture and playback go through PortAudio,
 which needs a few system packages. On Debian/Ubuntu (including WSL2):
 
 ```bash

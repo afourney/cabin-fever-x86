@@ -19,7 +19,7 @@ DEFAULT_DATA_ROOT = Path("data")
 # The component directory each program writes under.
 SERVER_COMPONENT = "server"
 TEXT_CLIENT_COMPONENT = "text_client"
-RADIO_CLIENT_COMPONENT = "radio_client"
+PYGAME_CLIENT_COMPONENT = "pygame_client"
 WEB_CLIENT_COMPONENT = "web_client"
 
 

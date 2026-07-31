@@ -67,7 +67,7 @@ jobs:
           for name in \
             cabin_fever_x86/server/cabin_events.txt \
             cabin_fever_x86/server/stage_direction.txt \
-            cabin_fever_x86/radio_client/radio.bash \
+            cabin_fever_x86/pygame_client/radio.bash \
             cabin_fever_x86/web_client/static/index.html \
             cabin_fever_x86/web_client/static/splash.jpg
           do

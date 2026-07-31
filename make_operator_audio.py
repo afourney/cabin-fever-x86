@@ -23,7 +23,7 @@ from uuid import UUID
 from elevenlabs.client import ElevenLabs
 
 from cabin_fever_x86.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
-from cabin_fever_x86.sessions import RADIO_CLIENT_COMPONENT, session_dir
+from cabin_fever_x86.sessions import PYGAME_CLIENT_COMPONENT, session_dir
 
 #OPERATOR_VOICE_ID = "jWck2UHCtDKdhIRlMgaR"
 OPERATOR_VOICE_ID = "eqz5FuihuZwmJPuvZ65E"
@@ -94,7 +94,7 @@ def main() -> None:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
-    client_dir = session_dir(args.session_id, RADIO_CLIENT_COMPONENT, create=False)
+    client_dir = session_dir(args.session_id, PYGAME_CLIENT_COMPONENT, create=False)
     audio_dir = client_dir / AUDIO_DIR
     transcript = client_dir / TRANSCRIPT_FILE
     if not audio_dir.is_dir():

@@ -28,7 +28,7 @@ from uuid import UUID
 import numpy as np
 import soundfile as sf
 
-from cabin_fever_x86.sessions import RADIO_CLIENT_COMPONENT, session_dir
+from cabin_fever_x86.sessions import PYGAME_CLIENT_COMPONENT, session_dir
 
 AUDIO_DIR = "audio"
 TRANSCRIPT_FILE = "transcript.jsonl"
@@ -127,7 +127,7 @@ def main() -> None:
         print("error: --min-gap must be >= 0 and no larger than --max-gap", file=sys.stderr)
         raise SystemExit(1)
 
-    client_dir = session_dir(args.session_id, RADIO_CLIENT_COMPONENT, create=False)
+    client_dir = session_dir(args.session_id, PYGAME_CLIENT_COMPONENT, create=False)
     transcript = client_dir / TRANSCRIPT_FILE
     audio_dir = client_dir / AUDIO_DIR
     if not transcript.is_file():

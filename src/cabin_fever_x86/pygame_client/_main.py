@@ -1,4 +1,4 @@
-"""Entry point for the Cabin Fever x86 radio client.
+"""Entry point for the Cabin Fever x86 pygame client.
 
 Same session protocol as the text client; the difference is what carries the
 words. Hold SPACE to transmit: the take is transcribed, sent as a
@@ -27,7 +27,7 @@ from cabin_fever_x86.messages import (
     ErrorResult,
     UserMessage,
 )
-from cabin_fever_x86.radio_client._audio import (
+from cabin_fever_x86.pygame_client._audio import (
     MIXER_RATE,
     PushToTalkRecorder,
     RadioPlayer,
@@ -41,7 +41,7 @@ from cabin_fever_x86.session_client import (
 from cabin_fever_x86.session_client import (
     list_sessions as fetch_sessions,
 )
-from cabin_fever_x86.sessions import RADIO_CLIENT_COMPONENT
+from cabin_fever_x86.sessions import PYGAME_CLIENT_COMPONENT
 from cabin_fever_x86.transcripts import Transcript
 from cabin_fever_x86.voice import TTS_SUFFIX, synthesize, transcribe
 
@@ -88,7 +88,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 async def _open_session(connection: ClientConnection, resume: UUID | None) -> Transcript:
     """Ask the server to start or resume a game, and open the matching transcript."""
     session_id = await open_session(connection, resume)
-    transcript = Transcript(session_id, RADIO_CLIENT_COMPONENT)
+    transcript = Transcript(session_id, PYGAME_CLIENT_COMPONENT)
     verb = "Resumed" if resume else "Started"
     print(f"{verb} session {session_id}, logging to {transcript.path}")
     transcript.log("session", None, f"{verb.lower()} on {connection.remote_address}")
