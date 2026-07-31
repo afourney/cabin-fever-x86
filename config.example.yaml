@@ -1,0 +1,40 @@
+# Cabin Fever x86 configuration. Copy to config.yaml and edit.
+#
+# ${ENV_VAR_NAME} references are resolved against the environment when the file
+# is loaded. A reference to an unset variable is treated as if the key were not
+# there at all, so the built-in default applies. Prefer these over pasting
+# secrets into the file: config.yaml is gitignored, but env vars can't be
+# committed by accident at all.
+
+client:
+  host: 127.0.0.1
+  port: 5000
+  elevenlabs_api_key: ${ELEVENLABS_API_KEY}
+
+server:
+  interface: 127.0.0.1
+  port: 5000
+
+  # The model behind the voice on the other end of the channel. Every field is
+  # optional: unset fields fall back to the provider's env vars, then defaults.
+  ai_client:
+    provider: openai  # openai | azure | gateway
+    # model: gpt-5.2
+    # base_url: https://...
+    api_key: ${OPENAI_API_KEY}
+    # azure authenticates with Azure credentials instead of a key, and needs
+    # base_url and model set explicitly. Its token scope comes from here:
+    # scope: api://your-resource/.default
+
+  # How long the cabin stays quiet between events, in seconds. Each wait is
+  # drawn at random from this range; set both to the same value for a fixed
+  # cadence.
+  cabin_events:
+    min_delay: 90
+    max_delay: 240
+
+  # Once a reply comes back having used this many tokens, the companion makes an
+  # excuse, writes the night down, and carries on from its notes. The count is
+  # only known after a request, so leave room for one more turn between this and
+  # the model's context limit.
+  compaction_threshold: 140000

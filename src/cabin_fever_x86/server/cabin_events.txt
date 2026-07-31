@@ -1,0 +1,52 @@
+# Things that happen in the cabin while the game is being played.
+#
+# One event per line. Blank lines and lines starting with '#' are ignored.
+# These are delivered to the companion inside <cabin_event> tags at random
+# intervals. The player never sees them and knows nothing about them.
+
+The wood stove pops loudly and settles.
+The fire has burned down; the room is noticeably colder.
+Rain picks up hard against the roof, loud enough to talk over.
+The rain stops almost all at once, and the quiet is startling.
+Wind gusts hard enough to rattle the window frame in the main room.
+A branch scrapes along the outside wall.
+Something heavy thumps against the roof — probably a fir cone, probably.
+The lights dim for a second, then come back.
+The generator note changes pitch, running rougher than it was.
+The generator coughs, catches, and keeps going.
+The fuel gauge on the generator is lower than expected.
+The kettle starts to whistle in the other room.
+The coffee in the mug has gone cold.
+There is a smell of something scorched from the direction of the stove.
+The propane lamp gutters and needs adjusting.
+A moth the size of a thumb starts battering the desk lamp.
+The cat that is not your cat is at the door again, wanting in.
+Something moves across the porch — heavy, unhurried, close.
+An animal cries out somewhere in the treeline, then stops.
+Boots have left a puddle by the door that is spreading toward the rug.
+The floor near the north wall is damp; the roof may be leaking again.
+A drip starts somewhere behind the wall, slow and regular.
+The radio hisses with a burst of static, then clears.
+Another operator's voice breaks over the repeater for a moment, too faint to make out.
+The squelch on the base station opens on nothing at all.
+The antenna mast groans audibly in the wind.
+The SWR meter needle twitches higher than it should be.
+The PC's fan starts making a bearing noise, then quiets down.
+The monitor flickers and the image shrinks briefly before recovering.
+The floppy drive clatters for no reason anyone can explain.
+The hard disk chatters for several seconds with nothing running.
+Condensation has fogged the inside of the window over the desk.
+It is getting dark noticeably earlier than it did last week.
+A log shifts in the woodpile outside and the whole stack resettles.
+The woodbox by the stove is down to its last few splits.
+The water pressure drops for a moment, then returns.
+The pipes knock twice under the floor.
+A page of the notebook has gotten wet and the ink is running.
+The battery in the flashlight on the desk has died.
+The clock on the wall has stopped; it needs winding.
+Something in the crawlspace shifts its weight.
+A helicopter passes somewhere to the north, distant, then gone.
+The wind drops completely and everything goes very still.
+Hail starts, brief and violent, then turns back to rain.
+The stovepipe ticks as it cools.
+There is a knock — one knock, no more — from somewhere in the structure.

@@ -1,0 +1,113 @@
+[project]
+name = "cabin-fever-x86"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Adam Fourney", email = "adamfo@microsoft.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pygame",
+    "sounddevice",
+    "soundfile",
+    "numpy",
+    "elevenlabs",
+    "fastapi",
+    "openai",
+    "pydantic",
+    "pyyaml",
+    "uvicorn",
+    "websockets",
+    "jericho",
+]
+
+[project.optional-dependencies]
+# Only needed for the "azure" and "trapi" AI providers.
+azure = ["azure-identity"]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "poethepoet",
+    "codespell",
+    "pytest",
+    "pytest-asyncio",
+]
+
+[project.scripts]
+cf86-radio = "cabin_fever_x86.radio_client._main:main"
+cf86-text = "cabin_fever_x86.text_client._main:main"
+cf86-server = "cabin_fever_x86.server._main:main"
+cf86-web = "cabin_fever_x86.web_client._main:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+# Wider than 88: the code was written to it, and rewrapping every call in the
+# repo to satisfy a formatter is a poor first commit.
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "D",   # docstrings
+    "SIM", # flake8-simplify
+    "BLE", # flake8-blind-except
+    "ISC", # implicit string concatenation
+    "RUF", # ruff's own
+]
+ignore = [
+    "E501",  # line too long; the formatter decides
+    "UP017", # datetime.UTC alias
+    "D203",  # conflicts with D211 (we use D211: no blank line before class)
+    "D213",  # conflicts with D212 (we use D212: summary on the first line)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The persona is prose. Its curly quotes and em dashes are deliberate, and the
+# model is the one reading them.
+"src/cabin_fever_x86/server/_system_prompt.py" = ["RUF001", "RUF002", "RUF003"]
+"tests/**/*.py" = ["D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.poe.tasks]
+format = "ruff format --check --diff src tests"
+format-fix = "ruff format src tests"
+
+lint = "ruff check src tests"
+lint-fix = "ruff check --fix src tests"
+
+spell = "codespell -I .codespellignore src README.md"
+
+test = "pytest"
+
+# Everything CI runs on a pull request, minus the tests.
+check = ["format", "lint", "spell"]
+check-all = ["format", "lint", "spell", "test"]
+fix-all = ["format-fix", "lint-fix"]

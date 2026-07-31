@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cabin Fever x86</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; gap: 1rem; padding: 2rem 1rem;
+    background:
+      linear-gradient(rgba(6, 9, 8, .28), rgba(6, 9, 8, .48)),
+      #0d0f0e center/cover fixed no-repeat url("/background");
+    color: #cfe3d4;
+    font: 16px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; color: #8fb89b; margin: 0; }
+  #session { font-size: .75rem; color: #5d7364; word-break: break-all; text-align: center; }
+  #log {
+    width: min(70ch, 100%); flex: 1; overflow-y: auto; display: flex;
+    flex-direction: column; gap: .75rem; padding: 1rem;
+    border: 1px solid #33443a; border-radius: .4rem; background: rgba(10, 12, 11, .88);
+    box-shadow: 0 .5rem 2rem rgba(0, 0, 0, .35);
+    min-height: 40vh; max-height: 60vh;
+  }
+  .line { white-space: pre-wrap; }
+  .line.user { color: #7f9ec4; }
+  .line.user::before { content: "you  "; color: #46586e; }
+  .line.assistant::before { content: "sam  "; color: #46586e; }
+  .line.error { color: #c98b7a; }
+  .line.note { color: #5d7364; font-style: italic; }
+  #status { font-size: .8rem; letter-spacing: .1em; color: #8fb89b; min-height: 1.5em; }
+  button {
+    font: inherit; padding: .9rem 2rem; border-radius: .4rem; cursor: pointer;
+    border: 1px solid #2f4438; background: #16201a; color: #cfe3d4;
+    touch-action: none; user-select: none;
+  }
+  button:disabled { opacity: .4; cursor: default; }
+  #talk.hot { background: #7a2f26; border-color: #b4483a; color: #fff; }
+  .hint { font-size: .75rem; color: #46586e; }
+  .quiet {
+    position: fixed; top: 1rem; right: 1rem; padding: .35rem .7rem;
+    font-size: .7rem; letter-spacing: .1em; opacity: .55;
+  }
+  .quiet:hover { opacity: 1; }
+
+  /* The cabin, until someone turns the set on. */
+  #splash {
+    position: fixed; inset: 0; z-index: 10; cursor: pointer;
+    background: #060807 center/cover no-repeat url("/splash");
+    display: flex; align-items: flex-end; justify-content: center;
+    transition: opacity 1.1s ease;
+  }
+  #splash::after {           /* keeps the words legible over the art */
+    content: ""; position: absolute; inset: auto 0 0 0; height: 45%;
+    background: linear-gradient(to top, rgba(4,6,5,.92), transparent);
+    pointer-events: none;
+  }
+  #splash.gone { opacity: 0; pointer-events: none; }
+  #splash .call {
+    position: relative; z-index: 1; margin-bottom: min(9vh, 5rem);
+    padding: .8rem 1.6rem; text-align: center;
+    font-size: clamp(.9rem, 2.4vw, 1.2rem); letter-spacing: .22em;
+    text-transform: uppercase; color: #f0e2c0;
+    text-shadow: 0 0 18px rgba(0,0,0,.9), 0 1px 2px #000;
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+  #splash .call small {
+    display: block; margin-top: .6rem; letter-spacing: .1em;
+    text-transform: none; font-size: .8em; color: #b9a882; animation: none;
+  }
+  #splash:hover .call { color: #fff; }
+  @keyframes breathe { 0%, 100% { opacity: .72 } 50% { opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) {
+    #splash .call { animation: none; }
+    #splash { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div id="splash" role="button" tabindex="0" aria-label="Turn on your radio">
+    <div class="call">
+      Click here to turn on your radio
+      <small id="splash-note">feeding grues over vhf</small>
+    </div>
+  </div>
+
+  <h1>Cabin Fever <span style="color:#7ac07a">x86</span></h1>
+  <div id="session">not connected</div>
+  <div id="log"></div>
+  <div id="status">&nbsp;</div>
+  <button id="talk" disabled>Hold to talk</button>
+  <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
+  <button id="weather" class="quiet" hidden title="Rain on the roof">rain: on</button>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = $("log"), status = $("status"), sessionLabel = $("session");
+
+let ws = null, audioCtx = null, recorder = null, chunks = [], sessionId = null;
+let playing = null, keyed = false, queue = Promise.resolve();
+let rain = null;
+
+const RAIN_LOUD = 0.30;    // on the splash, before anyone is talking
+const RAIN_UNDER = 0.10;    // once the channel is open
+const RAIN_DUCKED = 0.04;   // while a transmission is going either way
+// A recording of real rain sits quieter than the synthetic kind, so it gets
+// the same lift at every level rather than one of them being retuned.
+const RECORDING_BOOST = 1.75;
+
+function say(kind, text) {
+  const div = document.createElement("div");
+  div.className = `line ${kind}`;
+  div.textContent = text;
+  log.append(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setStatus(text) { status.textContent = text || " "; }
+
+// --- the weather ----------------------------------------------------------
+// Rain on the roof, for as long as the page is open. If a recording has been
+// dropped in as static/rain.*, that is used; otherwise the browser makes its
+// own out of filtered noise, which costs nothing to ship.
+
+function noiseBuffer(ctx, seconds) {
+  const frames = Math.ceil(ctx.sampleRate * seconds);
+  const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+  return buffer;
+}
+
+function synthesiseRain(ctx, out) {
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer(ctx, 4);
+  source.loop = true;
+
+  // The hiss on the shingles.
+  const hiss = ctx.createBiquadFilter();
+  hiss.type = "bandpass"; hiss.frequency.value = 2400; hiss.Q.value = 0.4;
+  const hissGain = ctx.createGain(); hissGain.gain.value = 0.55;
+
+  // The body of it, further off.
+  const body = ctx.createBiquadFilter();
+  body.type = "lowpass"; body.frequency.value = 500;
+  const bodyGain = ctx.createGain(); bodyGain.gain.value = 0.5;
+
+  source.connect(hiss); hiss.connect(hissGain); hissGain.connect(out);
+  source.connect(body); body.connect(bodyGain); bodyGain.connect(out);
+
+  // Gusts: a slow wander so it never sits still.
+  const lfo = ctx.createOscillator();
+  lfo.type = "sine"; lfo.frequency.value = 0.06;
+  const depth = ctx.createGain(); depth.gain.value = 0.22;
+  lfo.connect(depth); depth.connect(hissGain.gain);
+  lfo.start();
+
+  source.start();
+  return source;
+}
+
+async function startRain(ctx) {
+  const out = ctx.createGain();
+  out.gain.value = 0;
+  out.connect(ctx.destination);
+
+  let recorded = null;
+  try {
+    const res = await fetch("/ambience");
+    if (res.ok) recorded = await ctx.decodeAudioData(await res.arrayBuffer());
+  } catch { /* no recording; the synthetic one is fine */ }
+
+  if (recorded) {
+    const source = ctx.createBufferSource();
+    source.buffer = recorded; source.loop = true;
+    source.connect(out); source.start();
+    rainBoost = RECORDING_BOOST;
+  } else {
+    synthesiseRain(ctx, out);
+  }
+  return out;
+}
+
+let rainTarget = RAIN_LOUD;
+let rainBoost = 1;         // 1 for the synthetic rain, more for a recording
+
+function appliedRain(level) {
+  return muted ? 0 : level * rainBoost;
+}
+
+function rainLevel(level) {
+  rainTarget = level;
+  if (!rain || !audioCtx) return;
+  rain.gain.setTargetAtTime(appliedRain(level), audioCtx.currentTime, 0.7);
+}
+
+// --- the radio ------------------------------------------------------------
+// What ffmpeg used to do to a finished clip, done live on the way to the
+// speakers: a narrow band, some grit, and a hiss underneath.
+
+function radioChain(ctx, destination) {
+  const input = ctx.createGain();
+
+  // The same chain radio.bash runs the voice through, stage for stage.
+  const high = ctx.createBiquadFilter();
+  high.type = "highpass"; high.frequency.value = 350; high.Q.value = Math.SQRT1_2;
+
+  const low = ctx.createBiquadFilter();
+  low.type = "lowpass"; low.frequency.value = 2850; low.Q.value = Math.SQRT1_2;
+
+  const peak = ctx.createBiquadFilter();
+  peak.type = "peaking"; peak.frequency.value = 1450; peak.Q.value = 1.0; peak.gain.value = 6;
+
+  // Hard AGC: everything arrives at much the same level, however it was said.
+  const squash = ctx.createDynamicsCompressor();
+  squash.threshold.value = 20 * Math.log10(0.06);   // 0.06 linear ≈ -24.4 dB
+  squash.ratio.value = 10;
+  squash.attack.value = 0.002;
+  squash.release.value = 0.06;
+  squash.knee.value = 3;
+
+  const makeup = ctx.createGain();
+  makeup.gain.value = Math.pow(10, 5 / 20);         // the compressor's +5 dB
+
+  // A signal that will not quite hold still.
+  const wobble = ctx.createGain();
+  const depth = 0.18;
+  wobble.gain.value = 1 - depth / 2;
+  const lfo = ctx.createOscillator();
+  lfo.type = "sine"; lfo.frequency.value = 4.3;
+  const lfoDepth = ctx.createGain();
+  lfoDepth.gain.value = depth / 2;
+  lfo.connect(lfoDepth); lfoDepth.connect(wobble.gain);
+  lfo.start();
+
+  // tanh soft clip with a knee at 0.58, rather than driving everything hard.
+  const grit = ctx.createWaveShaper();
+  const threshold = 0.58;
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = threshold * Math.tanh(x / threshold);
+  }
+  grit.curve = curve;
+
+  const out = ctx.createGain();
+  out.gain.value = 0.9;
+
+  input.connect(high); high.connect(low); low.connect(peak);
+  peak.connect(squash); squash.connect(makeup); makeup.connect(wobble);
+  wobble.connect(grit); grit.connect(out); out.connect(destination);
+  return input;
+}
+
+function hiss(ctx, destination, seconds) {
+  const frames = Math.ceil(ctx.sampleRate * seconds);
+  const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < frames; i++) data[i] = (Math.random() * 2 - 1) * 0.09;
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  // Wider than the squelch bursts: this is the channel itself, sitting under
+  // the voice for as long as the carrier is up.
+  const band = ctx.createBiquadFilter();
+  band.type = "bandpass"; band.frequency.value = 1700; band.Q.value = 0.5;
+
+  const gain = ctx.createGain();
+  gain.gain.value = 0.8;
+
+  source.connect(band); band.connect(gain); gain.connect(destination);
+  return source;
+}
+
+// A squelch is not a tone. When the carrier drops, the receiver's noise floor
+// rushes back in — broadband, flat, and it simply stops rather than fading.
+// These follow radio.bash, which is what the desktop client has always used:
+// a band between two corners rather than a peak, held at one level.
+function burst(ctx, destination, at, { level, length, low, high, release = 0.014 }) {
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer(ctx, Math.max(length * 2, 0.25));
+
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass"; hp.frequency.value = low;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = high;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(level, at);                      // no ramp in: it is just there
+  gain.gain.setValueAtTime(level, at + length - release);   // and it holds
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+
+  source.connect(hp); hp.connect(lp); lp.connect(gain); gain.connect(destination);
+  source.start(at);
+  source.stop(at + length + 0.02);
+}
+
+// The relay letting go: 6ms, bright, and loud for how short it is.
+function click(ctx, destination, at, level = 0.5) {
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer(ctx, 0.04);
+
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass"; hp.frequency.value = 1800;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 9000;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(level, at);
+  gain.gain.linearRampToValueAtTime(0.0001, at + 0.006);
+
+  source.connect(hp); hp.connect(lp); lp.connect(gain); gain.connect(destination);
+  source.start(at);
+  source.stop(at + 0.03);
+}
+
+// Keying up: the click, then a moment of open channel before the voice.
+function squelchOpen(ctx, destination, at) {
+  click(ctx, destination, at, 0.35);
+  burst(ctx, destination, at, { level: 0.14, length: 0.06, low: 500, high: 4500 });
+}
+
+// Letting go: the wash of noise, and the click as it ends.
+function squelchTail(ctx, destination, at) {
+  const length = 0.19;
+  burst(ctx, destination, at, { level: 0.20, length, low: 500, high: 4500 });
+  click(ctx, destination, at + length - 0.006, 0.5);
+}
+
+async function play(url) {
+  if (!audioCtx) return;
+  const buffer = await fetch(url).then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b));
+
+  return new Promise((resolve) => {
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(radioChain(audioCtx, audioCtx.destination));
+
+    const noise = hiss(audioCtx, audioCtx.destination, buffer.duration + 0.4);
+    const now = audioCtx.currentTime + 0.05;
+    squelchOpen(audioCtx, audioCtx.destination, now);
+    noise.start(now);
+    source.start(now + 0.08);
+    squelchTail(audioCtx, audioCtx.destination, now + 0.08 + buffer.duration);
+
+    playing = { source, noise };
+    rainLevel(RAIN_DUCKED);
+    setStatus("RECEIVING");
+    source.onended = () => {
+      try { noise.stop(); } catch {}
+      playing = null;
+      rainLevel(keyed ? RAIN_DUCKED : RAIN_UNDER);
+      setStatus(keyed ? "TRANSMITTING" : "");
+      resolve();
+    };
+  });
+}
+
+function cutPlayback() {
+  if (!playing) return;
+  try { playing.source.stop(); } catch {}
+  try { playing.noise.stop(); } catch {}
+  playing = null;
+}
+
+// --- the channel ----------------------------------------------------------
+
+function connect() {
+  const resume = new URLSearchParams(location.search).get("resume");
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws${resume ? `?resume=${resume}` : ""}`);
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "session") {
+      sessionId = msg.session_id;
+      sessionLabel.textContent = `session ${sessionId}`;
+      if (!msg.voice) say("note", "No ElevenLabs key on the server — text only.");
+      $("talk").disabled = false;
+      setStatus("");
+    } else if (msg.type === "assistant") {
+      say("assistant", msg.text);
+      // Replies play in the order they arrived, never on top of each other.
+      if (msg.audio) queue = queue.then(() => play(msg.audio)).catch(() => {});
+    } else if (msg.type === "user") {
+      say("user", msg.text);
+    } else if (msg.type === "error") {
+      say("error", msg.text);
+    }
+  };
+
+  ws.onclose = () => { setStatus("disconnected"); $("talk").disabled = true; };
+  ws.onerror = () => setStatus("connection error");
+
+  // Keep the socket from idling out; the page has nothing else to send.
+  setInterval(() => ws?.readyState === 1 && ws.send("."), 20000);
+}
+
+// --- push to talk ---------------------------------------------------------
+
+async function startMic() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]
+    .find(t => MediaRecorder.isTypeSupported(t)) || "";
+  recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  recorder.onstop = send;
+}
+
+async function send() {
+  const blob = new Blob(chunks, { type: recorder.mimeType });
+  chunks = [];
+  if (!blob.size || !sessionId) return;
+
+  setStatus("DECODING");
+  try {
+    const res = await fetch(`/takes/${sessionId}`, {
+      method: "POST",
+      headers: { "Content-Type": blob.type.split(";")[0] },
+      body: blob,
+    });
+    if (!res.ok) {
+      say("error", `transmission failed: ${(await res.json()).detail ?? res.status}`);
+    } else if (!(await res.json()).text) {
+      say("note", "(nothing heard)");
+    }
+  } catch (err) {
+    say("error", `transmission failed: ${err}`);
+  } finally {
+    setStatus(playing ? "RECEIVING" : "");
+  }
+}
+
+function keyDown() {
+  if (keyed || !recorder || recorder.state === "recording") return;
+  keyed = true;
+  cutPlayback();          // half-duplex: keying the mic cuts them off
+  chunks = [];
+  recorder.start();
+  rainLevel(RAIN_DUCKED);   // the mic does not need the roof in it
+  $("talk").classList.add("hot");
+  setStatus("TRANSMITTING");
+}
+
+function keyUp() {
+  if (!keyed) return;
+  keyed = false;
+  if (recorder?.state === "recording") recorder.stop();
+  if (!playing) rainLevel(RAIN_UNDER);
+  $("talk").classList.remove("hot");
+}
+
+// The splash always has weather, whatever was remembered from last time: the
+// rain is half of what it is for, and a page that comes up silent reads as
+// broken. The remembered choice is applied once you are through it.
+let muted = false;
+
+function rememberedMute() {
+  return localStorage.getItem("cf86-rain") === "off";
+}
+
+$("weather").onclick = () => {
+  muted = !muted;
+  localStorage.setItem("cf86-rain", muted ? "off" : "on");
+  $("weather").textContent = `rain: ${muted ? "off" : "on"}`;
+  rainLevel(rainTarget);
+};
+
+const splash = $("splash");
+let turningOn = false;
+
+// Built before any click: browsers keep it suspended until a gesture, but on
+// a page you have used before they often let it run — and then the rain is
+// already falling when the splash appears.
+async function openWeather() {
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  if (!rain) {
+    rain = await startRain(audioCtx);
+    rain.gain.setTargetAtTime(appliedRain(RAIN_LOUD), audioCtx.currentTime, 1.5);
+  }
+  try { await audioCtx.resume(); } catch { /* waits for the click */ }
+}
+openWeather();
+
+async function turnOn() {
+  if (turningOn) return;
+  turningOn = true;
+  $("splash-note").textContent = "warming up…";
+
+  try {
+    await openWeather();              // the gesture that unlocks playback
+    await startMic();
+  } catch (err) {
+    // Stay on the splash: without a microphone there is nothing to reveal.
+    $("splash-note").textContent = `no microphone (${err.name || err}) — click to try again`;
+    turningOn = false;
+    return;
+  }
+
+  splash.classList.add("gone");
+  splash.addEventListener("transitionend", () => { splash.hidden = true; }, { once: true });
+  setTimeout(() => { splash.hidden = true; }, 1400);   // in case the fade is skipped
+
+  muted = rememberedMute();   // now the choice from last time counts
+  $("weather").textContent = `rain: ${muted ? "off" : "on"}`;
+  rainLevel(RAIN_UNDER);      // still there, just further away now
+  $("weather").hidden = false;
+  setStatus("connecting");
+  connect();
+}
+
+splash.addEventListener("click", turnOn);
+splash.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.code === "Space") { e.preventDefault(); turnOn(); }
+});
+
+const talk = $("talk");
+talk.addEventListener("pointerdown", (e) => { e.preventDefault(); keyDown(); });
+talk.addEventListener("pointerup", keyUp);
+talk.addEventListener("pointercancel", keyUp);
+talk.addEventListener("pointerleave", keyUp);
+
+addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || e.repeat || $("talk").disabled) return;
+  e.preventDefault();
+  keyDown();
+});
+addEventListener("keyup", (e) => {
+  if (e.code !== "Space") return;
+  e.preventDefault();
+  keyUp();
+});
+addEventListener("blur", keyUp);   // never leave the mic keyed open
+</script>
+</body>
+</html>

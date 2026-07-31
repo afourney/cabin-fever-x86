@@ -1,0 +1,75 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # GitHub already sets CI=true, which the download guard honours. Saying it
+  # outright as well means a runner that does not set CI still cannot pull
+  # 100MB of games into a test run.
+  CF86_NO_DOWNLOAD: "1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run --no-sync poe check
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # sounddevice loads portaudio at import time, so the radio client cannot
+      # even be imported without it.
+      - name: Install audio libraries
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2
+      - run: uv sync --frozen
+      - run: uv run --no-sync poe test
+        env:
+          # No display and no sound card on a runner.
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv build --wheel
+      # The package carries prose and artwork the game does not run without,
+      # and a packaging change can drop them without any test noticing.
+      - name: Check the wheel carries its data files
+        run: |
+          wheel=$(ls dist/*.whl)
+          for name in \
+            cabin_fever_x86/server/cabin_events.txt \
+            cabin_fever_x86/server/stage_direction.txt \
+            cabin_fever_x86/radio_client/radio.bash \
+            cabin_fever_x86/web_client/static/index.html \
+            cabin_fever_x86/web_client/static/splash.jpg
+          do
+            unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
+          done

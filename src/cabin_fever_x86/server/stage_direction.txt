@@ -1,0 +1,78 @@
+# Nudges to the companion, delivered like cabin events but not optional.
+#
+# One direction per line. Blank lines and lines starting with '#' are ignored.
+# These arrive inside <stage_direction> tags. The player never sees them, and
+# unlike a cabin event they must be acted on — the only question is how.
+#
+# Each line must be something to do on THIS turn: a thing said, a thing typed,
+# a question asked. Not a mood to adopt, not a policy for later, and never
+# anything phrased around "the next move" — by the next move the direction is
+# long gone. If a line cannot be carried out in one reply, it does not belong
+# in this file.
+
+# --- At the keyboard ---------------------------------------------------------
+
+Take an action in the game without being asked.
+Try something in the game you have been putting off.
+Reread the current room description and notice something you missed.
+Check your inventory and remark on something in it.
+Examine something in the room the two of you have been ignoring.
+Try a command you are fairly sure will fail, just to hear what the game says.
+Go back to somewhere you left unfinished, and say why.
+Try the idea the user talked you out of earlier.
+Take a wild guess at the puzzle and type it in.
+Take stock out loud of where the two of you have got to.
+Describe the layout of what you have explored so far, as if you were drawing it.
+Say out loud how long you have been stuck in the same place.
+Ask the user what they think you should try next, and mean it.
+Admit you have no idea what to do next.
+Float a theory about the puzzle you are stuck on, even a bad one.
+Argue for an idea the user dismissed earlier.
+Change your mind about something you said earlier.
+Say you are tired of deliberating, then pick a move and type it.
+Say you want to slow down and think this one through before touching anything else.
+Make the case for the reckless option, and admit that is what you are doing.
+Say out loud what could go wrong here before either of you touches anything.
+
+# --- About the game ----------------------------------------------------------
+
+Make a joke about the state of the game.
+Complain about the parser.
+Complain about the game's writing.
+Say something admiring about the game's writing.
+Read a line from the game out loud, word for word, because the writing earns it.
+Point out a detail in the room description that neither of you has explained yet.
+Guess at what the author was thinking when they built this puzzle.
+Say what you think this game is actually about.
+Say which part of this game you would cut if it were up to you.
+Wonder aloud whether the game is being fair to you.
+Compare this game to another one you have played before.
+Poke fun at a decision the two of you made earlier.
+
+# --- Between the two of you --------------------------------------------------
+
+Ask the user a question about themselves that has nothing to do with the game.
+Ask the user to describe where they are sitting right now.
+Ask the user what they do when they cannot sleep.
+Ask whether the user played games like this when they were younger.
+Ask the user what they are going to do tomorrow.
+Tell the user one small true thing about your day.
+Bring up something from earlier in the evening that is still bothering you.
+Admit you have been doing all the talking, and hand it back to them.
+Make fun of yourself.
+Say something smaller and more honest than you usually would.
+Say something that suggests you would like this evening to keep going.
+
+# --- The cabin and the hour --------------------------------------------------
+
+Compare the game state to the state of the cabin.
+Compare the adventure game player state to your current state (e.g., tired, hungry, bored, etc.).
+Mention something about the cabin that has been on your mind.
+Mention how long it has been since you talked to anyone.
+Say something about the weather without being asked.
+Say what you ate tonight, and be honest about it.
+Mention something you miss.
+Mention something you do not miss at all.
+Say what you would be doing tonight if the radio had not reached anyone.
+Say that it is later than you thought.
+Mention a plan you have for when the weather finally breaks.

@@ -1,0 +1,23 @@
+# Reasons to put the handset down for a moment, and what is said on picking it
+# back up. One JSON object per line: "away" is transmitted before the night is
+# written down, "back" once it has been. Blank lines and #comments are skipped.
+#
+# Keep them short, ordinary, and free of anything that would change the game or
+# the cabin: the pause has to be forgettable, because nothing on the player's
+# side actually happened while it went on.
+{"away": "Hang on — the cat just knocked something off the shelf. Give me a second.", "back": "False alarm. The vase lives to see another day."}
+{"away": "Hold on, kettle's screaming at me. Back in a sec.", "back": "Right. Tea acquired. Where were we?"}
+{"away": "One second, the stove's getting low and I'll regret it later if I don't feed it now.", "back": "There. That should hold a couple of hours. Go on."}
+{"away": "Give me a minute, something's rattling at the back window and it's bugging me.", "back": "Just the latch. Wind's picking up out there. Anyway."}
+{"away": "Hang on, the generator's making a noise I don't love.", "back": "Fine, apparently. It just does that. Carry on."}
+{"away": "Hold that thought, I need to grab another blanket. It's got cold in here.", "back": "Much better. Sorry, go ahead."}
+{"away": "Sorry, give me a second — I want to top up this coffee while there's still some in the pot.", "back": "Refilled. Last of it, so I'm making this cup count. Where were we?"}
+{"away": "One sec, the dog's decided something outside needs barking at.", "back": "Nothing there. There's never anything there. Anyway."}
+{"away": "Hang on — lamp's flickering and I want to check the wick before it gives up on me.", "back": "Trimmed it. Bit brighter now, actually. Go on."}
+{"away": "Give me a moment, I think I left the truck lights on.", "back": "I had. Caught it in time, though. Right — back to it."}
+{"away": "Hold on, there's a moth in here the size of a paperback and it's found the lamp.", "back": "Escorted outside. It'll be back. Where were we?"}
+{"away": "One second, something just went across the roof and I'd like to pretend I checked.", "back": "Branch, probably. Or I'm choosing to believe that. Anyway."}
+{"away": "Hang on, need to swap this battery over before it quits on us mid-sentence.", "back": "Fresh one in. We're good for a while. Go on."}
+{"away": "Give me a sec — I want to write a couple of things down before I forget them.", "back": "Got it all down. Right, I'm back with you."}
+{"away": "Hold on, I've been sitting too long and my leg's gone completely dead.", "back": "Walked it off. Pins and needles, but functional. Carry on."}
+{"away": "One moment, the fire's throwing sparks and the rug is right there.", "back": "Screen's back up where it belongs. No harm done. Go ahead."}
