@@ -1,0 +1,78 @@
+name: release
+
+# Tag a commit to publish it:
+#
+#   git tag v0.0.1a1 && git push origin v0.0.1a1
+#
+# The tag has to match the version in pyproject.toml; the build job refuses to
+# go on otherwise, because a mismatched upload cannot be taken back. PyPI
+# filenames are permanent — a bad 0.0.1a1 is 0.0.1a1 forever.
+on:
+  push:
+    tags: ["v*"]
+  # Build without publishing, to check the workflow itself.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(uv version --short)
+          tag=${GITHUB_REF_NAME#v}
+          if [ "$version" != "$tag" ]; then
+            echo "tag $tag does not match pyproject version $version"
+            exit 1
+          fi
+
+      - run: uv build
+
+      # The package carries prose and artwork the game does not run without,
+      # and a packaging change can drop them without any test noticing.
+      - name: Check the wheel carries its data files
+        run: |
+          wheel=$(ls dist/*.whl)
+          for name in \
+            cabin_fever_x86/server/cabin_events.txt \
+            cabin_fever_x86/server/stage_direction.txt \
+            cabin_fever_x86/server/compaction_excuses.jsonl \
+            cabin_fever_x86/web_client/static/index.html \
+            cabin_fever_x86/web_client/static/splash.jpg \
+            cabin_fever_x86/web_client/static/rain.mp3
+          do
+            unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
+          done
+
+      - name: Check the metadata renders on PyPI
+        run: uvx twine check --strict dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Trusted publishing mints a short-lived token from this. No API token
+      # is stored in the repository.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
