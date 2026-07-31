@@ -1,0 +1,61 @@
+[project]
+name = "cabin-fever-x86"
+version = "0.0.1a2"
+description = "A shared game night with an AI companion over a simulated radio: play old text adventures together. Runs the game inside a sandbox VM, on any platform."
+readme = "README.md"
+authors = [
+    { name = "Adam Fourney", email = "adam.fourney@gmail.com" }
+]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["text-adventure", "interactive-fiction", "zmachine", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+]
+requires-python = ">=3.12"
+dependencies = [
+    # The agent image is quicksand-ubuntu plus a Python 3.12 environment, uv,
+    # and build-essential — which the guest needs anyway, since installing the
+    # game compiles a frotz fork from source.
+    "quick-sandbox[qemu,agent]",
+    "pip",
+    # Only to see which ${ENV_VAR} references the config makes, so they can be
+    # carried into the guest. The launcher never interprets the settings
+    # themselves — that is core's job, inside the guest.
+    "pyyaml",
+]
+
+[project.urls]
+Homepage = "https://github.com/afourney/cabin-fever-x86"
+Repository = "https://github.com/afourney/cabin-fever-x86"
+Issues = "https://github.com/afourney/cabin-fever-x86/issues"
+
+[project.scripts]
+cf86 = "cabin_fever_x86._main:main"
+
+# A development-only edge, so integration tests can drive a real core. This is
+# deliberately not a runtime dependency: core is installed inside the guest,
+# never beside the launcher — and it does not install on Windows or macOS.
+[dependency-groups]
+dev = ["cabin-fever-x86-core"]
+
+[tool.uv.sources]
+cabin-fever-x86-core = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+# Lint and format configuration lives at the workspace root, so both packages
+# are held to one standard. Only what pytest needs per-package is here.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

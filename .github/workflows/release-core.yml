@@ -1,0 +1,97 @@
+name: release core
+
+# Publishes cabin-fever-x86-core. Tag a commit to publish it:
+#
+#   git tag core-v0.0.1a1 && git push origin core-v0.0.1a1
+#
+# The prefix matters. The two packages in this repo version independently, so a
+# bare `v*` tag would match both release workflows and publish whichever one
+# happened to pick it up — see release-app.yml for the other half.
+#
+# The tag has to match the version in the package's pyproject.toml; the build
+# job refuses to go on otherwise, because a mismatched upload cannot be taken
+# back. PyPI filenames are permanent — a bad 0.0.1a1 is 0.0.1a1 forever.
+on:
+  push:
+    tags: ["core-v*"]
+  # Build without publishing, to check the workflow itself.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(uv version --short --package cabin-fever-x86-core)
+          tag=${GITHUB_REF_NAME#core-v}
+          if [ "$version" != "$tag" ]; then
+            echo "tag $tag does not match cabin-fever-x86-core's pyproject version $version"
+            exit 1
+          fi
+
+      - run: uv build --package cabin-fever-x86-core --out-dir dist
+
+      # The package carries prose and artwork the game does not run without,
+      # and a packaging change can drop them without any test noticing.
+      - name: Check the wheel carries its data files
+        run: |
+          mapfile -t wheels < <(ls -1 dist/*.whl)
+          [ "${#wheels[@]}" -eq 1 ] || { echo "expected exactly 1 wheel, found ${#wheels[@]}"; ls -1 dist/*.whl; exit 1; }
+          wheel="${wheels[0]}"
+          for name in \
+            cabin_fever_x86_core/server/cabin_events.txt \
+            cabin_fever_x86_core/server/stage_direction.txt \
+            cabin_fever_x86_core/server/compaction_excuses.jsonl \
+            cabin_fever_x86_core/web_client/static/index.html \
+            cabin_fever_x86_core/web_client/static/splash.jpg \
+            cabin_fever_x86_core/web_client/static/rain.mp3
+          do
+            unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
+          done
+
+      # Guards the one mistake this split invites: building the wrong package
+      # here and uploading it under the other project's name.
+      - name: Check this is the core distribution
+        run: |
+          ls -1 dist/ | grep -q '^cabin_fever_x86_core-' || { echo "dist/ does not hold cabin-fever-x86-core"; ls -1 dist/; exit 1; }
+
+      - name: Check the metadata renders on PyPI
+        run: uvx twine check --strict dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-core
+          path: dist/
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    # Scoped to this package. PyPI's trusted publisher for cabin-fever-x86-core
+    # names this workflow file *and* this environment, so a bug in the app's
+    # release workflow cannot publish core — PyPI rejects the token.
+    environment: pypi-core
+    permissions:
+      # Trusted publishing mints a short-lived token from this. No API token
+      # is stored in the repository.
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-core
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

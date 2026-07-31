@@ -1,0 +1,106 @@
+name: release app
+
+# Publishes cabin-fever-x86, the sandbox launcher. Tag a commit to publish it:
+#
+#   git tag app-v0.1.0 && git push origin app-v0.1.0
+#
+# The prefix matters. The two packages in this repo version independently, so a
+# bare `v*` tag would match both release workflows and publish whichever one
+# happened to pick it up — see release-core.yml for the other half.
+#
+# The tag has to match the version in the package's pyproject.toml; the build
+# job refuses to go on otherwise, because a mismatched upload cannot be taken
+# back. PyPI filenames are permanent — a bad 0.1.0 is 0.1.0 forever.
+on:
+  push:
+    tags: ["app-v*"]
+  # Build without publishing, to check the workflow itself.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(uv version --short --package cabin-fever-x86)
+          tag=${GITHUB_REF_NAME#app-v}
+          if [ "$version" != "$tag" ]; then
+            echo "tag $tag does not match cabin-fever-x86's pyproject version $version"
+            exit 1
+          fi
+
+      - run: uv build --package cabin-fever-x86 --out-dir dist
+
+      # Without this the launcher cannot write a config on first run, and a
+      # fresh install fails at the first thing it does.
+      - name: Check the wheel carries its data files
+        run: |
+          mapfile -t wheels < <(ls -1 dist/*.whl)
+          [ "${#wheels[@]}" -eq 1 ] || { echo "expected exactly 1 wheel, found ${#wheels[@]}"; ls -1 dist/*.whl; exit 1; }
+          for name in \
+            cabin_fever_x86/config.example.yaml \
+            cabin_fever_x86/guest_init.sh
+          do
+            unzip -l "${wheels[0]}" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
+          done
+
+      # This package exists to install where core cannot. A dependency on core
+      # would put jericho — an sdist that compiles a frotz fork, Linux only —
+      # back in front of every macOS and Windows user.
+      - name: Check the launcher does not depend on core
+        run: |
+          mapfile -t wheels < <(ls -1 dist/*.whl)
+          [ "${#wheels[@]}" -eq 1 ] || { echo "expected exactly 1 wheel, found ${#wheels[@]}"; ls -1 dist/*.whl; exit 1; }
+          unzip -p "${wheels[0]}" '*.dist-info/METADATA' > metadata.txt
+          if grep -q '^Requires-Dist: cabin-fever-x86-core' metadata.txt; then
+            echo "the launcher must not depend on cabin-fever-x86-core; core is installed inside the guest"
+            grep '^Requires-Dist:' metadata.txt
+            exit 1
+          fi
+
+      # Guards the one mistake this split invites: building the wrong package
+      # here and uploading it under the other project's name.
+      - name: Check this is the launcher distribution
+        run: |
+          ls -1 dist/ | grep -q '^cabin_fever_x86-' || { echo "dist/ does not hold cabin-fever-x86"; ls -1 dist/; exit 1; }
+
+      - name: Check the metadata renders on PyPI
+        run: uvx twine check --strict dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-app
+          path: dist/
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    # Scoped to this package. PyPI's trusted publisher for cabin-fever-x86
+    # names this workflow file *and* this environment, so a bug in core's
+    # release workflow cannot publish the launcher — PyPI rejects the token.
+    environment: pypi-app
+    permissions:
+      # Trusted publishing mints a short-lived token from this. No API token
+      # is stored in the repository.
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-app
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
