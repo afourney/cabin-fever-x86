@@ -41,7 +41,9 @@ jobs:
       # and a packaging change can drop them without any test noticing.
       - name: Check the wheel carries its data files
         run: |
-          wheel=$(ls dist/*.whl)
+          mapfile -t wheels < <(ls -1 dist/*.whl)
+          [ "${#wheels[@]}" -eq 1 ] || { echo "expected exactly 1 wheel, found ${#wheels[@]}"; ls -1 dist/*.whl; exit 1; }
+          wheel="${wheels[0]}"
           for name in \
             cabin_fever_x86/server/cabin_events.txt \
             cabin_fever_x86/server/stage_direction.txt \
