@@ -21,7 +21,6 @@ class Transcript:
         transcript.jsonl
         audio/player_<message_id>.<ext>   what the player transmitted
         audio/clean_<message_id>.mp3      the reply as synthesised
-        audio/radio_<message_id>.wav      the reply as it went over the air
 
     Each record points at the clip the listener actually heard.
     """

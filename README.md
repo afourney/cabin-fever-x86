@@ -66,14 +66,13 @@ export ELEVENLABS_API_KEY=...
 
 ## Running
 
-Four command-line entry points are installed:
+Three command-line entry points are installed:
 
 | Command | Description |
 | --- | --- |
 | `cf86-server` | Hosts the game session. |
 | `cf86-web` | Web client — the radio in a browser tab. |
 | `cf86-text` | Text client — same session, typed instead of spoken. |
-| `cf86-radio` | Python-based voice client via pygame. [May require extra setup.](#pygame-system-dependencies) |
 
 Run them with `uv run` (no need to activate the virtualenv):
 
@@ -85,7 +84,6 @@ Then **one** of:
 ```bash
 uv run cf86-web
 uv run cf86-text
-uv run cf86-radio
 ```
 
 If running the web client, open the URL it prints in a browser (typically [http://127.0.0.1:8000](http://127.0.0.1:8000)).
@@ -99,23 +97,3 @@ unpacks the 57 titles of its `jericho-game-suite` folder — and only those.
 
 To do it by hand instead, or to add your own, drop `.z3`–`.z8` files into
 `data/games/` and the server will leave them alone.
-
-### pygame System Dependencies
-
-When running the `cf86-radio` client (which uses pygame), audio capture and playback go through PortAudio,
-which needs a few system packages. On Debian/Ubuntu (including WSL2):
-
-```bash
-sudo apt install -y \
-    libportaudio2 \
-    portaudio19-dev \
-    pulseaudio-utils \
-    libasound2-plugins
-```
-
-On WSL2, restart WSL afterwards so PulseAudio picks up the change. From
-PowerShell:
-
-```powershell
-wsl --shutdown
-```

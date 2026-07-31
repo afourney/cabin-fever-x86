@@ -40,16 +40,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-      # sounddevice loads portaudio at import time, so the radio client cannot
-      # even be imported without it.
-      - name: Install audio libraries
-        run: sudo apt-get update && sudo apt-get install -y libportaudio2
       - run: uv sync --frozen
       - run: uv run --no-sync poe test
-        env:
-          # No display and no sound card on a runner.
-          SDL_VIDEODRIVER: dummy
-          SDL_AUDIODRIVER: dummy
 
   build:
     runs-on: ubuntu-latest
@@ -67,7 +59,6 @@ jobs:
           for name in \
             cabin_fever_x86/server/cabin_events.txt \
             cabin_fever_x86/server/stage_direction.txt \
-            cabin_fever_x86/radio_client/radio.bash \
             cabin_fever_x86/web_client/static/index.html \
             cabin_fever_x86/web_client/static/splash.jpg
           do

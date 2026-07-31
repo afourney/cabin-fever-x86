@@ -8,8 +8,6 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "pygame",
-    "sounddevice",
     "soundfile",
     "numpy",
     "elevenlabs",
@@ -36,7 +34,6 @@ dev = [
 ]
 
 [project.scripts]
-cf86-radio = "cabin_fever_x86.radio_client._main:main"
 cf86-text = "cabin_fever_x86.text_client._main:main"
 cf86-server = "cabin_fever_x86.server._main:main"
 cf86-web = "cabin_fever_x86.web_client._main:main"

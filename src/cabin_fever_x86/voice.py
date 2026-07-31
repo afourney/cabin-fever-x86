@@ -1,7 +1,7 @@
 """Speech to text and back, for whichever client is carrying the words.
 
-Nothing here knows how the audio was captured or how it will be played, so the
-pygame client and the browser client can share it.
+Nothing here knows how the audio was captured or how it will be played, so any
+client can share it.
 """
 
 from __future__ import annotations

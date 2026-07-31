@@ -3,9 +3,13 @@
 
 Walks ``transcript.jsonl`` in order and collects the clip for each turn: the
 operator's voice for what the player transmitted (``operator_<id>.*``, made by
-make_operator_audio.py), and what actually came over the air for the replies
-(``radio_<id>.wav``). They are joined with a beat of silence between turns and
-written out as one file.
+make_operator_audio.py), and whatever clip the transcript points at for the
+replies (``clean_<id>.mp3``, as synthesised). They are joined with a beat of
+silence between turns and written out as one file.
+
+The replies come out dry. The web client applies its radio treatment in the
+browser on the way to the speakers, so what a listener heard is never written
+to disk and cannot be recovered from a session.
 
     uv run narrate_replay.py <session-id>
     uv run narrate_replay.py <session-id> --play
@@ -28,7 +32,7 @@ from uuid import UUID
 import numpy as np
 import soundfile as sf
 
-from cabin_fever_x86.sessions import RADIO_CLIENT_COMPONENT, session_dir
+from cabin_fever_x86.sessions import WEB_CLIENT_COMPONENT, session_dir
 
 AUDIO_DIR = "audio"
 TRANSCRIPT_FILE = "transcript.jsonl"
@@ -127,7 +131,7 @@ def main() -> None:
         print("error: --min-gap must be >= 0 and no larger than --max-gap", file=sys.stderr)
         raise SystemExit(1)
 
-    client_dir = session_dir(args.session_id, RADIO_CLIENT_COMPONENT, create=False)
+    client_dir = session_dir(args.session_id, WEB_CLIENT_COMPONENT, create=False)
     transcript = client_dir / TRANSCRIPT_FILE
     audio_dir = client_dir / AUDIO_DIR
     if not transcript.is_file():

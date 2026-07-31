@@ -203,7 +203,7 @@ function rainLevel(level) {
 function radioChain(ctx, destination) {
   const input = ctx.createGain();
 
-  // The same chain radio.bash runs the voice through, stage for stage.
+  // The same chain the offline ffmpeg filter ran the voice through, stage for stage.
   const high = ctx.createBiquadFilter();
   high.type = "highpass"; high.frequency.value = 350; high.Q.value = Math.SQRT1_2;
 
@@ -277,8 +277,7 @@ function hiss(ctx, destination, seconds) {
 
 // A squelch is not a tone. When the carrier drops, the receiver's noise floor
 // rushes back in — broadband, flat, and it simply stops rather than fading.
-// These follow radio.bash, which is what the desktop client has always used:
-// a band between two corners rather than a peak, held at one level.
+// So: a band between two corners rather than a peak, held at one level.
 function burst(ctx, destination, at, { level, length, low, high, release = 0.014 }) {
   const source = ctx.createBufferSource();
   source.buffer = noiseBuffer(ctx, Math.max(length * 2, 0.25));
