@@ -1,10 +1,24 @@
 [project]
 name = "cabin-fever-x86"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.0.1a1"
+description = "A shared game night with an AI companion over a simulated radio: play old text adventures together."
 readme = "README.md"
 authors = [
-    { name = "Adam Fourney", email = "adamfo@microsoft.com" }
+    { name = "Adam Fourney", email = "adam.fourney@gmail.com" }
+]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["text-adventure", "interactive-fiction", "zmachine", "jericho", "voice", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -19,6 +33,11 @@ dependencies = [
     "websockets",
     "jericho",
 ]
+
+[project.urls]
+Homepage = "https://github.com/afourney/cabin-fever-x86"
+Repository = "https://github.com/afourney/cabin-fever-x86"
+Issues = "https://github.com/afourney/cabin-fever-x86/issues"
 
 [project.optional-dependencies]
 # Only needed for the "azure" and "trapi" AI providers.
@@ -103,6 +122,11 @@ lint-fix = "ruff check --fix src tests"
 spell = "codespell -I .codespellignore src README.md"
 
 test = "pytest"
+
+# Pure Python, so one py3-none-any wheel covers every platform. The sdist goes
+# up alongside it because jericho users may need to look at how this was built.
+build = "uv build"
+build-clean = { shell = "rm -rf dist && uv build" }
 
 # Everything CI runs on a pull request, minus the tests.
 check = ["format", "lint", "spell"]
