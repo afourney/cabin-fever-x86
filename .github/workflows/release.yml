@@ -74,6 +74,7 @@ jobs:
     permissions:
       # Trusted publishing mints a short-lived token from this. No API token
       # is stored in the repository.
+      actions: read
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
