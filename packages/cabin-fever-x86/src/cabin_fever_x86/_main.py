@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import os
 import signal
 import sys
 import threading
-import os
 from pathlib import Path
 
 from quicksand import NetworkMode, PortForward, Sandbox
@@ -114,14 +114,13 @@ async def _until_interrupt() -> None:
 
 async def run(home: Path, config: Path, port: int) -> None:
     """Boot the guest, start the game inside it, and serve until it stops."""
-
     # The config's ${...} references are resolved wherever it is loaded,
     # which is now inside the guest. Carry across exactly what it asks for.
     environ = os.environ.copy()
     exports, missing = environment(config, environ)
     if missing:
         print(
-            f"Cabin Fever x86 needs some environment variables to run, but they are not set. Please provide them now (or set them in your shell and restart).\n"
+            "Cabin Fever x86 needs some environment variables to run, but they are not set. Please provide them now (or set them in your shell and restart).\n"
         )
         for name in missing:
             value = ""
