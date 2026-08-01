@@ -136,7 +136,7 @@ dev = [{ name = "cabin-fever-x86-core", editable = "packages/cabin-fever-x86-cor
 
 [[package]]
 name = "cabin-fever-x86-core"
-version = "0.0.1a1"
+version = "0.0.1a2"
 source = { editable = "packages/cabin-fever-x86-core" }
 dependencies = [
     { name = "elevenlabs" },
