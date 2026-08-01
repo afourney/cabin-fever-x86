@@ -3,7 +3,8 @@
 set -euo pipefail
 
 # CORE_URL="https://github.com/afourney/cabin-fever-x86/archive/refs/heads/main.tar.gz#subdirectory=packages/cabin-fever-x86-core"
-CORE_URL="https://github.com/afourney/cabin-fever-x86/archive/refs/heads/main.tar.gz"
+# CORE_URL="https://github.com/afourney/cabin-fever-x86/archive/refs/heads/main.tar.gz"
+CORE_URL="https://github.com/afourney/cabin-fever-x86/archive/refs/heads/cf86-quicksand.tar.gz#subdirectory=packages/cabin-fever-x86-core"
 
 # Application directory. 
 mkdir -p /cabin-fever-x86/data
