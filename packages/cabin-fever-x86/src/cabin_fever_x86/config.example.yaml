@@ -19,7 +19,7 @@ server:
   # optional: unset fields fall back to the provider's env vars, then defaults.
   ai_client:
     provider: openai  # openai | azure | gateway
-    # model: gpt-5.2
+    # model: gpt-5.4
     # base_url: https://...
     api_key: ${OPENAI_API_KEY}
     # azure authenticates with Azure credentials instead of a key, and needs
