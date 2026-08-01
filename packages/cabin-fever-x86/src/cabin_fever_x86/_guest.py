@@ -24,6 +24,7 @@ from pathlib import Path
 import yaml
 from quicksand import Sandbox
 
+from cabin_fever_x86 import __version__
 from cabin_fever_x86._home import DATA_DIR, VM_DIR
 
 #: The script run inside the guest, shipped as package data.
@@ -40,12 +41,17 @@ SENTINEL = "GUEST INIT COMPLETE"
 INIT_MARKER = "CABIN_FEVER_X86_GUEST_INIT"
 CONFIG_MARKER = "CABIN_FEVER_X86_CONFIG"
 
+#: Replaced with the uv package specifier before the init script enters the guest.
+PACKAGE_LOCATOR_SENTINEL = "__PACKAGE_LOCATOR_SENTINEL__"
+PYPI_PACKAGE_NAME = "cabin-fever-x86-core"
+
 #: Long enough to build jericho from source on a slow machine, short enough
 #: that a wedged guest does not hang the launcher forever.
 INIT_TIMEOUT = 900.0
 
 #: The name of the prepared save, under ``<home>/vm/``.
-SAVE_NAME = "cf86"
+#: The version is baked in so that a new version forces a rebuild.
+SAVE_NAME = f"cf86_v{__version__}"
 
 #: Written by quicksand into every save directory; its presence is what makes
 #: a save loadable rather than a half-written directory.
@@ -84,9 +90,18 @@ class GuestInitError(RuntimeError):
     """The init script did not finish cleanly."""
 
 
-def guest_init_script() -> str:
+def guest_init_script(package_locator: str | None = None) -> str:
     """Return the init script, as shipped in this package."""
-    return files(__package__).joinpath(GUEST_INIT).read_text(encoding="utf-8")
+    # Keep the core and launcher releases paired unless config asks otherwise.
+    if package_locator is None:
+        package_locator = f"{PYPI_PACKAGE_NAME}~={__version__}"
+
+    init_script_content = files(__package__).joinpath(GUEST_INIT).read_text(encoding="utf-8")
+
+    # This becomes a shell assignment, so quote the config value as hostile input.
+    if PACKAGE_LOCATOR_SENTINEL not in init_script_content:
+        raise RuntimeError(f"{GUEST_INIT} is missing {PACKAGE_LOCATOR_SENTINEL!r}")
+    return init_script_content.replace(PACKAGE_LOCATOR_SENTINEL, shlex.quote(package_locator))
 
 
 def init_command(script: str) -> str:
@@ -125,7 +140,7 @@ def image_for(home: Path, base_image: str) -> str:
     return str(save_path(home)) if has_save(home) else base_image
 
 
-async def initialize(sandbox: Sandbox) -> None:
+async def initialize(sandbox: Sandbox, package_locator: str | None = None) -> None:
     """Run the init script in *sandbox*, echoing its output as it arrives.
 
     Raises if the script fails, or if it exits cleanly without printing the
@@ -140,7 +155,7 @@ async def initialize(sandbox: Sandbox) -> None:
         print(chunk, end="", flush=True)
 
     result = await sandbox.execute(
-        init_command(guest_init_script()),
+        init_command(guest_init_script(package_locator)),
         timeout=INIT_TIMEOUT,
         on_stdout=note,
         on_stderr=lambda chunk: print(chunk, end="", flush=True, file=sys.stderr),

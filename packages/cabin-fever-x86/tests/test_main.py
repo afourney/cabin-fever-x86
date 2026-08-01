@@ -1,7 +1,13 @@
 import pytest
 
 from cabin_fever_x86._home import CONFIG_NAME, DATA_DIR, HOME_ENV_VAR, VM_DIR
-from cabin_fever_x86._main import DEFAULT_WEB_PORT, _parse_args, main
+from cabin_fever_x86._main import (
+    DEFAULT_WEB_PORT,
+    LauncherConfigError,
+    _package_locator,
+    _parse_args,
+    main,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +36,33 @@ def test_defaults_when_nothing_is_passed():
 
 def test_port_is_an_int():
     assert _parse_args(["--port", "9000"]).port == 9000
+
+
+def test_package_locator_is_optional(tmp_path):
+    config = tmp_path / CONFIG_NAME
+    config.write_text("client: {}\n", encoding="utf-8")
+
+    assert _package_locator(config, {}) is None
+
+
+def test_package_locator_is_read_and_environment_is_resolved(tmp_path):
+    config = tmp_path / CONFIG_NAME
+    config.write_text(
+        "launcher:\n  package_locator: ${CORE_ARCHIVE}#subdirectory=core\n", encoding="utf-8"
+    )
+
+    assert _package_locator(config, {"CORE_ARCHIVE": "https://example.test/core.tgz"}) == (
+        "https://example.test/core.tgz#subdirectory=core"
+    )
+
+
+@pytest.mark.parametrize("body", ["launcher: nope\n", "launcher:\n  package_locator: 42\n"])
+def test_invalid_launcher_settings_are_reported(tmp_path, body):
+    config = tmp_path / CONFIG_NAME
+    config.write_text(body, encoding="utf-8")
+
+    with pytest.raises(LauncherConfigError, match="launcher"):
+        _package_locator(config, {})
 
 
 def test_the_home_is_prepared_and_handed_on(tmp_path, monkeypatch):
