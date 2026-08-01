@@ -119,17 +119,31 @@ async def run(home: Path, config: Path, port: int) -> None:
     environ = os.environ.copy()
     exports, missing = environment(config, environ)
     if missing:
+        if not sys.stdin.isatty():
+            print(
+                "error: required environment variables are missing and stdin is not interactive; "
+                f"please set: {', '.join(missing)}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
         print(
-            "Cabin Fever x86 needs some environment variables to run, but they are not set. Please provide them now (or set them in your shell and restart).\n"
+            "Cabin Fever x86 needs some environment variables to run, but they are not set. "
+            "Please provide them now (or set them in your shell and restart).\n"
         )
+        import getpass
+
         for name in missing:
             value = ""
-            while value == "":
-                print(f"Please enter a value for {name}: ", end="", flush=True)
-                value = sys.stdin.readline().rstrip("\n").strip()
+            while not value:
+                value = getpass.getpass(f"Please enter a value for {name}: ").strip()
             environ[name] = value
+
         exports, missing = environment(config, environ)
-        assert not missing, f"still missing {missing} after prompting for them"
+
+        if missing:
+            print(f"error: still missing {', '.join(missing)} after prompting.", file=sys.stderr)
+            raise SystemExit(1)
 
     prepared = has_save(home)
     if prepared:
