@@ -65,6 +65,21 @@ def test_the_script_ships_with_the_package():
     assert SENTINEL in guest_init_script()
 
 
+def test_the_default_package_locator_tracks_the_launcher_version():
+    from cabin_fever_x86 import __version__
+
+    assert f"cabin-fever-x86-core~={__version__}" in guest_init_script()
+
+
+def test_a_package_locator_is_shell_quoted():
+    locator = 'https://example.test/pkg.whl?value="$(touch /tmp/nope)"'
+    script = guest_init_script(locator)
+
+    assignment = next(line for line in script.splitlines() if line.startswith("CORE_URL="))
+    assert shlex.split(assignment)[0].removeprefix("CORE_URL=") == locator
+    assert 'uv pip install --python .venv/bin/python "$CORE_URL"' in script
+
+
 def test_the_script_is_delivered_over_stdin():
     command = init_command("echo hi\n")
 
@@ -91,6 +106,14 @@ async def test_initialize_runs_the_shipped_script():
 
     assert len(sandbox.commands) == 1
     assert SENTINEL in sandbox.commands[0]
+
+
+async def test_initialize_passes_the_package_locator_to_the_script():
+    sandbox = FakeSandbox()
+
+    await initialize(sandbox, "./core.whl")
+
+    assert "CORE_URL=./core.whl" in sandbox.commands[0]
 
 
 async def test_a_failing_script_is_not_swallowed():

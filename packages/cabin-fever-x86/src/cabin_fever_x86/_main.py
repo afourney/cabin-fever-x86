@@ -9,12 +9,15 @@ import os
 import signal
 import sys
 import threading
+from collections.abc import Mapping
 from pathlib import Path
 
+import yaml
 from quicksand import NetworkMode, PortForward, Sandbox
 
 from cabin_fever_x86 import __version__
 from cabin_fever_x86._guest import (
+    ENV_REFERENCE,
     GUEST_WEB_PORT,
     attach,
     environment,
@@ -38,6 +41,36 @@ from cabin_fever_x86._home import (
 IMAGE = "quicksand-agent"
 
 DEFAULT_WEB_PORT = 8000
+
+
+class LauncherConfigError(ValueError):
+    """Raised when the host-side launcher settings are malformed."""
+
+
+def _package_locator(config: Path, environ: Mapping[str, str]) -> str | None:
+    """Read and resolve the one config value interpreted by the launcher."""
+    try:
+        raw = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise LauncherConfigError(f"could not parse YAML: {exc}") from exc
+    except OSError as exc:
+        raise LauncherConfigError(f"could not read file: {exc}") from exc
+
+    if not isinstance(raw, dict):
+        raise LauncherConfigError("the top level must be a mapping")
+    launcher = raw.get("launcher", {})
+    if launcher is None:
+        launcher = {}
+    if not isinstance(launcher, dict):
+        raise LauncherConfigError("launcher must be a mapping")
+    locator = launcher.get("package_locator")
+    if locator is None:
+        return None
+    if not isinstance(locator, str):
+        raise LauncherConfigError("launcher.package_locator must be a string")
+
+    resolved = ENV_REFERENCE.sub(lambda match: environ.get(match.group(1), ""), locator)
+    return resolved or None
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -146,6 +179,12 @@ async def run(home: Path, config: Path, port: int) -> None:
             print(f"error: still missing {', '.join(missing)} after prompting.", file=sys.stderr)
             raise SystemExit(1)
 
+    try:
+        package_locator = _package_locator(config, environ)
+    except LauncherConfigError as exc:
+        print(f"error: {config}: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
     prepared = has_save(home)
     if prepared:
         print("Booting the prepared guest.")
@@ -166,7 +205,7 @@ async def run(home: Path, config: Path, port: int) -> None:
         port_forwards=[PortForward(host=port, guest=GUEST_WEB_PORT)],
     ) as sandbox:
         if not prepared:
-            await initialize(sandbox)
+            await initialize(sandbox, package_locator)
             # Saved before anything is mounted or written, so the frozen disk
             # holds the install and none of this particular night — nor the
             # config, which by now has API keys in it.

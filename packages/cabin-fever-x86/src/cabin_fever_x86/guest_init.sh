@@ -2,7 +2,7 @@
 # Runs inside the guest, once, on every boot.
 set -euo pipefail
 
-CORE_URL="https://github.com/afourney/cabin-fever-x86/archive/refs/heads/main.tar.gz#subdirectory=packages/cabin-fever-x86-core"
+CORE_URL=__PACKAGE_LOCATOR_SENTINEL__
 
 # Application directory. 
 mkdir -p /cabin-fever-x86/data
@@ -13,6 +13,7 @@ export PATH="/root/.local/bin:$PATH"
 
 # Create a virtual environment and install the core package.
 uv venv .venv
+echo "Installing core package from: $CORE_URL"
 uv pip install --python .venv/bin/python "$CORE_URL"
 source .venv/bin/activate
 

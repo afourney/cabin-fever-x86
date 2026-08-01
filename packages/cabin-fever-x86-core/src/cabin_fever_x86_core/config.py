@@ -97,9 +97,16 @@ class ServerConfig(_Section):
     compaction_threshold: Annotated[int, Field(gt=0)] = 140_000
 
 
+class LauncherConfig(_Section):
+    """Settings used by the host-side sandbox launcher."""
+
+    package_locator: str | None = None
+
+
 class Config(_Section):
     """Everything both halves of the game read at startup."""
 
+    launcher: LauncherConfig = LauncherConfig()
     client: ClientConfig = ClientConfig()
     server: ServerConfig = ServerConfig()
 
