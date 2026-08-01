@@ -7,7 +7,7 @@ from cabin_fever_x86._main import DEFAULT_WEB_PORT, _parse_args, main
 @pytest.fixture(autouse=True)
 def _never_touch_the_real_home(tmp_path, monkeypatch):
     # main() creates its home directory as a side effect, so without this the
-    # suite writes into whoever is running it's ~/.config.
+    # suite writes into whoever is running its ~/.config.
     monkeypatch.setenv(HOME_ENV_VAR, str(tmp_path / "home"))
 
 
