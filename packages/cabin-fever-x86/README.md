@@ -46,6 +46,8 @@ Then visit the URL printed in the terminal (typically [http://127.0.0.1:8000](ht
 
 > [!NOTE]
 > The first run downloads and prepares the virtual machine, so it takes longer than later runs.
+>
+> If you ever want to reset the virtual machine, (e.g., to force an update of the game, or to troubleshoot a problem), you can run `cabin-fever-x86 --rebuild`.
 
 The forwarded web port is bound to `127.0.0.1`. To make the radio available on a LAN, run [`cabin-fever-x86-core`](https://pypi.org/project/cabin-fever-x86-core/) directly on a Linux host instead.
 

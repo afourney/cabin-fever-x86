@@ -27,6 +27,8 @@ from cabin_fever_x86._guest import (
     save,
     serve,
     start_server,
+    update_core,
+    uses_default_package_locator,
 )
 from cabin_fever_x86._home import (
     CONFIG_NAME,
@@ -218,6 +220,10 @@ async def run(home: Path, config: Path, port: int, rebuild: bool = False) -> Non
             # holds the install and none of this particular night — nor the
             # config, which by now has API keys in it.
             print(f"Saved the prepared guest to {await save(sandbox, home)}")
+        elif uses_default_package_locator(package_locator) and await update_core(sandbox):
+            # The timestamp and any upgraded packages live in the guest disk.
+            # Save it live so subsequent launches inherit both.
+            print(f"Saved the updated guest to {await save(sandbox, home)}")
 
         guest_config = await attach(sandbox, home, config)
 

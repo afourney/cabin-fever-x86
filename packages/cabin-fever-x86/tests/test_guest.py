@@ -5,6 +5,7 @@ import pytest
 
 from cabin_fever_x86._guest import (
     CONFIG_MARKER,
+    DEFAULT_PACKAGE_LOCATOR,
     GUEST_CONFIG,
     GUEST_DATA,
     GUEST_INIT,
@@ -13,12 +14,14 @@ from cabin_fever_x86._guest import (
     SAVE_MANIFEST,
     SENTINEL,
     SERVER_LOG,
+    UPDATE_SENTINEL,
     VM_SAVE_NAME,
     GuestInitError,
     _vm_save_name,
     attach,
     environment,
     guest_init_script,
+    guest_update_script,
     has_save,
     image_for,
     init_command,
@@ -29,6 +32,8 @@ from cabin_fever_x86._guest import (
     serve,
     server_command,
     start_server,
+    update_core,
+    uses_default_package_locator,
     web_command,
     write_command,
 )
@@ -70,6 +75,27 @@ def test_the_default_package_locator_tracks_the_launcher_version():
     from cabin_fever_x86 import __version__
 
     assert f"cabin-fever-x86-core~={__version__}" in guest_init_script()
+
+
+def test_only_the_default_locator_enables_periodic_updates():
+    assert uses_default_package_locator(None)
+    assert uses_default_package_locator(DEFAULT_PACKAGE_LOCATOR)
+    assert not uses_default_package_locator("./core.whl")
+
+
+def test_the_update_script_is_periodic_and_uses_pypi():
+    script = guest_update_script()
+
+    assert "/cabin-fever-x86/.version_check" in script
+    assert "-mmin +240" in script
+    assignment = next(line for line in script.splitlines() if line.startswith("CORE_URL="))
+    assert shlex.split(assignment)[0].removeprefix("CORE_URL=") == DEFAULT_PACKAGE_LOCATOR
+    assert 'uv pip install --python .venv/bin/python --upgrade "$CORE_URL"' in script
+    assert UPDATE_SENTINEL in script
+
+
+def test_fresh_initialization_stamps_the_version_check():
+    assert "touch /cabin-fever-x86/.version_check" in guest_init_script()
 
 
 def test_a_package_locator_is_shell_quoted():
@@ -133,6 +159,21 @@ async def test_the_sentinel_is_found_even_when_split_across_reads():
     # FakeSandbox streams a character at a time, so this only passes if the
     # chunks are joined before looking.
     await initialize(FakeSandbox(output=f"noise\n{SENTINEL}\n"))
+
+
+async def test_a_completed_core_update_reports_that_the_guest_changed():
+    sandbox = FakeSandbox(output=f"checked\n{UPDATE_SENTINEL}\n")
+
+    assert await update_core(sandbox) is True
+    assert "cabin-fever-x86-core" in sandbox.commands[0]
+
+
+@pytest.mark.parametrize(
+    "sandbox",
+    [FakeSandbox(output=""), FakeSandbox(exit_code=1, output=f"{UPDATE_SENTINEL}\n")],
+)
+async def test_a_skipped_or_failed_core_update_does_not_request_a_save(sandbox):
+    assert await update_core(sandbox) is False
 
 
 def test_no_save_in_a_fresh_home(tmp_path):
