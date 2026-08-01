@@ -46,7 +46,7 @@ Then visit the URL printed in the terminal (typically [http://127.0.0.1:8000](ht
 > [!NOTE]
 > The first time you run the game, it will take some time to prepare the virtual machine. Later runs will be faster.
 >
-> If you ever want to reset the virtual machine, (e.g., to force an update of the game, or to troubleshoot a problem), you can run `cabin-fever-x86 --rebuild`.
+> If you ever want to reset the virtual machine (e.g., to force an update of the game, or to troubleshoot a problem), you can run `cabin-fever-x86 --rebuild`.
 
 ## Installation From GitHub
 If you prefer to install from GitHub, simply replace:
