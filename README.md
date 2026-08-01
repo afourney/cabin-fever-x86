@@ -53,35 +53,29 @@ If you prefer to install from GitHub, simply replace:
 pip install cabin-fever-x86
 ```
 
-Any `${ENV_VAR_NAME}` reference in the file is resolved against the environment
-when it is loaded, which keeps secrets out of the file itself:
+with:
 
-```yaml
-launcher:
-  # Optional uv package specifier used when preparing a new sandbox VM.
-  # package_locator: cabin-fever-x86-core~=0.0.1a2
-
-client:
-  host: 127.0.0.1
-  port: 5000
-  elevenlabs_api_key: ${ELEVENLABS_API_KEY}
-
-server:
-  interface: 127.0.0.1
-  port: 5000
-  ai_client:
-    provider: openai  # openai | azure | gateway
-    api_key: ${OPENAI_API_KEY}
-  cabin_events:
-    min_delay: 90
-    max_delay: 240
+```bash
+pip install "https://github.com/afourney/cabin-fever-x86/archive/refs/heads/main.tar.gz#subdirectory=packages/cabin-fever-x86"
 ```
 
-Changing `launcher.package_locator` does not alter an already prepared VM.
-Delete `<home>/vm/cf86` to make the launcher rebuild it with the new package.
+## Z-machine games
 
-Then, remember to export your OpenAI and ElevenLabs API keys in the shell before
-running the server or any of the clients:
+The server fetches Z-machine games itself on first-run. On startup it looks in
+`<cabin-fever-home>/data/games/`, and if there is nothing playable there it downloads the
+[z-machine-games](https://github.com/BYU-PCCL/z-machine-games) archive and
+unpacks the 57 titles of its `jericho-game-suite` folder — and only those.
+
+Here, `<cabin-fever-home>` is the directory where the launcher stores its data. By default, this is `~/.config/cabin-fever-x86/` on Linux and WSL, `%APPDATA%\cabin-fever-x86\` on Windows, and `~/Library/Application Support/cabin-fever-x86/` on macOS.
+
+To add new games, copy the `.z3`–`.z8` files into `<cabin-fever-home>/data/games/`. The server will automatically detect them on next startup.
+
+When running `cf86-server` directly during development, the server instead uses `data/games/` relative to the directory from which it was started.
+
+## Development
+Development requires a Linux or WSL environment, and uses [uv](https://docs.astral.sh/uv) to manage the workspace and packages. To get started:
+
+Make sure that uv is installed:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
