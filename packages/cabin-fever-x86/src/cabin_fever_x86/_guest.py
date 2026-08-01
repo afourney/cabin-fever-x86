@@ -204,8 +204,7 @@ def referenced_variables(config_text: str) -> list[str]:
         if isinstance(node, str):
             found.extend(ENV_REFERENCE.findall(node))
         elif isinstance(node, dict):
-            for key, value in node.items():
-                walk(key)
+            for value in node.values():
                 walk(value)
         elif isinstance(node, list):
             for item in node:
