@@ -16,12 +16,11 @@ classifiers = [
     # jericho builds a frotz fork from source and ships no wheels. Upstream
     # supports Linux and nothing else, so neither does this.
     "Operating System :: POSIX :: Linux",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Games/Entertainment",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "soundfile",
     "numpy",
