@@ -1,4 +1,4 @@
-"""Cabin Fever x86: Launcher Application for Windows and MacOS."""
+"""Cabin Fever x86: Launcher Application for Windows and macOS."""
 
 from importlib.metadata import PackageNotFoundError, version as _version
 
