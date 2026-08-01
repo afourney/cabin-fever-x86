@@ -32,7 +32,7 @@ from uuid import UUID
 import numpy as np
 import soundfile as sf
 
-from cabin_fever_x86.sessions import WEB_CLIENT_COMPONENT, session_dir
+from cabin_fever_x86_core.sessions import WEB_CLIENT_COMPONENT, session_dir
 
 AUDIO_DIR = "audio"
 TRANSCRIPT_FILE = "transcript.jsonl"

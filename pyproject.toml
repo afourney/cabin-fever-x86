@@ -1,48 +1,3 @@
-[project]
-name = "cabin-fever-x86"
-version = "0.0.1a1"
-description = "A shared game night with an AI companion over a simulated radio: play old text adventures together."
-readme = "README.md"
-authors = [
-    { name = "Adam Fourney", email = "adam.fourney@gmail.com" }
-]
-license = "MIT"
-license-files = ["LICENSE"]
-keywords = ["text-adventure", "interactive-fiction", "zmachine", "jericho", "voice", "llm"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Environment :: Console",
-    "Intended Audience :: End Users/Desktop",
-    "Operating System :: MacOS :: MacOS X",
-    "Operating System :: POSIX :: Linux",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Games/Entertainment",
-]
-requires-python = ">=3.11"
-dependencies = [
-    "soundfile",
-    "numpy",
-    "elevenlabs",
-    "fastapi",
-    "openai",
-    "pydantic",
-    "pyyaml",
-    "uvicorn",
-    "websockets",
-    "jericho",
-]
-
-[project.urls]
-Homepage = "https://github.com/afourney/cabin-fever-x86"
-Repository = "https://github.com/afourney/cabin-fever-x86"
-Issues = "https://github.com/afourney/cabin-fever-x86/issues"
-
-[project.optional-dependencies]
-# Only needed for the "azure" and "trapi" AI providers.
-azure = ["azure-identity"]
-
 [dependency-groups]
 dev = [
     "ruff",
@@ -52,20 +7,16 @@ dev = [
     "pytest-asyncio",
 ]
 
-[project.scripts]
-cf86-text = "cabin_fever_x86.text_client._main:main"
-cf86-server = "cabin_fever_x86.server._main:main"
-cf86-web = "cabin_fever_x86.web_client._main:main"
-
-[build-system]
-requires = ["uv_build>=0.10.2,<0.11.0"]
-build-backend = "uv_build"
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [tool.ruff]
-# Wider than 88: the code was written to it, and rewrapping every call in the
-# repo to satisfy a formatter is a poor first commit.
 line-length = 100
-target-version = "py311"
+target-version = "py312"
+src = [
+    "packages/cabin-fever-x86-core/src",
+    "packages/cabin-fever-x86/src",
+]
 exclude = [
     ".git",
     "__pycache__",
@@ -103,30 +54,34 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# The persona is prose. Its curly quotes and em dashes are deliberate, and the
-# model is the one reading them.
-"src/cabin_fever_x86/server/_system_prompt.py" = ["RUF001", "RUF002", "RUF003"]
-"tests/**/*.py" = ["D"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
+"**/server/_system_prompt.py" = ["RUF001", "RUF002", "RUF003"]
+"**/tests/**/*.py" = ["D"]
 
 [tool.poe.tasks]
-format = "ruff format --check --diff src tests"
-format-fix = "ruff format src tests"
+format = "ruff format --check --diff packages"
+format-fix = "ruff format packages"
 
-lint = "ruff check src tests"
-lint-fix = "ruff check --fix src tests"
+lint = "ruff check packages"
+lint-fix = "ruff check --fix packages"
 
-spell = "codespell -I .codespellignore src README.md"
+# Tests are skipped on purpose: some of them spell things wrong deliberately,
+# to assert that a typo in a config file is reported rather than ignored.
+spell = "codespell -I .codespellignore --skip '*/tests/*' packages README.md"
 
-test = "pytest"
+# Run from inside each package so pytest picks up that package's
+# [tool.pytest.ini_options]; from the root it would find this file instead,
+# which configures no testpaths and no asyncio mode.
+test-core = { cmd = "pytest", cwd = "packages/cabin-fever-x86-core" }
+test-app = { cmd = "pytest", cwd = "packages/cabin-fever-x86" }
+test = ["test-core", "test-app"]
 
-# Pure Python, so one py3-none-any wheel covers every platform. The sdist goes
-# up alongside it because jericho users may need to look at how this was built.
-build = "uv build"
-build-clean = { shell = "rm -rf dist && uv build" }
+# Separate out-dirs: `uv build --package` writes to the root dist/, so two
+# builds on one machine would otherwise pile into the same folder and the
+# release workflow could not tell which wheel it was checking.
+build-core = "uv build --package cabin-fever-x86-core --out-dir dist/core"
+build-app = "uv build --package cabin-fever-x86 --out-dir dist/app"
+build = ["build-core", "build-app"]
+build-clean = { shell = "rm -rf dist && uv build --package cabin-fever-x86-core --out-dir dist/core && uv build --package cabin-fever-x86 --out-dir dist/app" }
 
 # Everything CI runs on a pull request, minus the tests.
 check = ["format", "lint", "spell"]

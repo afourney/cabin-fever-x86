@@ -1,0 +1,51 @@
+"""A first test, mostly to prove the harness runs.
+
+Config loading is a reasonable thing to pin down first: every entry point goes
+through it, and it is pure enough to test without a server, a model, or a
+sound card.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from cabin_fever_x86_core.config import ConfigError, load_config
+
+
+def write(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "config.yaml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_defaults_when_the_file_says_nothing(tmp_path: Path) -> None:
+    config = load_config(write(tmp_path, "{}\n"))
+    assert config.client.host == "127.0.0.1"
+    assert config.server.port == 5000
+    assert config.server.ai_client.provider == "openai"
+
+
+def test_env_vars_are_expanded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CF86_TEST_KEY", "sk-from-the-environment")
+    config = load_config(write(tmp_path, "client:\n  elevenlabs_api_key: ${CF86_TEST_KEY}\n"))
+    assert config.client.elevenlabs_api_key == "sk-from-the-environment"
+
+
+def test_an_unset_env_var_falls_back_to_the_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CF86_TEST_MISSING", raising=False)
+    config = load_config(write(tmp_path, "client:\n  host: ${CF86_TEST_MISSING}\n"))
+    assert config.client.host == "127.0.0.1"
+
+
+def test_a_typo_is_reported_rather_than_ignored(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="provder"):
+        load_config(write(tmp_path, "server:\n  ai_client:\n    provder: openai\n"))
+
+
+def test_a_missing_file_is_only_an_error_when_asked_for_by_name(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="not found"):
+        load_config(tmp_path / "nowhere.yaml")

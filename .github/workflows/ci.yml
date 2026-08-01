@@ -1,5 +1,9 @@
 name: check
 
+# One workflow for the whole workspace, deliberately: with `paths:` filters, a
+# pull request touching only one package never reports the other package's
+# check, and a required check that never reports blocks the merge. Two packages
+# is not enough to be worth that.
 on:
   push:
     branches: [main]
@@ -26,7 +30,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync --frozen
+      - run: uv sync --frozen --all-packages
       - run: uv run --no-sync poe check
 
   test:
@@ -34,33 +38,67 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --frozen
+      - run: uv sync --frozen --all-packages
+      # Both packages. The launcher's tests never boot a VM — a GitHub-hosted
+      # runner may have no /dev/kvm, and TCG emulation is too slow to wait on.
+      # Anything that needs a real guest belongs in a manual workflow.
       - run: uv run --no-sync poe test
 
-  build:
+  build-core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv build --wheel
+      - run: uv build --wheel --package cabin-fever-x86-core --out-dir dist/core
       # The package carries prose and artwork the game does not run without,
       # and a packaging change can drop them without any test noticing.
       - name: Check the wheel carries its data files
         run: |
-          wheel=$(ls dist/*.whl)
+          wheel=$(ls dist/core/*.whl)
           for name in \
-            cabin_fever_x86/server/cabin_events.txt \
-            cabin_fever_x86/server/stage_direction.txt \
-            cabin_fever_x86/web_client/static/index.html \
-            cabin_fever_x86/web_client/static/splash.jpg
+            cabin_fever_x86_core/server/cabin_events.txt \
+            cabin_fever_x86_core/server/stage_direction.txt \
+            cabin_fever_x86_core/web_client/static/index.html \
+            cabin_fever_x86_core/web_client/static/splash.jpg
           do
             unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
           done
+
+  build-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv build --wheel --package cabin-fever-x86 --out-dir dist/app
+      # Without this the launcher cannot write a config on first run, and a
+      # fresh install fails at the first thing it does.
+      - name: Check the wheel carries its data files
+        run: |
+          wheel=$(ls dist/app/*.whl)
+          for name in \
+            cabin_fever_x86/config.example.yaml \
+            cabin_fever_x86/guest_init.sh
+          do
+            unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
+          done
+      # The launcher must not drag the Linux-only package in behind it: that
+      # is the whole reason it is a separate distribution.
+      - name: Check the launcher does not depend on core
+        run: |
+          wheel=$(ls dist/app/*.whl)
+          unzip -p "$wheel" '*.dist-info/METADATA' > metadata.txt
+          if grep -q '^Requires-Dist: cabin-fever-x86-core' metadata.txt; then
+            echo "the launcher must not depend on cabin-fever-x86-core; core is installed inside the guest"
+            grep '^Requires-Dist:' metadata.txt
+            exit 1
+          fi

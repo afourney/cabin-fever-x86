@@ -22,8 +22,8 @@ from uuid import UUID
 
 from elevenlabs.client import ElevenLabs
 
-from cabin_fever_x86.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
-from cabin_fever_x86.sessions import WEB_CLIENT_COMPONENT, session_dir
+from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
+from cabin_fever_x86_core.sessions import WEB_CLIENT_COMPONENT, session_dir
 
 #OPERATOR_VOICE_ID = "jWck2UHCtDKdhIRlMgaR"
 OPERATOR_VOICE_ID = "eqz5FuihuZwmJPuvZ65E"
