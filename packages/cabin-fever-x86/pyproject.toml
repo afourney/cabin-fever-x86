@@ -16,11 +16,12 @@ classifiers = [
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Games/Entertainment",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     # The agent image is quicksand-ubuntu plus a Python 3.12 environment, uv,
     # and build-essential — which the guest needs anyway, since installing the
