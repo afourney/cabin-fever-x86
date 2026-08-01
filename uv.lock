@@ -111,9 +111,10 @@ wheels = [
 
 [[package]]
 name = "cabin-fever-x86"
-version = "0.0.1a2"
+version = "0.0.1a3"
 source = { editable = "packages/cabin-fever-x86" }
 dependencies = [
+    { name = "packaging" },
     { name = "pip" },
     { name = "pyyaml" },
     { name = "quick-sandbox", extra = ["agent", "qemu"] },
@@ -126,6 +127,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "packaging" },
     { name = "pip" },
     { name = "pyyaml" },
     { name = "quick-sandbox", extras = ["qemu", "agent"] },
@@ -136,7 +138,7 @@ dev = [{ name = "cabin-fever-x86-core", editable = "packages/cabin-fever-x86-cor
 
 [[package]]
 name = "cabin-fever-x86-core"
-version = "0.0.1a2"
+version = "0.0.1a3"
 source = { editable = "packages/cabin-fever-x86-core" }
 dependencies = [
     { name = "elevenlabs" },

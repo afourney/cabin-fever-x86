@@ -28,6 +28,7 @@ dependencies = [
     # game compiles a frotz fork from source.
     "quick-sandbox[qemu,agent]",
     "pip",
+    "packaging",
     # Only to see which ${ENV_VAR} references the config makes, so they can be
     # carried into the guest. The launcher never interprets the settings
     # themselves — that is core's job, inside the guest.

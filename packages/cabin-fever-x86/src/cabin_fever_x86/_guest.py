@@ -22,6 +22,7 @@ from importlib.resources import files
 from pathlib import Path
 
 import yaml
+from packaging.version import Version
 from quicksand import Sandbox
 
 from cabin_fever_x86 import __version__
@@ -49,9 +50,17 @@ PYPI_PACKAGE_NAME = "cabin-fever-x86-core"
 #: that a wedged guest does not hang the launcher forever.
 INIT_TIMEOUT = 900.0
 
-#: The name of the prepared save, under ``<home>/vm/``.
-#: The version is baked in so that a new version forces a rebuild.
-SAVE_NAME = f"cf86_v{__version__}"
+
+def _vm_save_name(version: str) -> str:
+    """Return the prepared VM save name for a launcher version."""
+    parsed_version = Version(version)
+    return f"cf86_v{parsed_version.major}.{parsed_version.minor}"
+
+
+#: The name of the prepared save, under ``<home>/vm/``. Saves are shared by
+#: launcher releases in the same major/minor series, so patch releases and
+#: prerelease changes do not force a rebuild.
+VM_SAVE_NAME = _vm_save_name(__version__)
 
 #: Written by quicksand into every save directory; its presence is what makes
 #: a save loadable rather than a half-written directory.
@@ -122,7 +131,7 @@ def write_command(text: str, destination: str, marker: str) -> str:
 
 def save_path(home: Path) -> Path:
     """Return where the prepared guest is kept for this home directory."""
-    return home / VM_DIR / SAVE_NAME
+    return home / VM_DIR / VM_SAVE_NAME
 
 
 def has_save(home: Path) -> bool:
@@ -172,7 +181,7 @@ async def initialize(sandbox: Sandbox, package_locator: str | None = None) -> No
 async def save(sandbox: Sandbox, home: Path) -> Path:
     """Freeze the prepared guest under *home* so the next start can skip init."""
     destination = home / VM_DIR
-    await sandbox.save(SAVE_NAME, workspace=destination)
+    await sandbox.save(VM_SAVE_NAME, workspace=destination)
     return save_path(home)
 
 

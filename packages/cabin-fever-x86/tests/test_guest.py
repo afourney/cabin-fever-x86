@@ -11,10 +11,11 @@ from cabin_fever_x86._guest import (
     GUEST_WEB_PORT,
     INIT_MARKER,
     SAVE_MANIFEST,
-    SAVE_NAME,
     SENTINEL,
     SERVER_LOG,
+    VM_SAVE_NAME,
     GuestInitError,
+    _vm_save_name,
     attach,
     environment,
     guest_init_script,
@@ -136,12 +137,26 @@ async def test_the_sentinel_is_found_even_when_split_across_reads():
 
 def test_no_save_in_a_fresh_home(tmp_path):
     assert has_save(tmp_path) is False
-    assert save_path(tmp_path) == tmp_path / VM_DIR / SAVE_NAME
+    assert save_path(tmp_path) == tmp_path / VM_DIR / VM_SAVE_NAME
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("0.0.1a3", "cf86_v0.0"),
+        ("0.0.2", "cf86_v0.0"),
+        ("0.0.2.post1", "cf86_v0.0"),
+        ("0.1.0.dev1", "cf86_v0.1"),
+        ("1.0.0", "cf86_v1.0"),
+    ],
+)
+def test_vm_save_name_uses_only_major_and_minor_version(version, expected):
+    assert _vm_save_name(version) == expected
 
 
 def test_a_half_written_save_does_not_count(tmp_path):
     # The directory exists but quicksand never finished writing the manifest.
-    (tmp_path / VM_DIR / SAVE_NAME).mkdir(parents=True)
+    (tmp_path / VM_DIR / VM_SAVE_NAME).mkdir(parents=True)
 
     assert has_save(tmp_path) is False
 
@@ -152,12 +167,12 @@ async def test_saving_makes_the_next_start_use_it(tmp_path):
 
     written = await save(sandbox, tmp_path)
 
-    assert sandbox.saves == [(SAVE_NAME, tmp_path / VM_DIR)]
-    assert written == tmp_path / VM_DIR / SAVE_NAME
+    assert sandbox.saves == [(VM_SAVE_NAME, tmp_path / VM_DIR)]
+    assert written == tmp_path / VM_DIR / VM_SAVE_NAME
     assert has_save(tmp_path)
     # A path, not a name: quicksand only looks names up in two fixed places,
     # and the vm folder is neither.
-    assert image_for(tmp_path, "quicksand-agent") == str(tmp_path / VM_DIR / SAVE_NAME)
+    assert image_for(tmp_path, "quicksand-agent") == str(tmp_path / VM_DIR / VM_SAVE_NAME)
 
 
 def test_a_file_is_written_over_stdin_too():
