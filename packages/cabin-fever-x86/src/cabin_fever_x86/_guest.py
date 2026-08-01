@@ -181,6 +181,10 @@ async def initialize(sandbox: Sandbox, package_locator: str | None = None) -> No
 async def save(sandbox: Sandbox, home: Path) -> Path:
     """Freeze the prepared guest under *home* so the next start can skip init."""
     destination = home / VM_DIR
+    # Quicksand builds the replacement in a temporary directory before removing
+    # an existing save and renaming the replacement into place. There is a tiny
+    # remove/rename failure window, acceptable here because this is only a cache:
+    # config, games, sessions, and saves all live separately under data/.
     await sandbox.save(VM_SAVE_NAME, workspace=destination)
     return save_path(home)
 

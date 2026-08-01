@@ -97,6 +97,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_WEB_PORT,
         help=f"Host port to serve the web application on (default: {DEFAULT_WEB_PORT}).",
     )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild the prepared guest before launching.",
+    )
     return parser.parse_args(argv)
 
 
@@ -147,7 +152,7 @@ async def _until_interrupt() -> None:
             loop.remove_signal_handler(signal.SIGINT)
 
 
-async def run(home: Path, config: Path, port: int) -> None:
+async def run(home: Path, config: Path, port: int, rebuild: bool = False) -> None:
     """Boot the guest, start the game inside it, and serve until it stops."""
     # The config's ${...} references are resolved wherever it is loaded,
     # which is now inside the guest. Carry across exactly what it asks for.
@@ -186,8 +191,10 @@ async def run(home: Path, config: Path, port: int) -> None:
         print(f"error: {config}: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
-    prepared = has_save(home)
-    if prepared:
+    prepared = has_save(home) and not rebuild
+    if rebuild:
+        print("Rebuilding the prepared guest. This takes a few minutes.")
+    elif prepared:
         print("Booting the prepared guest.")
     else:
         print("No prepared guest yet; building one. This takes a few minutes, once.")
@@ -201,7 +208,7 @@ async def run(home: Path, config: Path, port: int) -> None:
     # the guest and stays there. Quicksand pins the host end to 127.0.0.1 and
     # offers no way to widen it, so this is a loopback port by construction.
     async with Sandbox(
-        image=image_for(home, IMAGE),
+        image=IMAGE if rebuild else image_for(home, IMAGE),
         network_mode=NetworkMode.FULL,
         port_forwards=[PortForward(host=port, guest=GUEST_WEB_PORT)],
     ) as sandbox:
@@ -256,7 +263,7 @@ def main() -> None:
 
     # The fallback for platforms where SIGINT cannot be taken as an event.
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(run(home, config, args.port))
+        asyncio.run(run(home, config, args.port, rebuild=args.rebuild))
 
 
 if __name__ == "__main__":
