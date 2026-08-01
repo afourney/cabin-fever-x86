@@ -29,7 +29,7 @@ def create_client(config: AIClientConfig, session_id: str) -> tuple[AsyncOpenAI,
 
 
 def _create_openai(config: AIClientConfig) -> tuple[AsyncOpenAI, str]:
-    model = config.model or os.environ.get("OPENAI_MODEL", "gpt-5.2")
+    model = config.model or os.environ.get("OPENAI_MODEL", "gpt-5.4")
     base_url = config.base_url or os.environ.get("OPENAI_BASE_URL") or None
     api_key = config.api_key or os.environ.get("OPENAI_API_KEY") or None
 

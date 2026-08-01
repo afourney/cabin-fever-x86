@@ -215,19 +215,23 @@ def referenced_variables(config_text: str) -> list[str]:
 
 
 def environment(config: Path, environ: Mapping[str, str] | None = None) -> tuple[str, list[str]]:
-    """Return shell exports for what the config needs, and what was not there.
-
-    The config's ``${OPENAI_API_KEY}`` references are resolved by whichever
-    process loads the file — and that process is now inside the guest, where
-    none of the host's environment reaches. So the variables the config asks
-    for are carried across explicitly, and nothing else is: the guest has no
-    business seeing the rest of the host's environment.
-    """
+    """Return shell exports for what the config needs, and what was not there."""
     environ = os.environ if environ is None else environ
 
+    # Determine what environment variables the config file needs
+    referenced = referenced_variables(config.read_text(encoding="utf-8"))
+
+    # Resolve 'CF86_' prefixes if those are used
+    for name in referenced:
+        if name.startswith("CF86_"):
+            continue  # The config is already asking for the prefixed name
+        if name not in environ and f"CF86_{name}" in environ:
+            environ[name] = environ[f"CF86_{name}"]
+
+    # Build the exports and the list of what was missing.
     exports: list[str] = []
     missing: list[str] = []
-    for name in referenced_variables(config.read_text(encoding="utf-8")):
+    for name in referenced:
         if name in environ:
             # Quoted, because these are secrets of arbitrary shape and one
             # stray character would otherwise be a shell injection.

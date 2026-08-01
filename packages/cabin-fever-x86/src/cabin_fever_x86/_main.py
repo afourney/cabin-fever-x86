@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import os
 import signal
 import sys
 import threading
@@ -113,6 +114,37 @@ async def _until_interrupt() -> None:
 
 async def run(home: Path, config: Path, port: int) -> None:
     """Boot the guest, start the game inside it, and serve until it stops."""
+    # The config's ${...} references are resolved wherever it is loaded,
+    # which is now inside the guest. Carry across exactly what it asks for.
+    environ = os.environ.copy()
+    exports, missing = environment(config, environ)
+    if missing:
+        if not sys.stdin.isatty():
+            print(
+                "error: required environment variables are missing and stdin is not interactive; "
+                f"please set: {', '.join(missing)}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+        print(
+            "Cabin Fever x86 needs some environment variables to run, but they are not set. "
+            "Please provide them now (or set them in your shell and restart).\n"
+        )
+        import getpass
+
+        for name in missing:
+            value = ""
+            while not value:
+                value = getpass.getpass(f"Please enter a value for {name}: ").strip()
+            environ[name] = value
+
+        exports, missing = environment(config, environ)
+
+        if missing:
+            print(f"error: still missing {', '.join(missing)} after prompting.", file=sys.stderr)
+            raise SystemExit(1)
+
     prepared = has_save(home)
     if prepared:
         print("Booting the prepared guest.")
@@ -140,16 +172,6 @@ async def run(home: Path, config: Path, port: int) -> None:
             print(f"Saved the prepared guest to {await save(sandbox, home)}")
 
         guest_config = await attach(sandbox, home, config)
-
-        # The config's ${...} references are resolved wherever it is loaded,
-        # which is now inside the guest. Carry across exactly what it asks for.
-        exports, missing = environment(config)
-        if missing:
-            print(
-                f"warning: the config refers to {', '.join(missing)}, which "
-                "are not set here; the guest will treat them as unset and fall back to defaults",
-                file=sys.stderr,
-            )
 
         await start_server(sandbox, guest_config, exports)
 
