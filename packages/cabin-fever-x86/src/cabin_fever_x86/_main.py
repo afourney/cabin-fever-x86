@@ -147,7 +147,7 @@ async def run(home: Path, config: Path, port: int) -> None:
         if missing:
             print(
                 f"warning: the config refers to {', '.join(missing)}, which "
-                "are not set here; the guest will read them as empty",
+                "are not set here; the guest will treat them as unset and fall back to defaults",
                 file=sys.stderr,
             )
 
