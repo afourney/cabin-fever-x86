@@ -14,7 +14,6 @@ from pathlib import Path
 from quicksand import NetworkMode, PortForward, Sandbox
 
 from cabin_fever_x86 import __version__
-
 from cabin_fever_x86._guest import (
     GUEST_WEB_PORT,
     attach,
