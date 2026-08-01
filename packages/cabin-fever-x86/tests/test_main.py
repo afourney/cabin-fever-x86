@@ -27,6 +27,11 @@ def _never_boot_a_vm(monkeypatch):
     monkeypatch.setattr("cabin_fever_x86._main.Sandbox", refuse)
 
 
+@pytest.fixture(autouse=True)
+def _never_check_the_real_pypi(monkeypatch):
+    monkeypatch.setattr("cabin_fever_x86._main.print_upgrade_notice", lambda *args: None)
+
+
 def test_defaults_when_nothing_is_passed():
     args = _parse_args([])
     assert args.home is None

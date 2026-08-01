@@ -34,6 +34,7 @@ from cabin_fever_x86._home import (
     default_home,
     prepare_home,
 )
+from cabin_fever_x86._updates import print_upgrade_notice
 
 #: What the guest boots: quicksand-ubuntu plus Python 3.12, uv, and a C
 #: toolchain. The toolchain is not optional — installing the game builds a
@@ -245,6 +246,7 @@ def main() -> None:
     home = prepare_home(Path(args.home) if args.home else None)
     print(f"Home directory: {home}")
     print("")
+    print_upgrade_notice(home, __version__)
 
     # Ensure the config file exists (whether specified or default).
     config = Path(args.config).expanduser() if args.config else home / CONFIG_NAME
