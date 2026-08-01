@@ -68,5 +68,3 @@ To add games, copy `.z3`–`.z8` files into `<cabin-fever-home>/data/games/`. Th
 ## Development
 
 See the [repository README](https://github.com/afourney/cabin-fever-x86#development) for development setup and source-tree usage.
-
-> **Upgrading from 0.0.1a1?** That release was the whole game running natively. This package name now refers to the sandboxed launcher; the native install moved to [`cabin-fever-x86-core`](https://pypi.org/project/cabin-fever-x86-core/).
