@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
+from cabin_fever_x86_core import __version__
 from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
@@ -286,7 +287,8 @@ async def run_client(
             # Which session this is, and where it is being written down, is a
             # /session away. The screen opens on the tagline instead.
             console.banner(
-                "Feeding grues over VHF.",
+                "Feeding grues over VHF",
+                f"core version {__version__}",
                 f"/help for commands {console.glyphs.dot} Ctrl-D to hang up.",
             )
             await TextClient(connection, transcript, console, session_id).run()

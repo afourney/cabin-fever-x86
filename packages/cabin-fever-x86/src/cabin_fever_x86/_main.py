@@ -13,6 +13,7 @@ from pathlib import Path
 
 from quicksand import NetworkMode, PortForward, Sandbox
 
+from cabin_fever_x86 import __version__
 from cabin_fever_x86._guest import (
     GUEST_WEB_PORT,
     attach,
@@ -41,7 +42,7 @@ DEFAULT_WEB_PORT = 8000
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run Cabin Fever x86 inside a sandbox VM.",
+        description="Cabin Fever x86 Launcher",
     )
     parser.add_argument(
         "--home",
@@ -60,7 +61,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--port",
         type=int,
         default=DEFAULT_WEB_PORT,
-        help=f"Host port to serve the radio on (default: {DEFAULT_WEB_PORT}).",
+        help=f"Host port to serve the web application on (default: {DEFAULT_WEB_PORT}).",
     )
     return parser.parse_args(argv)
 
@@ -197,20 +198,22 @@ async def run(home: Path, config: Path, port: int) -> None:
 def main() -> None:
     args = _parse_args()
 
+    # Header
+    print("-" * 60)
+    print(" C A B I N   F E V E R   x 8 6 ")
+    print("-" * 60)
+    print(f"Launcher version {__version__}")
     home = prepare_home(Path(args.home) if args.home else None)
-    print(f"Cabin Fever x86 home: {home}")
+    print(f"Home directory: {home}")
+    print("")
 
-    # An explicit --config is taken at its word: pointing at a file that is not
-    # there is a typo worth reporting, not an invitation to write a fresh one
-    # somewhere unexpected. Without it, prepare_home has just seen to it.
+    # Ensure the config file exists (whether specified or default).
     config = Path(args.config).expanduser() if args.config else home / CONFIG_NAME
     if not config.is_file():
         print(f"error: no config file at {config}", file=sys.stderr)
         raise SystemExit(1)
 
     # The fallback for platforms where SIGINT cannot be taken as an event.
-    # There the guest is torn down by quicksand's reaper rather than by the
-    # context manager, so this is the less tidy of the two paths.
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(run(home, config, args.port))
 

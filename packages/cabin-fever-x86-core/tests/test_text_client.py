@@ -89,7 +89,9 @@ def test_ascii_glyphs_keep_the_gutter_width():
 def test_the_weather_goes_inside_the_title(monkeypatch):
     out = io.StringIO()
     monkeypatch.setattr("shutil.get_terminal_size", lambda _=None: os.terminal_size((40, 24)))
-    Console(out, PLAIN, UNICODE).banner("Nine days of rain.", "/help for commands")
+    Console(out, PLAIN, UNICODE).banner(
+        "Nine days of rain.", "core version 0.0.0", "/help for commands"
+    )
 
     # The banner is flush against the edge; only the log hangs off the gutter.
     rule = UNICODE.rule * (39 - GUTTER)  # the log's width, less the speaker column
@@ -99,6 +101,7 @@ def test_the_weather_goes_inside_the_title(monkeypatch):
         rule,
         "Nine days of rain.",
         "",
+        "core version 0.0.0",
         "/help for commands",
         "",
     ]

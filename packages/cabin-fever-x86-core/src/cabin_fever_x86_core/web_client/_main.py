@@ -31,6 +31,7 @@ from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
+from cabin_fever_x86_core import __version__
 from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
@@ -334,7 +335,7 @@ def main() -> None:
     port = args.port if args.port is not None else config.client.port
 
     app = create_app(f"ws://{host}:{port}", config.client.elevenlabs_api_key)
-    print(f"Cabin Fever x86 on http://{args.web_host}:{args.web_port}")
+    print(f"Cabin Fever x86 (core version {__version__}) on http://{args.web_host}:{args.web_port}")
     uvicorn.run(app, host=args.web_host, port=args.web_port, log_level="warning")
 
 
