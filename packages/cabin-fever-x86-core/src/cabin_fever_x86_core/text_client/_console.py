@@ -210,7 +210,7 @@ class Console:
             "\n".join(self.ink(colour, f"{indent}{row}") if row.strip() else "" for row in rows)
         )
 
-    def banner(self, tagline: str, hint: str) -> None:
+    def banner(self, tagline: str, version:str, hint: str) -> None:
         """Open the session with the title, the weather, and how to get out."""
         rule = self.glyphs.rule * self._body_width
         title = f"{_spaced('CABIN')}   {_spaced('FEVER')}"
@@ -222,6 +222,7 @@ class Console:
                     self.ink("note", rule),
                     self.ink("note", tagline),
                     "",
+                    self.ink("note", version),
                     self.ink("note", hint),
                 )
             )
