@@ -113,7 +113,7 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger.info("Game server: %s", upstream_uri)
+        logger.info("Ready.")
         yield
         for radio in list(live.values()):
             await radio.upstream.close()

@@ -6,6 +6,18 @@
 # secrets into the file: config.yaml is gitignored, but env vars can't be
 # committed by accident at all.
 
+# Settings used only by the host-side sandbox launcher. 
+launcher:
+
+  # The package locator is any package specifier accepted by uv. It is used
+  # only when building a new prepared guest; 
+  #
+  # Use the following to grab the latest pre-release from PyPI
+  # package_locator: cabin-fever-x86~=0.0.1a1
+  #
+  # Or, use the following to grab the latest release from GitHub
+  # package_locator: https://github.com/afourney/cabin-fever-x86/archive/refs/heads/main.tar.gz#subdirectory=packages/cabin-fever-x86-core
+
 client:
   host: 127.0.0.1
   port: 5000

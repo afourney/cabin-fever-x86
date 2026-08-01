@@ -62,6 +62,10 @@ Any `${ENV_VAR_NAME}` reference in the file is resolved against the environment
 when it is loaded, which keeps secrets out of the file itself:
 
 ```yaml
+launcher:
+  # Optional uv package specifier used when preparing a new sandbox VM.
+  # package_locator: cabin-fever-x86-core~=0.0.1a2
+
 client:
   host: 127.0.0.1
   port: 5000
@@ -77,6 +81,9 @@ server:
     min_delay: 90
     max_delay: 240
 ```
+
+Changing `launcher.package_locator` does not alter an already prepared VM.
+Delete `<home>/vm/cf86` to make the launcher rebuild it with the new package.
 
 Then, remember to export your OpenAI and ElevenLabs API keys in the shell before
 running the server or any of the clients:
