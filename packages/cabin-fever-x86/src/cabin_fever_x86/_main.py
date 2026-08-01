@@ -120,7 +120,9 @@ async def run(home: Path, config: Path, port: int) -> None:
     environ = os.environ.copy()
     exports, missing = environment(config, environ)
     if missing:
-        print(f"Cabin Fever x86 needs some environment variables to run, but they are not set. Please provide them now (or set them in your shell and restart).\n")
+        print(
+            f"Cabin Fever x86 needs some environment variables to run, but they are not set. Please provide them now (or set them in your shell and restart).\n"
+        )
         for name in missing:
             value = ""
             while value == "":
@@ -129,7 +131,6 @@ async def run(home: Path, config: Path, port: int) -> None:
             environ[name] = value
         exports, missing = environment(config, environ)
         assert not missing, f"still missing {missing} after prompting for them"
-
 
     prepared = has_save(home)
     if prepared:
