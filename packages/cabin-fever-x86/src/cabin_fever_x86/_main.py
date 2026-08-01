@@ -114,6 +114,23 @@ async def _until_interrupt() -> None:
 
 async def run(home: Path, config: Path, port: int) -> None:
     """Boot the guest, start the game inside it, and serve until it stops."""
+
+    # The config's ${...} references are resolved wherever it is loaded,
+    # which is now inside the guest. Carry across exactly what it asks for.
+    environ = os.environ.copy()
+    exports, missing = environment(config, environ)
+    if missing:
+        print(f"Cabin Fever x86 needs some environment variables to run, but they are not set. Please provide them now (or set them in your shell and restart).\n")
+        for name in missing:
+            value = ""
+            while value == "":
+                print(f"Please enter a value for {name}: ", end="", flush=True)
+                value = sys.stdin.readline().rstrip("\n").strip()
+            environ[name] = value
+        exports, missing = environment(config, environ)
+        assert not missing, f"still missing {missing} after prompting for them"
+
+
     prepared = has_save(home)
     if prepared:
         print("Booting the prepared guest.")
@@ -141,21 +158,6 @@ async def run(home: Path, config: Path, port: int) -> None:
             print(f"Saved the prepared guest to {await save(sandbox, home)}")
 
         guest_config = await attach(sandbox, home, config)
-
-        # The config's ${...} references are resolved wherever it is loaded,
-        # which is now inside the guest. Carry across exactly what it asks for.
-        environ = os.environ.copy()
-        exports, missing = environment(config, environ)
-        if missing:
-            print(f"Cabin Fever x86 needs some environment variables to run, but they are not set. Please provide them now (or set them in your shell and restart).\n")
-            for name in missing:
-                value = ""
-                while value == "":
-                    print(f"Please enter a value for {name}: ", end="", flush=True)
-                    value = sys.stdin.readline().rstrip("\n").strip()
-                environ[name] = value
-            exports, missing = environment(config, environ)
-            assert not missing, f"still missing {missing} after prompting for them"
 
         await start_server(sandbox, guest_config, exports)
 
