@@ -22,17 +22,20 @@ from importlib.resources import files
 from pathlib import Path
 
 import yaml
+from packaging.version import Version
 from quicksand import Sandbox
 
 from cabin_fever_x86 import __version__
 from cabin_fever_x86._home import DATA_DIR, VM_DIR
 
-#: The script run inside the guest, shipped as package data.
+#: Scripts run inside the guest, shipped as package data.
 GUEST_INIT = "guest_init.sh"
+GUEST_UPDATE = "guest_update.sh"
 
 #: Printed by that script as its last act. The save only happens if this is
 #: seen, so a partial init cannot be frozen and reused forever.
 SENTINEL = "GUEST INIT COMPLETE"
+UPDATE_SENTINEL = "VERSION CHECK COMPLETE"
 
 #: Heredoc delimiters. Quoted where they are used, so the guest's shell expands
 #: nothing on the way in and the text arrives exactly as written. The config
@@ -44,14 +47,24 @@ CONFIG_MARKER = "CABIN_FEVER_X86_CONFIG"
 #: Replaced with the uv package specifier before the init script enters the guest.
 PACKAGE_LOCATOR_SENTINEL = "__PACKAGE_LOCATOR_SENTINEL__"
 PYPI_PACKAGE_NAME = "cabin-fever-x86-core"
+DEFAULT_PACKAGE_LOCATOR = f"{PYPI_PACKAGE_NAME}~={__version__}"
 
 #: Long enough to build jericho from source on a slow machine, short enough
 #: that a wedged guest does not hang the launcher forever.
 INIT_TIMEOUT = 900.0
+UPDATE_TIMEOUT = 300.0
 
-#: The name of the prepared save, under ``<home>/vm/``.
-#: The version is baked in so that a new version forces a rebuild.
-SAVE_NAME = f"cf86_v{__version__}"
+
+def _vm_save_name(version: str) -> str:
+    """Return the prepared VM save name for a launcher version."""
+    parsed_version = Version(version)
+    return f"cf86_v{parsed_version.major}.{parsed_version.minor}"
+
+
+#: The name of the prepared save, under ``<home>/vm/``. Saves are shared by
+#: launcher releases in the same major/minor series, so patch releases and
+#: prerelease changes do not force a rebuild.
+VM_SAVE_NAME = _vm_save_name(__version__)
 
 #: Written by quicksand into every save directory; its presence is what makes
 #: a save loadable rather than a half-written directory.
@@ -94,7 +107,7 @@ def guest_init_script(package_locator: str | None = None) -> str:
     """Return the init script, as shipped in this package."""
     # Keep the core and launcher releases paired unless config asks otherwise.
     if package_locator is None:
-        package_locator = f"{PYPI_PACKAGE_NAME}~={__version__}"
+        package_locator = DEFAULT_PACKAGE_LOCATOR
 
     init_script_content = files(__package__).joinpath(GUEST_INIT).read_text(encoding="utf-8")
 
@@ -102,6 +115,19 @@ def guest_init_script(package_locator: str | None = None) -> str:
     if PACKAGE_LOCATOR_SENTINEL not in init_script_content:
         raise RuntimeError(f"{GUEST_INIT} is missing {PACKAGE_LOCATOR_SENTINEL!r}")
     return init_script_content.replace(PACKAGE_LOCATOR_SENTINEL, shlex.quote(package_locator))
+
+
+def guest_update_script() -> str:
+    """Return the periodic core update script shipped with the launcher."""
+    script = files(__package__).joinpath(GUEST_UPDATE).read_text(encoding="utf-8")
+    if PACKAGE_LOCATOR_SENTINEL not in script:
+        raise RuntimeError(f"{GUEST_UPDATE} is missing {PACKAGE_LOCATOR_SENTINEL!r}")
+    return script.replace(PACKAGE_LOCATOR_SENTINEL, shlex.quote(DEFAULT_PACKAGE_LOCATOR))
+
+
+def uses_default_package_locator(package_locator: str | None) -> bool:
+    """Whether *package_locator* represents the launcher's PyPI default."""
+    return package_locator is None or package_locator == DEFAULT_PACKAGE_LOCATOR
 
 
 def init_command(script: str) -> str:
@@ -122,7 +148,7 @@ def write_command(text: str, destination: str, marker: str) -> str:
 
 def save_path(home: Path) -> Path:
     """Return where the prepared guest is kept for this home directory."""
-    return home / VM_DIR / SAVE_NAME
+    return home / VM_DIR / VM_SAVE_NAME
 
 
 def has_save(home: Path) -> bool:
@@ -169,10 +195,31 @@ async def initialize(sandbox: Sandbox, package_locator: str | None = None) -> No
         raise GuestInitError(f"{GUEST_INIT} never printed {SENTINEL!r}")
 
 
+async def update_core(sandbox: Sandbox) -> bool:
+    """Check for a periodic core upgrade, returning whether the guest changed."""
+    seen: list[str] = []
+
+    def note(chunk: str) -> None:
+        seen.append(chunk)
+        print(chunk, end="", flush=True)
+
+    result = await sandbox.execute(
+        init_command(guest_update_script()),
+        timeout=UPDATE_TIMEOUT,
+        on_stdout=note,
+        on_stderr=lambda chunk: print(chunk, end="", flush=True, file=sys.stderr),
+    )
+    return result.exit_code == 0 and UPDATE_SENTINEL in "".join(seen).splitlines()
+
+
 async def save(sandbox: Sandbox, home: Path) -> Path:
     """Freeze the prepared guest under *home* so the next start can skip init."""
     destination = home / VM_DIR
-    await sandbox.save(SAVE_NAME, workspace=destination)
+    # Quicksand builds the replacement in a temporary directory before removing
+    # an existing save and renaming the replacement into place. There is a tiny
+    # remove/rename failure window, acceptable here because this is only a cache:
+    # config, games, sessions, and saves all live separately under data/.
+    await sandbox.save(VM_SAVE_NAME, workspace=destination)
     return save_path(home)
 
 

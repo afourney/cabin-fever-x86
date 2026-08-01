@@ -4,6 +4,7 @@ One directory holds all of it — config, the VM image and its saves, and the
 game data that has to outlive any particular guest:
 
     <home>/config.yaml   settings, mounted into the guest read-only
+    <home>/launcher-pypi-version-cache.json  daily cache of the latest PyPI version
     <home>/vm/           the sandbox image and its saves
     <home>/data/         games, sessions, transcripts, saved games
 

@@ -20,4 +20,5 @@ source .venv/bin/activate
 # Proof the install is usable, not merely present.
 cf86-server --help >/dev/null
 cf86-web --help >/dev/null
+touch /cabin-fever-x86/.version_check
 echo "GUEST INIT COMPLETE"

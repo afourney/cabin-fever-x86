@@ -27,6 +27,8 @@ from cabin_fever_x86._guest import (
     save,
     serve,
     start_server,
+    update_core,
+    uses_default_package_locator,
 )
 from cabin_fever_x86._home import (
     CONFIG_NAME,
@@ -34,6 +36,7 @@ from cabin_fever_x86._home import (
     default_home,
     prepare_home,
 )
+from cabin_fever_x86._updates import print_upgrade_notice
 
 #: What the guest boots: quicksand-ubuntu plus Python 3.12, uv, and a C
 #: toolchain. The toolchain is not optional — installing the game builds a
@@ -96,6 +99,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_WEB_PORT,
         help=f"Host port to serve the web application on (default: {DEFAULT_WEB_PORT}).",
     )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild the prepared guest before launching.",
+    )
     return parser.parse_args(argv)
 
 
@@ -146,7 +154,7 @@ async def _until_interrupt() -> None:
             loop.remove_signal_handler(signal.SIGINT)
 
 
-async def run(home: Path, config: Path, port: int) -> None:
+async def run(home: Path, config: Path, port: int, rebuild: bool = False) -> None:
     """Boot the guest, start the game inside it, and serve until it stops."""
     # The config's ${...} references are resolved wherever it is loaded,
     # which is now inside the guest. Carry across exactly what it asks for.
@@ -185,8 +193,10 @@ async def run(home: Path, config: Path, port: int) -> None:
         print(f"error: {config}: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
-    prepared = has_save(home)
-    if prepared:
+    prepared = has_save(home) and not rebuild
+    if rebuild:
+        print("Rebuilding the prepared guest. This takes a few minutes.")
+    elif prepared:
         print("Booting the prepared guest.")
     else:
         print("No prepared guest yet; building one. This takes a few minutes, once.")
@@ -200,7 +210,7 @@ async def run(home: Path, config: Path, port: int) -> None:
     # the guest and stays there. Quicksand pins the host end to 127.0.0.1 and
     # offers no way to widen it, so this is a loopback port by construction.
     async with Sandbox(
-        image=image_for(home, IMAGE),
+        image=IMAGE if rebuild else image_for(home, IMAGE),
         network_mode=NetworkMode.FULL,
         port_forwards=[PortForward(host=port, guest=GUEST_WEB_PORT)],
     ) as sandbox:
@@ -210,6 +220,10 @@ async def run(home: Path, config: Path, port: int) -> None:
             # holds the install and none of this particular night — nor the
             # config, which by now has API keys in it.
             print(f"Saved the prepared guest to {await save(sandbox, home)}")
+        elif uses_default_package_locator(package_locator) and await update_core(sandbox):
+            # The timestamp and any upgraded packages live in the guest disk.
+            # Save it live so subsequent launches inherit both.
+            print(f"Saved the updated guest to {await save(sandbox, home)}")
 
         guest_config = await attach(sandbox, home, config)
 
@@ -245,6 +259,7 @@ def main() -> None:
     home = prepare_home(Path(args.home) if args.home else None)
     print(f"Home directory: {home}")
     print("")
+    print_upgrade_notice(home, __version__)
 
     # Ensure the config file exists (whether specified or default).
     config = Path(args.config).expanduser() if args.config else home / CONFIG_NAME
@@ -254,7 +269,7 @@ def main() -> None:
 
     # The fallback for platforms where SIGINT cannot be taken as an event.
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(run(home, config, args.port))
+        asyncio.run(run(home, config, args.port, rebuild=args.rebuild))
 
 
 if __name__ == "__main__":
