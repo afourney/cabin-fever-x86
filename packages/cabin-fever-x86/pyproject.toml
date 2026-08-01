@@ -1,6 +1,6 @@
 [project]
 name = "cabin-fever-x86"
-version = "0.0.1a2"
+version = "0.0.1a3"
 description = "A shared game night with an AI companion over a simulated radio: play old text adventures together. Runs the game inside a sandbox VM, on any platform."
 readme = "README.md"
 authors = [
@@ -40,6 +40,7 @@ Repository = "https://github.com/afourney/cabin-fever-x86"
 Issues = "https://github.com/afourney/cabin-fever-x86/issues"
 
 [project.scripts]
+cabin-fever-x86 = "cabin_fever_x86._main:main"
 cf86 = "cabin_fever_x86._main:main"
 
 # A development-only edge, so integration tests can drive a real core. This is
