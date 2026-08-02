@@ -47,7 +47,16 @@ CONFIG_MARKER = "CABIN_FEVER_X86_CONFIG"
 #: Replaced with the uv package specifier before the init script enters the guest.
 PACKAGE_LOCATOR_SENTINEL = "__PACKAGE_LOCATOR_SENTINEL__"
 PYPI_PACKAGE_NAME = "cabin-fever-x86-core"
-DEFAULT_PACKAGE_LOCATOR = f"{PYPI_PACKAGE_NAME}~={__version__}"
+
+
+def _default_package_locator(version: str) -> str:
+    """Allow core releases from the launcher's major/minor series."""
+    parsed = Version(version)
+    floor = "0a0" if parsed.is_prerelease else "0"
+    return f"{PYPI_PACKAGE_NAME}~={parsed.major}.{parsed.minor}.{floor}"
+
+
+DEFAULT_PACKAGE_LOCATOR = _default_package_locator(__version__)
 
 #: Long enough to build jericho from source on a slow machine, short enough
 #: that a wedged guest does not hang the launcher forever.

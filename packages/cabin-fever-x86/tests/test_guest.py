@@ -2,6 +2,7 @@ import re
 import shlex
 
 import pytest
+from packaging.specifiers import SpecifierSet
 
 from cabin_fever_x86._guest import (
     CONFIG_MARKER,
@@ -11,12 +12,14 @@ from cabin_fever_x86._guest import (
     GUEST_INIT,
     GUEST_WEB_PORT,
     INIT_MARKER,
+    PYPI_PACKAGE_NAME,
     SAVE_MANIFEST,
     SENTINEL,
     SERVER_LOG,
     UPDATE_SENTINEL,
     VM_SAVE_NAME,
     GuestInitError,
+    _default_package_locator,
     _vm_save_name,
     attach,
     environment,
@@ -74,7 +77,35 @@ def test_the_script_ships_with_the_package():
 def test_the_default_package_locator_tracks_the_launcher_version():
     from cabin_fever_x86 import __version__
 
-    assert f"cabin-fever-x86-core~={__version__}" in guest_init_script()
+    assert _default_package_locator(__version__) in guest_init_script()
+
+
+@pytest.mark.parametrize(
+    ("launcher_version", "expected"),
+    [
+        ("0.0.1a5", "cabin-fever-x86-core~=0.0.0a0"),
+        ("0.0.1", "cabin-fever-x86-core~=0.0.0"),
+        ("1.2.3rc1", "cabin-fever-x86-core~=1.2.0a0"),
+        ("1.2.3", "cabin-fever-x86-core~=1.2.0"),
+    ],
+)
+def test_default_locator_covers_the_launcher_series(launcher_version, expected):
+    assert _default_package_locator(launcher_version) == expected
+
+
+def test_prerelease_floor_accepts_later_patch_prereleases():
+    specifier = SpecifierSet(_default_package_locator("0.0.1a5").removeprefix(PYPI_PACKAGE_NAME))
+
+    assert "0.0.1a1" in specifier
+    assert "0.0.2a1" in specifier
+    assert "0.1.0a1" not in specifier
+
+
+def test_stable_floor_does_not_opt_into_prereleases():
+    specifier = SpecifierSet(_default_package_locator("0.0.1").removeprefix(PYPI_PACKAGE_NAME))
+
+    assert specifier.prereleases is not True
+    assert [str(version) for version in specifier.filter(["0.0.1a1", "0.0.1"])] == ["0.0.1"]
 
 
 def test_only_the_default_locator_enables_periodic_updates():
