@@ -42,11 +42,13 @@ Issues = "https://github.com/afourney/cabin-fever-x86/issues"
 [project.optional-dependencies]
 # Only needed for the "azure" and "trapi" AI providers.
 azure = ["azure-identity"]
+telegram = ["telethon>=1.36"]
 
 [project.scripts]
 cf86-text = "cabin_fever_x86_core.text_client._main:main"
 cf86-server = "cabin_fever_x86_core.server._main:main"
 cf86-web = "cabin_fever_x86_core.web_client._main:main"
+cf86-telegram = "cabin_fever_x86_core.telegram_client._main:main"
 
 [build-system]
 requires = ["uv_build>=0.10.2,<0.11.0"]

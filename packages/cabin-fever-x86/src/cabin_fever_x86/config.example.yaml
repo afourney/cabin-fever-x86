@@ -23,6 +23,17 @@ client:
   port: 5000
   elevenlabs_api_key: ${ELEVENLABS_API_KEY}
 
+# Optional text-only Telegram transport. Install the core package's `telegram`
+# extra and run cf86-telegram. Telegram rejects every sender not listed here;
+# rejected attempts are logged with their numeric user ID so you can discover
+# and then allow your own account.
+telegram_client:
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  api_id: ${TELEGRAM_API_ID}
+  api_hash: ${TELEGRAM_API_HASH}
+  allowed_accounts: []
+  # allowed_accounts: [123456789]
+
 server:
   interface: 127.0.0.1
   port: 5000

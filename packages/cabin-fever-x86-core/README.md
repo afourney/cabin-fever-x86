@@ -15,6 +15,8 @@ sudo apt-get install build-essential python3-dev
 python3 -m venv .venv
 source .venv/bin/activate
 pip install cabin-fever-x86-core
+# Include the optional Telegram client if wanted:
+# pip install 'cabin-fever-x86-core[telegram]'
 ```
 
 Set the API keys used by the default configuration:
@@ -40,6 +42,8 @@ Then start one of the clients in another terminal:
 cf86-web   # browser-based radio at http://127.0.0.1:8000
 # or
 cf86-text  # terminal-based text client
+# or, when installed with the telegram extra
+cf86-telegram
 ```
 
 Each command accepts `--help`. The server and clients can be run on different Linux machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. For example, to expose only the web frontend on the local network:
@@ -49,6 +53,12 @@ cf86-web --web-host 0.0.0.0
 ```
 
 Review your firewall and network trust before binding a service beyond localhost.
+
+The Telegram client uses the `telegram_client` section of `config.yaml`. It
+requires a bot token, Telegram API ID and API hash, plus an allowlist of numeric
+Telegram user IDs. Start it with an empty allowlist and send the bot a private
+message to have the rejected user ID written to its log; then add that ID to
+`allowed_accounts` and restart it. Only private text chats are accepted.
 
 ## Z-machine games
 

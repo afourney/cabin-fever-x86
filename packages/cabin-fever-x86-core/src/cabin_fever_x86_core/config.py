@@ -47,6 +47,15 @@ class ClientConfig(_Section):
     elevenlabs_api_key: str | None = None
 
 
+class TelegramClientConfig(_Section):
+    """How the optional Telegram transport authenticates and who may use it."""
+
+    bot_token: str | None = None
+    api_id: Annotated[int, Field(gt=0)] | None = None
+    api_hash: str | None = None
+    allowed_accounts: list[Annotated[int, Field(gt=0)]] = Field(default_factory=list)
+
+
 class AIClientConfig(_Section):
     """Which model the server's companion runs on, and how to reach it.
 
@@ -108,6 +117,7 @@ class Config(_Section):
 
     launcher: LauncherConfig = LauncherConfig()
     client: ClientConfig = ClientConfig()
+    telegram_client: TelegramClientConfig = TelegramClientConfig()
     server: ServerConfig = ServerConfig()
 
 
