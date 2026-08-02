@@ -45,6 +45,10 @@ IMAGE = "quicksand-agent"
 
 DEFAULT_WEB_PORT = 8000
 
+# Disabled until quicksand can safely save a guest over the image it booted.
+# https://github.com/afourney/cabin-fever-x86/issues/12
+CORE_UPDATES_ENABLED = False
+
 
 class LauncherConfigError(ValueError):
     """Raised when the host-side launcher settings are malformed."""
@@ -220,10 +224,11 @@ async def run(home: Path, config: Path, port: int, rebuild: bool = False) -> Non
             # holds the install and none of this particular night — nor the
             # config, which by now has API keys in it.
             print(f"Saved the prepared guest to {await save(sandbox, home)}")
-        elif uses_default_package_locator(package_locator) and await update_core(sandbox):
-            # The timestamp and any upgraded packages live in the guest disk.
-            # Save it live so subsequent launches inherit both.
-            print(f"Saved the updated guest to {await save(sandbox, home)}")
+        elif CORE_UPDATES_ENABLED and uses_default_package_locator(package_locator):
+            if await update_core(sandbox):
+                # The timestamp and any upgraded packages live in the guest disk.
+                # Save it live so subsequent launches inherit both.
+                print(f"Saved the updated guest to {await save(sandbox, home)}")
 
         guest_config = await attach(sandbox, home, config)
 

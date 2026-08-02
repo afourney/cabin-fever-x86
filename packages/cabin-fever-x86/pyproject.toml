@@ -1,6 +1,6 @@
 [project]
 name = "cabin-fever-x86"
-version = "0.0.1a4"
+version = "0.0.1a5"
 description = "A shared game night with an AI companion over a simulated radio: play old text adventures together. Runs the game inside a sandbox VM, on any platform."
 readme = "README.md"
 authors = [
