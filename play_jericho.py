@@ -51,7 +51,11 @@ def _load(path: Path, games_dir: Path) -> tuple[FrotzEnv, str, dict[str, Any]]:
     suffix = path.suffix.casefold()
     if suffix in GAME_SUFFIXES:
         env = FrotzEnv(str(path))
-        observation, info = env.reset()
+        try:
+            observation, info = env.reset()
+        except Exception:
+            env.close()
+            raise
         return env, observation, dict(info)
 
     if suffix != ".bin":
