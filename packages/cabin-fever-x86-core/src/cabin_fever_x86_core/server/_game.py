@@ -608,7 +608,7 @@ class Game:
                     {
                         "type": "function_call_output",
                         "call_id": call.call_id,
-                        "output": result.content,
+                        "output": result.for_model(),
                     }
                 )
                 done = done or result.end_turn
