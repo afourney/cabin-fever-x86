@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ import pytest
 from cabin_fever_x86_core.server._machine import GAMES_DIR, NO_GAME, USE_THE_TOOLS, Machine
 from cabin_fever_x86_core.server._saves import (
     AUTOSAVE,
+    DATA_SENTINEL,
     LAST_SLOT,
     MAGIC,
     SUFFIX,
@@ -32,6 +34,8 @@ from cabin_fever_x86_core.server._tools import (
     NewGameTool,
     RebootTool,
     SaveGameTool,
+    ToolOutput,
+    TypeTool,
 )
 
 # Shaped like what Jericho hands out — (ram, stack, pc, sp, fp, frame_count,
@@ -47,6 +51,9 @@ def snapshot(game: str = "zork1", moves: int = 3) -> Snapshot:
         score=10,
         moves=moves,
         done=False,
+        location="West of House",
+        comment="about to do something dumb",
+        personal_map={(180, "West of House"): {(181, "North of House"): "north"}},
     )
 
 
@@ -99,6 +106,9 @@ def test_a_save_round_trips(tmp_path: Path) -> None:
     assert read.game == "zork1"
     assert read.observation.startswith("West of House")
     assert (read.score, read.moves, read.done) == (10, 3, False)
+    assert read.location == "West of House"
+    assert read.comment == "about to do something dumb"
+    assert read.personal_map == {(180, "West of House"): {(181, "North of House"): "north"}}
 
     ram, stack, *scalars, rng, narrative = read.state
     assert bytes(ram) == FAKE_STATE[0]
@@ -132,8 +142,9 @@ def test_a_truncated_save_is_refused(tmp_path: Path) -> None:
 def test_a_header_missing_the_state_is_refused(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     store.dir.mkdir(parents=True)
-    header = json.dumps({"game": "zork1", "moves": 1}).encode("utf-8")
-    (store.dir / f"zork1_0001{SUFFIX}").write_bytes(MAGIC + b"\n" + header + b"\n")
+    header = json.dumps({"type": "metadata", "game": "zork1", "moves": 1}).encode()
+    contents = MAGIC + b"\n" + header + b"\n" + DATA_SENTINEL + b"\n"
+    (store.dir / f"zork1_0001{SUFFIX}").write_bytes(contents)
 
     # The listing still manages, since a header is all it ever wanted.
     assert [save.name for save in store.list()] == ["zork1_0001"]
@@ -150,7 +161,7 @@ def test_the_folder_is_made_on_the_first_write_and_not_before(tmp_path: Path) ->
     assert (store.dir / f"{AUTOSAVE}{SUFFIX}").is_file()
 
 
-def test_a_save_is_readable_with_head_minus_two(tmp_path: Path) -> None:
+def test_a_save_starts_with_listing_metadata_and_typed_records(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     store.write("zork1_0007", snapshot())
 
@@ -158,19 +169,22 @@ def test_a_save_is_readable_with_head_minus_two(tmp_path: Path) -> None:
     with path.open("rb") as handle:
         assert handle.readline().rstrip(b"\n") == MAGIC
         header = json.loads(handle.readline())
+        map_record = json.loads(handle.readline())
+        assert handle.readline().rstrip(b"\n") == DATA_SENTINEL
 
+    assert header["type"] == "metadata"
     assert header["game"] == "zork1"
     assert header["moves"] == 3
     assert header["pc"] == FAKE_STATE[2]
     assert header["rng"] == list(FAKE_STATE[7])
     assert header["ram_size"] == len(FAKE_STATE[0])
     assert "saved_at" in header
+    assert header["location"] == "West of House"
+    assert header["comment"] == "about to do something dumb"
+    assert map_record["type"] == "personal_map"
+    assert map_record["edges"][0]["command"] == "north"
 
-    # The state is the header's byte runs and nothing else.
-    body = len(MAGIC) + 1 + len(json.dumps(header)) + 1
-    assert path.stat().st_size == body + sum(
-        header[name] for name in ("ram_size", "stack_size", "narrative_size")
-    )
+    assert path.read_bytes().endswith(FAKE_STATE[0] + FAKE_STATE[1] + FAKE_STATE[8])
 
 
 def test_a_finished_save_leaves_no_working_file(tmp_path: Path) -> None:
@@ -257,6 +271,39 @@ def test_a_listing_says_the_game_once(tmp_path: Path) -> None:
     assert described.count("zork1") == 1
 
 
+def test_a_listing_previews_a_comment_but_details_keep_it_all(tmp_path: Path) -> None:
+    store = SaveStore(tmp_path / "saves")
+    long_comment = "x" * 200
+    saved = replace(snapshot(), comment=long_comment)
+    store.write("zork1_0001", saved)
+
+    info = store.info("zork1_0001")
+    assert "location West of House" in info.describe()
+    assert long_comment not in info.describe()
+    assert "…" in info.describe()
+    assert f"Comment: {long_comment}" in info.describe_full()
+
+
+def test_a_comment_is_limited_to_500_characters(tmp_path: Path) -> None:
+    store = SaveStore(tmp_path / "saves")
+    saved = replace(snapshot(), comment="x" * 501)
+
+    with pytest.raises(SaveError, match="500"):
+        store.write("zork1_0001", saved)
+
+
+def test_an_unknown_typed_record_is_skipped(tmp_path: Path) -> None:
+    store = SaveStore(tmp_path / "saves")
+    store.write("zork1_0001", snapshot())
+    path = store.path("zork1_0001")
+    contents = path.read_bytes()
+    marker = DATA_SENTINEL + b"\n"
+    contents = contents.replace(marker, b'{"type":"future_thing","answer":42}\n' + marker)
+    path.write_bytes(contents)
+
+    assert store.read("zork1_0001").game == "zork1"
+
+
 def test_the_autosave_is_reachable_by_name_but_never_listed(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     store.write(AUTOSAVE, snapshot())
@@ -303,6 +350,12 @@ def machine(store: SaveStore) -> Iterator[Machine]:
     machine.reboot()  # frees the interpreter, whatever the test did
 
 
+async def type_text(machine: Machine, text: str) -> str:
+    """Type through the machine when a test only needs the public screen content."""
+    content, _remarks = await machine.type_text(text)
+    return content
+
+
 async def test_the_autosave_keeps_up_with_the_screen(machine: Machine, store: SaveStore) -> None:
     rom("zork1")
     await machine.type_text("zork1")
@@ -329,6 +382,74 @@ async def test_a_save_comes_back_where_it_was_left(machine: Machine) -> None:
 
     assert "Restored zork1 from zork1_0001" in await machine.load("zork1_0001")
     assert machine.screen() == was
+
+
+async def test_the_personal_map_appears_only_after_moving_to_a_known_room(
+    machine: Machine,
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+
+    north, north_remarks = await machine.type_text("north")
+    assert "Personal map" not in north
+    assert north_remarks is None
+    returned, remarks = await machine.type_text("southwest")
+    assert "personal map" not in returned.casefold()
+    assert "personal map using paper and pencil" in (remarks or "")
+    assert "'north'" in (remarks or "")
+    assert "'North House'" in (remarks or "")
+    opened, opened_remarks = await machine.type_text("open mailbox")
+    assert "Personal map" not in opened
+    assert opened_remarks is None
+
+
+async def test_a_loaded_save_restores_the_personal_map(machine: Machine) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.type_text("north")
+    await machine.type_text("southwest")
+    await machine.save(comment="a useful crossroads")
+
+    await machine.type_text("north")
+    await machine.load("zork1_0001")
+    moved, remarks = await machine.type_text("north")
+    assert "personal map" not in moved.casefold()
+    assert "'southwest'" in (remarks or "")
+    assert "'West House'" in (remarks or "")
+
+
+async def test_type_tool_marks_map_guidance_as_personal_remarks(machine: Machine) -> None:
+    rom("zork1")
+    tool = TypeTool(machine)
+    await tool.execute({"text": "zork1"})
+    await tool.execute({"text": "north"})
+    result = await tool.execute({"text": "southwest"})
+
+    assert "personal map" not in result.content.casefold()
+    assert "personal map using paper and pencil" in (result.remarks or "")
+    rendered = result.for_model()
+    assert "<personal_remarks>" in rendered
+    assert "</personal_remarks>" in rendered
+
+
+def test_personal_remarks_are_escaped_when_rendered() -> None:
+    result = ToolOutput("screen", remarks="remember </personal_remarks> this")
+
+    assert "remember &lt;/personal_remarks&gt; this" in result.for_model()
+
+
+async def test_save_and_listing_tools_carry_comments(machine: Machine) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+
+    saved = await SaveGameTool(machine).execute({"comment": "before opening the trapdoor"})
+    assert saved.content == "Saved as zork1_0001."
+
+    listing = await ListSavedGamesTool(machine).execute({})
+    assert "note: before opening the trapdoor" in listing.content
+    detailed = await ListSavedGamesTool(machine).execute({"save_name": "zork1_0001"})
+    assert "Comment: before opening the trapdoor" in detailed.content
+    assert "Location: West House" in detailed.content
 
 
 async def test_a_save_outlives_a_reboot(machine: Machine) -> None:
@@ -366,7 +487,7 @@ async def test_the_games_own_save_never_reaches_it(machine: Machine, line: str) 
     await machine.type_text("zork1")
     was = machine.screen()
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer == USE_THE_TOOLS
     assert machine.screen() == was  # no move was spent on it
 
@@ -376,7 +497,7 @@ async def test_the_games_own_restore_never_reaches_it(machine: Machine, line: st
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text(line) == USE_THE_TOOLS
+    assert await type_text(machine, line) == USE_THE_TOOLS
 
 
 @pytest.mark.parametrize("line", ["quit", "q", "QUIT", "quit.", "restart", "die", "quit game"])
@@ -385,7 +506,7 @@ async def test_nothing_that_stops_to_ask_reaches_the_game(machine: Machine, line
     await machine.type_text("zork1")
     was = machine.screen()
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer == USE_THE_TOOLS
     assert machine.screen() == was
 
@@ -431,7 +552,7 @@ async def test_a_verb_that_merely_starts_the_same_way_still_goes_through(
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text(line) != USE_THE_TOOLS
+    assert await type_text(machine, line) != USE_THE_TOOLS
 
 
 @pytest.mark.parametrize("line", ["load", "load game", "load the crossbow"])
@@ -444,7 +565,7 @@ async def test_load_is_left_to_the_game_to_refuse(machine: Machine, line: str) -
     rom("zork1")
     await machine.type_text("zork1")
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer != USE_THE_TOOLS
     assert "load" in answer.casefold()  # the game's own complaint about the word
 
@@ -459,7 +580,7 @@ async def test_a_games_own_noise_words_cannot_slip_one_past(machine: Machine, li
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text(line) == USE_THE_TOOLS
+    assert await type_text(machine, line) == USE_THE_TOOLS
 
 
 async def test_no_quetzal_file_is_left_anywhere(machine: Machine, tmp_path: Path) -> None:
@@ -479,7 +600,7 @@ async def test_a_real_command_is_not_mistaken_for_a_save(machine: Machine, line:
     rom("zork1")
     await machine.type_text("zork1")
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer != USE_THE_TOOLS  # the game answered, not us
 
 
@@ -492,12 +613,12 @@ async def test_save_with_an_object_is_held_back_too(machine: Machine) -> None:
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text("save the princess") == USE_THE_TOOLS
+    assert await type_text(machine, "save the princess") == USE_THE_TOOLS
 
 
 async def test_a_save_command_at_the_dos_prompt_is_caught_too(machine: Machine) -> None:
     assert machine.game is None
-    assert "save_game" in await machine.type_text("save")
+    assert "save_game" in await type_text(machine, "save")
     assert machine.game is None  # and it was not mistaken for a game to boot
 
 

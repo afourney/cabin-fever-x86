@@ -9,6 +9,7 @@ game or a websocket behind them.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import random
 from abc import ABC, abstractmethod
@@ -17,6 +18,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from openai.types.responses import FunctionToolParam
+
+from cabin_fever_x86_core.server._saves import SaveError
 
 if TYPE_CHECKING:  # Machine names these tools in its own messages, so the
     # runtime dependency only runs one way: Machine imports us, not the reverse.
@@ -36,6 +39,7 @@ MAX_AFK_DELAY = 60.0
 # How much the set will pass in one go. The companion is never told this
 # number — it just finds out, the way anyone on a bad channel would.
 MAX_TRANSMISSION = 350
+PERSONAL_REMARKS = "personal_remarks"
 
 # What it sounds like when a transmission was too long to make it out. Varied,
 # so a run of them does not read like the same error twice.
@@ -78,6 +82,14 @@ class ToolOutput:
 
     content: str
     end_turn: bool = False
+    remarks: str | None = None
+
+    def for_model(self) -> str:
+        """Render content with an optional private reminder for the companion."""
+        if not self.remarks:
+            return self.content
+        remarks = html.escape(self.remarks, quote=False).strip()
+        return f"{self.content}\n\n<{PERSONAL_REMARKS}>\n{remarks}\n</{PERSONAL_REMARKS}>"
 
 
 class Tool(ABC):
@@ -313,7 +325,8 @@ class TypeTool(Tool):
         self._machine = machine
 
     async def execute(self, args: dict[str, Any]) -> ToolOutput:
-        return ToolOutput(await self._machine.type_text(str(args.get("text") or "")))
+        content, remarks = await self._machine.type_text(str(args.get("text") or ""))
+        return ToolOutput(content, remarks=remarks)
 
 
 class NewGameTool(Tool):
@@ -360,12 +373,19 @@ class SaveGameTool(Tool):
     name = "save_game"
     description = (
         "Save the running game to disk. The slot is numbered for you and comes "
-        "back in the result — there is nothing to name. Worth doing before "
+        "back in the result — there is nothing to name. You may attach a short "
+        "comment explaining why this point matters. Worth doing before "
         "anything that might get you killed, and before you stop for the night."
     )
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",
-        "properties": {},
+        "properties": {
+            "comment": {
+                "type": "string",
+                "maxLength": 500,
+                "description": "An optional short note about why this save was made.",
+            }
+        },
         "additionalProperties": False,
     }
 
@@ -373,7 +393,8 @@ class SaveGameTool(Tool):
         self._machine = machine
 
     async def execute(self, args: dict[str, Any]) -> ToolOutput:
-        return ToolOutput(await self._machine.save())
+        comment = args.get("comment")
+        return ToolOutput(await self._machine.save(comment=str(comment) if comment else None))
 
 
 class LoadGameTool(Tool):
@@ -418,11 +439,17 @@ class ListSavedGamesTool(Tool):
     name = "list_saved_games"
     description = (
         "List the saved games on the disk, with which game each one is, its "
-        "score and move count, and when it was written."
+        "score, move count, location, comment preview, and when it was written. "
+        "Name one save to see its full metadata and complete comment."
     )
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",
-        "properties": {},
+        "properties": {
+            "save_name": {
+                "type": "string",
+                "description": "Optional save name whose full details should be shown.",
+            }
+        },
         "additionalProperties": False,
     }
 
@@ -430,6 +457,13 @@ class ListSavedGamesTool(Tool):
         self._machine = machine
 
     async def execute(self, args: dict[str, Any]) -> ToolOutput:
+        name = str(args.get("save_name") or "").strip()
+        if name:
+            try:
+                save = await asyncio.to_thread(self._machine.save_info, name)
+            except SaveError as exc:
+                return ToolOutput(f"That save cannot be described: {exc}")
+            return ToolOutput(save.describe_full())
         saves = await asyncio.to_thread(self._machine.list_saves)
         if not saves:
             return ToolOutput("There are no saved games on the disk yet.")
