@@ -56,6 +56,14 @@ class TelegramClientConfig(_Section):
     allowed_accounts: list[Annotated[int, Field(gt=0)]] = Field(default_factory=list)
 
 
+class ZelloConfig(_Section):
+    """How the optional Zello transport connects and who may speak to it."""
+
+    credentials_file: str
+    channel: str = "Cabin Fever x86"
+    authorized_users: list[str]
+
+
 class AIClientConfig(_Section):
     """Which model the server's companion runs on, and how to reach it.
 
@@ -118,6 +126,7 @@ class Config(_Section):
     launcher: LauncherConfig = LauncherConfig()
     client: ClientConfig = ClientConfig()
     telegram_client: TelegramClientConfig = TelegramClientConfig()
+    zello: ZelloConfig | None = None
     server: ServerConfig = ServerConfig()
 
 

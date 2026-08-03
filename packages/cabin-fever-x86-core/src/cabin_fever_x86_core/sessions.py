@@ -21,6 +21,7 @@ SERVER_COMPONENT = "server"
 TEXT_CLIENT_COMPONENT = "text_client"
 WEB_CLIENT_COMPONENT = "web_client"
 TELEGRAM_CLIENT_COMPONENT = "telegram_client"
+ZELLO_CLIENT_COMPONENT = "zello_client"
 
 
 def session_dir(

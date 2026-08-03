@@ -35,6 +35,14 @@ telegram_client:
   allowed_accounts: []
   # allowed_accounts: [123456789]
 
+# Optional voice-only Zello transport. Install the core package's `zello`
+# extra and run cf86-zello. The credentials file uses zelpy's zello.yaml
+# format. Text messages and voice from users absent from this list are ignored.
+zello:
+  credentials_file: ~/.apikeys/zello.yaml
+  channel: Cabin Fever x86
+  authorized_users: []
+
 server:
   interface: 127.0.0.1
   port: 5000

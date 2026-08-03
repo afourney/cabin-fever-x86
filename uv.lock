@@ -160,6 +160,9 @@ azure = [
 telegram = [
     { name = "telethon" },
 ]
+zello = [
+    { name = "zelpy" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -175,8 +178,9 @@ requires-dist = [
     { name = "telethon", marker = "extra == 'telegram'", specifier = ">=1.36" },
     { name = "uvicorn" },
     { name = "websockets" },
+    { name = "zelpy", marker = "extra == 'zello'", specifier = ">=0.0.0a1" },
 ]
-provides-extras = ["azure", "telegram"]
+provides-extras = ["azure", "telegram", "zello"]
 
 [[package]]
 name = "catalogue"
@@ -1845,4 +1849,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/4f/ac12fda57a55068a094ec42851fb0a40e8489d8941863d517452de62e507/wrapt-2.2.2-cp314-cp314t-win_amd64.whl", hash = "sha256:d09db0f7e8357060d3c38fc22a018aba683a796bf184360fd1a58f6fc180dc77", size = 82462, upload-time = "2026-06-20T23:49:21.631Z" },
     { url = "https://files.pythonhosted.org/packages/48/a7/df732dac86d9b2027c56bd163dbc883e037b16c3469614752e148d219c61/wrapt-2.2.2-cp314-cp314t-win_arm64.whl", hash = "sha256:f32fe639c39561ccc187bcae17e9271be0eb45f1c2952510d2f29b33ab577347", size = 81182, upload-time = "2026-06-20T23:49:23.199Z" },
     { url = "https://files.pythonhosted.org/packages/6e/d2/6317eb6d4554855bbf12d61857774af34747bf88a42c19bf306de67e2fa3/wrapt-2.2.2-py3-none-any.whl", hash = "sha256:5bad217350f19ce99ca5b5e71d406765ea86fe541628426772b657375ee1c048", size = 61460, upload-time = "2026-06-20T23:49:42.966Z" },
+]
+
+[[package]]
+name = "zelpy"
+version = "0.0.0a1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "pyyaml" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/fe/7c237b2422362e6c1b41a7bc05366a17fc11c5946715ab29ddc3c86fda81/zelpy-0.0.0a1.tar.gz", hash = "sha256:d46bc0dd4e2ed3d57995f59d81a20d4afebfa7c32b6a37d7a88a18ded9562dbd", size = 12589, upload-time = "2026-08-03T18:29:35.017Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/cb/35a109a713a7b6ff2a660a9e30a5956fedc43711f0dedf43b71d87b6ad01/zelpy-0.0.0a1-py3-none-any.whl", hash = "sha256:c36a9451f9920599e50c5721d5fe3363a78c0729d56a08f5d22e132b0abc4d43", size = 11380, upload-time = "2026-08-03T18:29:34.022Z" },
 ]

@@ -61,6 +61,31 @@ def test_telegram_config_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert config.telegram_client.allowed_accounts == [111, 222]
 
 
+def test_zello_config_is_loaded(tmp_path: Path) -> None:
+    config = load_config(
+        write(
+            tmp_path,
+            """zello:
+  credentials_file: ~/.apikeys/zello.yaml
+  authorized_users: [alice]
+""",
+        )
+    )
+
+    assert config.zello is not None
+    assert config.zello.credentials_file == "~/.apikeys/zello.yaml"
+    assert config.zello.channel == "Cabin Fever x86"
+    assert config.zello.authorized_users == ["alice"]
+
+
+@pytest.mark.parametrize(
+    "body", ["zello: {authorized_users: []}\n", "zello: {credentials_file: keys.yaml}\n"]
+)
+def test_zello_section_requires_credentials_and_authorized_users(tmp_path: Path, body: str) -> None:
+    with pytest.raises(ConfigError):
+        load_config(write(tmp_path, body))
+
+
 def test_an_unset_env_var_falls_back_to_the_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
