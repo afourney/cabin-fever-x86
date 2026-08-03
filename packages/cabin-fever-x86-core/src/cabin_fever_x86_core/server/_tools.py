@@ -9,6 +9,7 @@ game or a websocket behind them.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import random
 from abc import ABC, abstractmethod
@@ -38,6 +39,7 @@ MAX_AFK_DELAY = 60.0
 # How much the set will pass in one go. The companion is never told this
 # number — it just finds out, the way anyone on a bad channel would.
 MAX_TRANSMISSION = 350
+PERSONAL_REMARKS = "personal_remarks"
 
 # What it sounds like when a transmission was too long to make it out. Varied,
 # so a run of them does not read like the same error twice.
@@ -80,6 +82,14 @@ class ToolOutput:
 
     content: str
     end_turn: bool = False
+    remarks: str | None = None
+
+    def for_model(self) -> str:
+        """Render content with an optional private reminder for the companion."""
+        if not self.remarks:
+            return self.content
+        remarks = html.escape(self.remarks, quote=False).strip()
+        return f"{self.content}\n\n<{PERSONAL_REMARKS}>\n{remarks}\n</{PERSONAL_REMARKS}>"
 
 
 class Tool(ABC):
@@ -315,7 +325,8 @@ class TypeTool(Tool):
         self._machine = machine
 
     async def execute(self, args: dict[str, Any]) -> ToolOutput:
-        return ToolOutput(await self._machine.type_text(str(args.get("text") or "")))
+        content, remarks = await self._machine.type_text(str(args.get("text") or ""))
+        return ToolOutput(content, remarks=remarks)
 
 
 class NewGameTool(Tool):

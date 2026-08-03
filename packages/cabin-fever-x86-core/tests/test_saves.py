@@ -34,6 +34,8 @@ from cabin_fever_x86_core.server._tools import (
     NewGameTool,
     RebootTool,
     SaveGameTool,
+    ToolOutput,
+    TypeTool,
 )
 
 # Shaped like what Jericho hands out — (ram, stack, pc, sp, fp, frame_count,
@@ -348,6 +350,12 @@ def machine(store: SaveStore) -> Iterator[Machine]:
     machine.reboot()  # frees the interpreter, whatever the test did
 
 
+async def type_text(machine: Machine, text: str) -> str:
+    """Type through the machine when a test only needs the public screen content."""
+    content, _remarks = await machine.type_text(text)
+    return content
+
+
 async def test_the_autosave_keeps_up_with_the_screen(machine: Machine, store: SaveStore) -> None:
     rom("zork1")
     await machine.type_text("zork1")
@@ -382,12 +390,17 @@ async def test_the_personal_map_appears_only_after_moving_to_a_known_room(
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert "Personal map" not in await machine.type_text("north")
-    returned = await machine.type_text("southwest")
-    assert "Personal map, from here:" in returned
-    assert "'north'" in returned
-    assert "'North House'" in returned
-    assert "Personal map" not in await machine.type_text("open mailbox")
+    north, north_remarks = await machine.type_text("north")
+    assert "Personal map" not in north
+    assert north_remarks is None
+    returned, remarks = await machine.type_text("southwest")
+    assert "personal map" not in returned.casefold()
+    assert "personal map using paper and pencil" in (remarks or "")
+    assert "'north'" in (remarks or "")
+    assert "'North House'" in (remarks or "")
+    opened, opened_remarks = await machine.type_text("open mailbox")
+    assert "Personal map" not in opened
+    assert opened_remarks is None
 
 
 async def test_a_loaded_save_restores_the_personal_map(machine: Machine) -> None:
@@ -399,10 +412,30 @@ async def test_a_loaded_save_restores_the_personal_map(machine: Machine) -> None
 
     await machine.type_text("north")
     await machine.load("zork1_0001")
-    moved = await machine.type_text("north")
-    assert "Personal map, from here:" in moved
-    assert "'southwest'" in moved
-    assert "'West House'" in moved
+    moved, remarks = await machine.type_text("north")
+    assert "personal map" not in moved.casefold()
+    assert "'southwest'" in (remarks or "")
+    assert "'West House'" in (remarks or "")
+
+
+async def test_type_tool_marks_map_guidance_as_personal_remarks(machine: Machine) -> None:
+    rom("zork1")
+    tool = TypeTool(machine)
+    await tool.execute({"text": "zork1"})
+    await tool.execute({"text": "north"})
+    result = await tool.execute({"text": "southwest"})
+
+    assert "personal map" not in result.content.casefold()
+    assert "personal map using paper and pencil" in (result.remarks or "")
+    rendered = result.for_model()
+    assert "<personal_remarks>" in rendered
+    assert "</personal_remarks>" in rendered
+
+
+def test_personal_remarks_are_escaped_when_rendered() -> None:
+    result = ToolOutput("screen", remarks="remember </personal_remarks> this")
+
+    assert "remember &lt;/personal_remarks&gt; this" in result.for_model()
 
 
 async def test_save_and_listing_tools_carry_comments(machine: Machine) -> None:
@@ -454,7 +487,7 @@ async def test_the_games_own_save_never_reaches_it(machine: Machine, line: str) 
     await machine.type_text("zork1")
     was = machine.screen()
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer == USE_THE_TOOLS
     assert machine.screen() == was  # no move was spent on it
 
@@ -464,7 +497,7 @@ async def test_the_games_own_restore_never_reaches_it(machine: Machine, line: st
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text(line) == USE_THE_TOOLS
+    assert await type_text(machine, line) == USE_THE_TOOLS
 
 
 @pytest.mark.parametrize("line", ["quit", "q", "QUIT", "quit.", "restart", "die", "quit game"])
@@ -473,7 +506,7 @@ async def test_nothing_that_stops_to_ask_reaches_the_game(machine: Machine, line
     await machine.type_text("zork1")
     was = machine.screen()
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer == USE_THE_TOOLS
     assert machine.screen() == was
 
@@ -519,7 +552,7 @@ async def test_a_verb_that_merely_starts_the_same_way_still_goes_through(
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text(line) != USE_THE_TOOLS
+    assert await type_text(machine, line) != USE_THE_TOOLS
 
 
 @pytest.mark.parametrize("line", ["load", "load game", "load the crossbow"])
@@ -532,7 +565,7 @@ async def test_load_is_left_to_the_game_to_refuse(machine: Machine, line: str) -
     rom("zork1")
     await machine.type_text("zork1")
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer != USE_THE_TOOLS
     assert "load" in answer.casefold()  # the game's own complaint about the word
 
@@ -547,7 +580,7 @@ async def test_a_games_own_noise_words_cannot_slip_one_past(machine: Machine, li
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text(line) == USE_THE_TOOLS
+    assert await type_text(machine, line) == USE_THE_TOOLS
 
 
 async def test_no_quetzal_file_is_left_anywhere(machine: Machine, tmp_path: Path) -> None:
@@ -567,7 +600,7 @@ async def test_a_real_command_is_not_mistaken_for_a_save(machine: Machine, line:
     rom("zork1")
     await machine.type_text("zork1")
 
-    answer = await machine.type_text(line)
+    answer = await type_text(machine, line)
     assert answer != USE_THE_TOOLS  # the game answered, not us
 
 
@@ -580,12 +613,12 @@ async def test_save_with_an_object_is_held_back_too(machine: Machine) -> None:
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert await machine.type_text("save the princess") == USE_THE_TOOLS
+    assert await type_text(machine, "save the princess") == USE_THE_TOOLS
 
 
 async def test_a_save_command_at_the_dos_prompt_is_caught_too(machine: Machine) -> None:
     assert machine.game is None
-    assert "save_game" in await machine.type_text("save")
+    assert "save_game" in await type_text(machine, "save")
     assert machine.game is None  # and it was not mistaken for a game to boot
 
 

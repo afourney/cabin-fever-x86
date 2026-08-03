@@ -172,31 +172,31 @@ class Machine:
         await self._autosave()
         return screen
 
-    async def type_text(self, text: str) -> str:
-        """Type a line at the machine: a command if a game is running, a game name if not."""
+    async def type_text(self, text: str) -> tuple[str, str | None]:
+        """Type a line and return its screen plus any private contextual remarks."""
         text = text.strip()
         if not text:
-            return self.screen()
+            return self.screen(), None
 
         # Before anything reaches the interpreter, and whether or not a game is
         # running: at the DOS prompt these are not games either.
         instead = _instead_of_typing(text)
         if instead is not None:
             logger.info("Held back %r; that is what the save tools are for", text)
-            return instead
+            return instead, None
 
         if self._env is None:
             # At the DOS prompt, a line is the name of a game to start.
-            return await self.new_game(text)
+            return await self.new_game(text), None
         if self._done:
-            return self.screen()
+            return self.screen(), None
 
         old_location = self._location
         try:
             observation, _reward, done, info = await asyncio.to_thread(self._env.step, text)
         except Exception as exc:
             logger.exception("%r failed on %s", text, self._game)
-            return f"The machine locks up for a moment: {exc}"
+            return f"The machine locks up for a moment: {exc}", None
 
         self._observation, self._info, self._done = observation, dict(info), bool(done)
         self._location = await asyncio.to_thread(_player_location, self._env)
@@ -208,12 +208,8 @@ class Machine:
         if moved:
             self._personal_map.setdefault(old_location, {})[self._location] = text
         await self._autosave()
-        screen = self.screen()
-        if moved:
-            routes = _describe_routes(self._location, self._personal_map)
-            if routes:
-                screen = f"{screen}\n\n{routes}"
-        return screen
+        remarks = _describe_routes(self._location, self._personal_map) if moved else None
+        return self.screen(), remarks
 
     async def save(self, name: str | None = None, comment: str | None = None) -> str:
         """Write a save and say what it was called.
