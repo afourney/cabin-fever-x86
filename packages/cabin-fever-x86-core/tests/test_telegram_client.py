@@ -1,5 +1,7 @@
 """Pure behavior of the optional Telegram transport."""
 
+import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -53,3 +55,57 @@ async def test_rejected_account_is_logged_with_discoverable_id(caplog) -> None:
     assert event.responses == ["Not authorized."]
     assert "user_id=8675309" in caplog.text
     assert "username=@jenny" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_voice_note_is_transcribed_and_forwarded_without_an_echo(monkeypatch) -> None:
+    class Connection:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, raw):
+            self.sent.append(json.loads(raw))
+
+    class Transcript:
+        def __init__(self):
+            self.audio = []
+            self.records = []
+
+        def save_audio(self, kind, message_id, data, suffix):
+            self.audio.append((kind, message_id, data, suffix))
+            return f"audio/{kind}_{message_id}.{suffix}"
+
+        def log(self, speaker, message_id, text, audio=None):
+            self.records.append((speaker, message_id, text, audio))
+
+    class Message:
+        file = SimpleNamespace(size=4, duration=1, mime_type="audio/ogg")
+
+        async def download_media(self, *, file):
+            assert file is bytes
+            return b"OggS"
+
+    bot = SimpleNamespace(sent=[])
+
+    async def send_message(chat_id, text):
+        bot.sent.append((chat_id, text))
+
+    bot.send_message = send_message
+    connection = Connection()
+    transcript = Transcript()
+    session = SimpleNamespace(lock=asyncio.Lock(), connection=connection, transcript=transcript)
+    bridge = TelegramBridge(bot, "ws://localhost:5000", {8675309}, voice=object())
+    bridge.sessions[8675309] = session
+    monkeypatch.setattr(
+        "cabin_fever_x86_core.telegram_client._main.transcribe",
+        lambda client, audio, filename, mimetype: "open the mailbox",
+    )
+
+    await bridge._handle_voice(8675309, 8675309, Message())
+
+    assert bot.sent == []
+    assert connection.sent[0]["type"] == "user"
+    assert connection.sent[0]["content"] == "open the mailbox"
+    assert transcript.audio[0][2:] == (b"OggS", "ogg")
+    assert transcript.records[0][0] == "user"
+    assert transcript.records[0][2] == "open the mailbox"

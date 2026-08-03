@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from elevenlabs.client import ElevenLabs
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
@@ -29,11 +30,14 @@ from cabin_fever_x86_core.messages import (
 from cabin_fever_x86_core.session_client import SessionCommandError, list_sessions, open_session
 from cabin_fever_x86_core.sessions import TELEGRAM_CLIENT_COMPONENT
 from cabin_fever_x86_core.transcripts import Transcript
+from cabin_fever_x86_core.voice import VoiceError, transcribe
 
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 4096
 MESSAGE_MAX_AGE = 180
+MAX_VOICE_BYTES = 10 * 1024 * 1024
+MAX_VOICE_SECONDS = 120
 STATE_PATH = Path("data") / TELEGRAM_CLIENT_COMPONENT / "sessions.json"
 
 
@@ -99,10 +103,17 @@ class TelegramSession:
 class TelegramBridge:
     """Translate Telegram updates and server wire messages in both directions."""
 
-    def __init__(self, bot: Any, upstream_uri: str, allowed_accounts: set[int]) -> None:
+    def __init__(
+        self,
+        bot: Any,
+        upstream_uri: str,
+        allowed_accounts: set[int],
+        voice: ElevenLabs | None = None,
+    ) -> None:
         self.bot = bot
         self.upstream_uri = upstream_uri
         self.allowed_accounts = allowed_accounts
+        self.voice = voice
         self.sessions: dict[int, TelegramSession] = {}
         self.last_sessions = _load_state()
 
@@ -187,7 +198,7 @@ class TelegramBridge:
         return found[0].session_id
 
     async def handle(self, event: Any) -> None:
-        """Authorize and process one incoming Telegram text update."""
+        """Authorize and process one incoming Telegram text or voice update."""
         account_id = event.sender_id
         chat_id = event.chat_id
         sender = await event.get_sender()
@@ -215,8 +226,9 @@ class TelegramBridge:
             logger.info("Skipping stale Telegram message from user_id=%s", account_id)
             return
 
+        voice_note = event.message.voice
         text = (event.message.text or "").strip()
-        if not text:
+        if voice_note is None and not text:
             return
         logger.info(
             "Telegram message from user_id=%d username=@%s", account_id, username or "<none>"
@@ -224,13 +236,92 @@ class TelegramBridge:
 
         try:
             async with self.bot.action(chat_id, "typing"):
-                await self._handle_text(account_id, chat_id, text)
+                if voice_note is not None:
+                    await self._handle_voice(account_id, chat_id, event.message)
+                else:
+                    await self._handle_text(account_id, chat_id, text)
         except (OSError, WebSocketException, SessionCommandError, ValueError) as exc:
             logger.exception("Could not connect Telegram account %d to the game", account_id)
             await self.send(chat_id, f"Could not connect to the game: {exc}")
         except Exception as exc:
             logger.exception("Telegram handler failed for account %d", account_id)
             await self.send(chat_id, f"Telegram client error: {type(exc).__name__}: {exc}")
+
+    async def _ensure_session(self, account_id: int, chat_id: int) -> TelegramSession:
+        """Return the account's channel, lazily starting or resuming it."""
+        session = self.sessions.get(account_id)
+        if session is not None:
+            return session
+
+        resume = self.last_sessions.get(account_id)
+        session = await self.open(account_id, chat_id, resume)
+        await self.send(
+            chat_id,
+            f"{'Resumed' if resume else 'Started'} session {session.session_id}.",
+        )
+        return session
+
+    async def _handle_voice(self, account_id: int, chat_id: int, message: Any) -> None:
+        """Transcribe one Telegram voice note and forward its text silently."""
+        if self.voice is None:
+            await self.send(chat_id, "Voice transcription is not configured.")
+            return
+
+        media = message.file
+        size = getattr(media, "size", None)
+        duration = getattr(media, "duration", None)
+        if size is not None and size > MAX_VOICE_BYTES:
+            await self.send(chat_id, "That voice message is too large (10 MB maximum).")
+            return
+        if duration is not None and duration > MAX_VOICE_SECONDS:
+            await self.send(chat_id, "That voice message is too long (2 minutes maximum).")
+            return
+
+        session = await self._ensure_session(account_id, chat_id)
+        async with session.lock:
+            audio = await message.download_media(file=bytes)
+            if not isinstance(audio, bytes) or not audio:
+                await self.send(chat_id, "I couldn't download that voice message.")
+                return
+            if len(audio) > MAX_VOICE_BYTES:
+                await self.send(chat_id, "That voice message is too large (10 MB maximum).")
+                return
+
+            user_message = UserMessage(content="")
+            clip = await asyncio.to_thread(
+                session.transcript.save_audio,
+                "player",
+                user_message.id,
+                audio,
+                "ogg",
+            )
+            mimetype = getattr(media, "mime_type", None) or "audio/ogg"
+            try:
+                text = (
+                    await asyncio.to_thread(
+                        transcribe,
+                        self.voice,
+                        audio,
+                        "telegram-voice.ogg",
+                        mimetype,
+                    )
+                ).strip()
+            except VoiceError as exc:
+                logger.warning("Could not transcribe Telegram voice message: %s", exc)
+                session.transcript.log(
+                    "error", user_message.id, f"transcription failed: {exc}", clip
+                )
+                await self.send(chat_id, "I couldn't transcribe that voice message.")
+                return
+
+            if not text:
+                session.transcript.log("error", user_message.id, "empty transcription", clip)
+                await self.send(chat_id, "I couldn't make out any speech in that message.")
+                return
+
+            user_message.content = text
+            session.transcript.log("user", user_message.id, text, clip)
+            await session.connection.send(user_message.model_dump_json())
 
     async def _handle_text(self, account_id: int, chat_id: int, text: str) -> None:
         """Execute a command or forward ordinary text to the open game."""
@@ -283,14 +374,7 @@ class TelegramBridge:
             await self.send(chat_id, "Unknown command. Try /help.")
             return
 
-        session = self.sessions.get(account_id)
-        if session is None:
-            resume = self.last_sessions.get(account_id)
-            session = await self.open(account_id, chat_id, resume)
-            await self.send(
-                chat_id,
-                f"{'Resumed' if resume else 'Started'} session {session.session_id}.",
-            )
+        session = await self._ensure_session(account_id, chat_id)
 
         async with session.lock:
             message = UserMessage(content=text)
@@ -310,7 +394,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-async def run_bot(api_id: int, api_hash: str, token: str, uri: str, allowed: set[int]) -> None:
+async def run_bot(
+    api_id: int,
+    api_hash: str,
+    token: str,
+    uri: str,
+    allowed: set[int],
+    elevenlabs_api_key: str | None,
+) -> None:
     """Start Telethon and relay updates until it disconnects."""
     try:
         from telethon import TelegramClient, events
@@ -321,7 +412,10 @@ async def run_bot(api_id: int, api_hash: str, token: str, uri: str, allowed: set
 
     bot = TelegramClient("cf86-telegram", api_id, api_hash)
     await bot.start(bot_token=token)
-    bridge = TelegramBridge(bot, uri, allowed)
+    voice = ElevenLabs(api_key=elevenlabs_api_key) if elevenlabs_api_key else None
+    if voice is None:
+        logger.warning("No ElevenLabs key: Telegram voice messages will be rejected.")
+    bridge = TelegramBridge(bot, uri, allowed, voice)
     bot.add_event_handler(bridge.handle, events.NewMessage(incoming=True))
     identity = await bot.get_me()
     logger.info(
@@ -374,6 +468,7 @@ def main() -> None:
                 telegram.bot_token,
                 f"ws://{host}:{port}",
                 set(telegram.allowed_accounts),
+                config.client.elevenlabs_api_key,
             )
         )
     except (OSError, RuntimeError) as exc:

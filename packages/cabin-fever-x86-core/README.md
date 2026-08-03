@@ -58,7 +58,9 @@ The Telegram client uses the `telegram_client` section of `config.yaml`. It
 requires a bot token, Telegram API ID and API hash, plus an allowlist of numeric
 Telegram user IDs. Start it with an empty allowlist and send the bot a private
 message to have the rejected user ID written to its log; then add that ID to
-`allowed_accounts` and restart it. Only private text chats are accepted.
+`allowed_accounts` and restart it. Private text messages and voice notes are
+accepted. Voice notes are transcribed with the configured ElevenLabs key and
+forwarded silently; replies remain text messages.
 
 ## Z-machine games
 
