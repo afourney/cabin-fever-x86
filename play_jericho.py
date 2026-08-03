@@ -17,11 +17,10 @@ from typing import Any
 
 from jericho import FrotzEnv
 
-from cabin_fever_x86_core.server._saves import SaveError, SaveStore
+from cabin_fever_x86_core.server._saves import Location, PersonalMap, SaveError, SaveStore
 
 DEFAULT_GAMES_DIR = Path("data/games")
 GAME_SUFFIXES = frozenset(f".z{version}" for version in range(3, 9))
-Location = tuple[int, str]
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -46,7 +45,7 @@ def _find_game(games_dir: Path, game: str) -> Path:
     return matches[0]
 
 
-def _load(path: Path, games_dir: Path) -> tuple[FrotzEnv, str, dict[str, Any]]:
+def _load(path: Path, games_dir: Path) -> tuple[FrotzEnv, str, dict[str, Any], PersonalMap]:
     """Start a ROM, optionally restoring the Jericho state in a Cabin Fever save."""
     suffix = path.suffix.casefold()
     if suffix in GAME_SUFFIXES:
@@ -56,7 +55,7 @@ def _load(path: Path, games_dir: Path) -> tuple[FrotzEnv, str, dict[str, Any]]:
         except Exception:
             env.close()
             raise
-        return env, observation, dict(info)
+        return env, observation, dict(info), {}
 
     if suffix != ".bin":
         raise ValueError(f"{path} is not a .z3-.z8 game or .bin save")
@@ -77,7 +76,7 @@ def _load(path: Path, games_dir: Path) -> tuple[FrotzEnv, str, dict[str, Any]]:
         env.close()
         raise
     info = {"score": env.get_score(), "moves": env.get_moves()}
-    return env, snapshot.observation, info
+    return env, snapshot.observation, info, snapshot.personal_map or {}
 
 
 def _show(observation: str, *, reward: int | None, done: bool, info: dict[str, Any]) -> None:
@@ -113,10 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     # Like: map[source_location][destination_location] = command_to_get_there
     # E.g., map[(180, "West of House")][(181, "North of House")] = "north"
 
-    personal_map: dict[Location, dict[Location, str]] = {}
-
     try:
-        env, observation, info = _load(args.path, args.games_dir)
+        env, observation, info, personal_map = _load(args.path, args.games_dir)
     except (OSError, SaveError, ValueError, RuntimeError) as exc:
         print(f"play_jericho: {exc}", file=sys.stderr)
         return 2
@@ -134,19 +131,18 @@ def main(argv: list[str] | None = None) -> int:
             observation, reward, done, info = env.step(command)
             _show(observation, reward=reward, done=bool(done), info=dict(info))
 
-            new_location = _location(env) if location is not None else None
-            if new_location is not None and new_location != location:
+            old_location = location
+            location = _location(env)
+            moved = old_location is not None and location is not None and location != old_location
+            if moved:
                 # We have moved to a new location. Update the map.
-                personal_map.setdefault(location, {})[new_location] = command
+                personal_map.setdefault(old_location, {})[location] = command
 
-                # Update current location
-                location = new_location
-
-            # Print the current map if we've got one:
-            if location in personal_map:
-                print("Personal map, from here:")
-                for dest, cmd in personal_map[location].items():
-                    print(f"- Type '{cmd}' to move to the location '{dest[1]}'")
+                # Print known routes only on arrival, as the server machine does.
+                if location in personal_map:
+                    print("You've been keeping a personal map using paper and pencil. From here:")
+                    for dest, cmd in personal_map[location].items():
+                        print(f"- Type {cmd!r} to move to {dest[1]!r}")
 
             if done:
                 break

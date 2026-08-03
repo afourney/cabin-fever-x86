@@ -230,3 +230,6 @@ config.yaml
 # else you want kept out of the repo.
 *.ignore
 ignored/
+
+# Ignore telegram sessions
+*telegram.session
