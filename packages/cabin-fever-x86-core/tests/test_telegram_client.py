@@ -8,7 +8,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from cabin_fever_x86_core.telegram_client._main import TelegramBridge, is_stale, split_message
+from cabin_fever_x86_core.messages import AssistantMessage
+from cabin_fever_x86_core.telegram_client._main import (
+    TelegramBridge,
+    _parse_args,
+    is_stale,
+    split_message,
+)
 
 
 def test_short_message_is_unchanged() -> None:
@@ -27,6 +33,11 @@ def test_only_old_messages_are_stale() -> None:
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     assert is_stale(now - timedelta(seconds=181), now)
     assert not is_stale(now - timedelta(seconds=180), now)
+
+
+def test_voice_replies_are_opt_in() -> None:
+    assert not _parse_args([]).voice_replies
+    assert _parse_args(["--voice-replies"]).voice_replies
 
 
 @pytest.mark.asyncio
@@ -109,3 +120,75 @@ async def test_voice_note_is_transcribed_and_forwarded_without_an_echo(monkeypat
     assert transcript.audio[0][2:] == (b"OggS", "ogg")
     assert transcript.records[0][0] == "user"
     assert transcript.records[0][2] == "open the mailbox"
+
+
+@pytest.mark.asyncio
+async def test_enabled_voice_reply_accompanies_the_text(monkeypatch) -> None:
+    class Bot:
+        def __init__(self):
+            self.actions = []
+
+        async def send_message(self, chat_id, text):
+            self.actions.append(("text", chat_id, text))
+
+        async def send_file(self, chat_id, file, *, voice_note, caption, parse_mode):
+            self.actions.append(
+                ("voice", chat_id, file.name, file.read(), voice_note, caption, parse_mode)
+            )
+
+    class Transcript:
+        def __init__(self):
+            self.records = []
+
+        def save_audio(self, kind, message_id, data, suffix):
+            assert (kind, data, suffix) == ("clean", b"OggS-opus", "ogg")
+            return f"audio/clean_{message_id}.ogg"
+
+        def log(self, speaker, message_id, text, audio=None):
+            self.records.append((speaker, message_id, text, audio))
+
+    bot = Bot()
+    transcript = Transcript()
+    session = SimpleNamespace(chat_id=8675309, voice_lock=asyncio.Lock(), transcript=transcript)
+    bridge = TelegramBridge(
+        bot,
+        "ws://localhost:5000",
+        {8675309},
+        voice=object(),
+        voice_replies=True,
+    )
+    generated = []
+
+    def fake_synthesize(client, text, voice_id=None, output_format=None):
+        generated.append((client, text, voice_id, output_format))
+        return b"OggS-opus"
+
+    monkeypatch.setattr("cabin_fever_x86_core.telegram_client._main.synthesize", fake_synthesize)
+    message = AssistantMessage(content="There is a lamp here.")
+
+    await bridge._deliver_assistant(session, message)
+
+    assert bot.actions == [
+        (
+            "voice",
+            8675309,
+            f"reply-{message.id}.ogg",
+            b"OggS-opus",
+            True,
+            "There is a lamp here.",
+            None,
+        ),
+    ]
+    assert generated[0][1:] == (
+        "There is a lamp here.",
+        None,
+        "opus_48000_64",
+    )
+    assert transcript.records == [
+        (
+            "assistant",
+            message.id,
+            "There is a lamp here.",
+            f"audio/clean_{message.id}.ogg",
+        )
+    ]

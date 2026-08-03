@@ -60,7 +60,10 @@ Telegram user IDs. Start it with an empty allowlist and send the bot a private
 message to have the rejected user ID written to its log; then add that ID to
 `allowed_accounts` and restart it. Private text messages and voice notes are
 accepted. Voice notes are transcribed with the configured ElevenLabs key and
-forwarded silently; replies remain text messages.
+forwarded silently. Replies are text by default; pass `--voice-replies` to also
+send each reply as a voice note, with the text attached as its caption. Replies
+too long for a Telegram caption, and replies whose synthesis fails, are sent as
+separate text so no content is lost.
 
 ## Z-machine games
 

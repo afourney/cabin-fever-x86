@@ -51,7 +51,12 @@ def transcribe(
     return response.text or ""
 
 
-def synthesize(client: ElevenLabs, text: str, voice_id: str = TTS_VOICE_ID) -> bytes:
+def synthesize(
+    client: ElevenLabs,
+    text: str,
+    voice_id: str = TTS_VOICE_ID,
+    output_format: str = TTS_FORMAT,
+) -> bytes:
     """Read a line back in the companion's voice."""
     try:
         # convert() streams chunks; collect them into one clip.
@@ -59,7 +64,7 @@ def synthesize(client: ElevenLabs, text: str, voice_id: str = TTS_VOICE_ID) -> b
             text=text,
             voice_id=voice_id,
             model_id=TTS_MODEL,
-            output_format=TTS_FORMAT,
+            output_format=output_format,
         )
         return b"".join(audio)
     except Exception as exc:
