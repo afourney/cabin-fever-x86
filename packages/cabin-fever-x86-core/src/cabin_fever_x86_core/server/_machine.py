@@ -16,6 +16,8 @@ from jericho import FrotzEnv
 
 from cabin_fever_x86_core.server._saves import (
     AUTOSAVE,
+    Location,
+    PersonalMap,
     SaveError,
     SaveInfo,
     SaveStore,
@@ -84,6 +86,8 @@ class Machine:
         self._observation = ""
         self._info: dict[str, Any] = {}
         self._done = False
+        self._location: Location | None = None
+        self._personal_map: PersonalMap = {}
 
     @property
     def game(self) -> str | None:
@@ -152,6 +156,8 @@ class Machine:
 
         self._env, self._game = env, path.stem
         self._observation, self._info, self._done = observation, dict(info), False
+        self._location = _player_location(env)
+        self._personal_map = {}
         logger.info("Loaded %s", path.stem)
         return self.screen()
 
@@ -185,6 +191,7 @@ class Machine:
         if self._done:
             return self.screen()
 
+        old_location = self._location
         try:
             observation, _reward, done, info = await asyncio.to_thread(self._env.step, text)
         except Exception as exc:
@@ -192,10 +199,23 @@ class Machine:
             return f"The machine locks up for a moment: {exc}"
 
         self._observation, self._info, self._done = observation, dict(info), bool(done)
+        self._location = await asyncio.to_thread(_player_location, self._env)
+        moved = (
+            old_location is not None
+            and self._location is not None
+            and self._location != old_location
+        )
+        if moved:
+            self._personal_map.setdefault(old_location, {})[self._location] = text
         await self._autosave()
-        return self.screen()
+        screen = self.screen()
+        if moved:
+            routes = _describe_routes(self._location, self._personal_map)
+            if routes:
+                screen = f"{screen}\n\n{routes}"
+        return screen
 
-    async def save(self, name: str | None = None) -> str:
+    async def save(self, name: str | None = None, comment: str | None = None) -> str:
         """Write a save and say what it was called.
 
         *name* is for the autosave and for tests; left out, the next numbered
@@ -207,7 +227,7 @@ class Machine:
             return NOTHING_TO_SAVE
         try:
             slot = name or await asyncio.to_thread(self._saves.next_name, self._game)
-            written = await asyncio.to_thread(self._write, slot)
+            written = await asyncio.to_thread(self._write, slot, comment)
         except SaveError as exc:
             logger.warning("Could not save %s: %s", self._game, exc)
             return f"The save failed: {exc}"
@@ -261,6 +281,8 @@ class Machine:
         self._observation = snapshot.observation
         self._info = {"score": env.get_score(), "moves": env.get_moves()}
         self._done = env.game_over() or env.victory()
+        self._location = _player_location(env)
+        self._personal_map = snapshot.personal_map or {}
         logger.info("Restored %s from %s", self._game, name)
 
         # The autosave has to follow the machine, or a resume after this would
@@ -293,7 +315,13 @@ class Machine:
         """List the numbered saves this session has written. Never the autosave."""
         return self._saves.list() if self._saves is not None else []
 
-    def _write(self, name: str) -> str:
+    def save_info(self, name: str) -> SaveInfo:
+        """Read one save's metadata for a detailed listing."""
+        if self._saves is None:
+            raise SaveError("this machine has no disk to read saves from")
+        return self._saves.info(name)
+
+    def _write(self, name: str, comment: str | None = None) -> str:
         """Snapshot the running game under *name*. Runs off the event loop."""
         if self._env is None or self._saves is None or self._game is None:
             raise SaveError("nothing is running")
@@ -306,6 +334,9 @@ class Machine:
                 score=self._info.get("score"),
                 moves=self._info.get("moves"),
                 done=self._done,
+                location=self._location[1] if self._location is not None else None,
+                comment=comment,
+                personal_map=self._personal_map,
             ),
         )
 
@@ -332,6 +363,7 @@ class Machine:
                 logger.exception("Error closing %s", was)
         self._env, self._game = None, None
         self._observation, self._info, self._done = "", {}, False
+        self._location, self._personal_map = None, {}
         if was:
             logger.info("Rebooted, quitting %s", was)
         return NO_GAME
@@ -344,3 +376,25 @@ def _instead_of_typing(text: str) -> str | None:
     if verb in GAME_SAVE_VERBS or verb in GAME_RESTORE_VERBS or verb in GAME_STOP_VERBS:
         return USE_THE_TOOLS
     return None
+
+
+def _player_location(env: FrotzEnv) -> Location | None:
+    """Return Jericho's stable object number and display name for the room."""
+    try:
+        location = env.get_player_location()
+    except (AttributeError, RuntimeError):
+        return None
+    if location is None:
+        return None
+    return location.num, location.name
+
+
+def _describe_routes(location: Location, personal_map: PersonalMap) -> str | None:
+    """Describe known directed exits from a newly entered room."""
+    routes = personal_map.get(location)
+    if not routes:
+        return None
+    lines = ["You've been keeping a personal map using paper and pencil. From here:"]
+    for destination, command in routes.items():
+        lines.append(f"- Type {command!r} to move to {destination[1]!r}")
+    return "\n".join(lines)

@@ -3,11 +3,13 @@
 Jericho does not hand its state out as bytes: :meth:`FrotzEnv.get_state`
 returns a tuple of ``(ram, stack, pc, sp, fp, frame_count, opcode, rng,
 narrative)`` — two numpy ``uint8`` arrays, six integers, a triple of them, and
-the last thing the game printed. All of it writes down flat, so a save is a
-JSON header and the three byte runs it describes::
+the last thing the game printed. All of it writes down flat, so a save is typed
+JSON records and the three byte runs they describe::
 
-    CFX86SAVE1
-    {"game": "zork1", "score": 10, "pc": 22797, "ram_size": 11859, ...}
+    CFX86SAVE2
+    {"type": "metadata", "game": "zork1", "score": 10, ...}
+    {"type": "personal_map", "edges": [...]}
+    CFX86DATA
     <ram bytes><stack bytes><narrative bytes>
 
 Spelled out rather than pickled: a save is data, and nothing read back off the
@@ -66,7 +68,14 @@ _SAFE_GAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 # First line of every file, so a file that is not one of ours — or is from a
 # format we no longer read — is refused before anything is made of its bytes.
-MAGIC = b"CFX86SAVE1"
+MAGIC = b"CFX86SAVE2"
+DATA_SENTINEL = b"CFX86DATA"
+METADATA = "metadata"
+PERSONAL_MAP = "personal_map"
+COMMENT_LIMIT = 500
+COMMENT_PREVIEW = 120
+Location = tuple[int, str]
+PersonalMap = dict[Location, dict[Location, str]]
 
 # Jericho's state tuple, in the order get_state() returns it and set_state()
 # unpacks it. The two buffers and the rng triple are handled on their own; the
@@ -89,6 +98,9 @@ class Snapshot:
     score: int | None
     moves: int | None
     done: bool
+    location: str | None = None
+    comment: str | None = None
+    personal_map: PersonalMap | None = None
 
 
 @dataclass(frozen=True)
@@ -101,6 +113,8 @@ class SaveInfo:
     moves: int | None
     done: bool
     saved_at: datetime
+    location: str | None
+    comment: str | None
 
     def describe(self) -> str:
         """One line, for a listing the companion can read out."""
@@ -113,8 +127,28 @@ class SaveInfo:
             parts.append(f"{self.moves} move" if self.moves == 1 else f"{self.moves} moves")
         if self.done:
             parts.append("game over")
+        if self.location:
+            parts.append(f"location {self.location}")
+        if self.comment:
+            parts.append(f"note: {_preview(self.comment)}")
         parts.append(self.saved_at.astimezone().strftime("%H:%M:%S"))
         return ", ".join(parts)
+
+    def describe_full(self) -> str:
+        """All metadata for one save, including its complete comment."""
+        parts = [f"Save: {self.name}", f"Game: {self.game}"]
+        if self.score is not None:
+            parts.append(f"Score: {self.score}")
+        if self.moves is not None:
+            parts.append(f"Moves: {self.moves}")
+        if self.done:
+            parts.append("Game over: yes")
+        if self.location:
+            parts.append(f"Location: {self.location}")
+        parts.append(f"Saved: {self.saved_at.astimezone().isoformat(timespec='seconds')}")
+        if self.comment:
+            parts.append(f"Comment: {self.comment}")
+        return "\n".join(parts)
 
 
 def parse_name(name: str) -> tuple[str, int] | None:
@@ -185,8 +219,10 @@ class SaveStore:
         save cannot leave a half-written autosave where a good one used to be.
         """
         path = self.path(name)
-        header, body = _encode_state(snapshot.state)
-        header |= {
+        metadata, body = _encode_state(snapshot.state)
+        comment = _comment(snapshot.comment)
+        metadata |= {
+            "type": METADATA,
             "game": snapshot.game,
             "score": snapshot.score,
             "moves": snapshot.moves,
@@ -194,13 +230,20 @@ class SaveStore:
             "saved_at": datetime.now(UTC).isoformat(timespec="milliseconds"),
             "observation": snapshot.observation,
         }
+        if snapshot.location:
+            metadata["location"] = snapshot.location
+        if comment:
+            metadata["comment"] = comment
+        map_record = _encode_map(snapshot.personal_map or {})
 
         self.dir.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(f"{SUFFIX}.part")
         try:
             with temporary.open("wb") as handle:
                 handle.write(MAGIC + b"\n")
-                handle.write(json.dumps(header).encode("utf-8") + b"\n")
+                handle.write(_json_line(metadata))
+                handle.write(_json_line(map_record))
+                handle.write(DATA_SENTINEL + b"\n")
                 handle.write(body)
             os.replace(temporary, path)
         except OSError as exc:
@@ -213,20 +256,23 @@ class SaveStore:
         path = self.path(name)
         try:
             with path.open("rb") as handle:
-                header = _read_header(handle, path)
-                state = _decode_state(header, handle, path)
+                metadata, records = _read_records(handle, path)
+                state = _decode_state(metadata, handle, path)
         except FileNotFoundError as exc:
             raise SaveError(f"there is no save called {path.stem!r}") from exc
         except OSError as exc:
             raise SaveError(f"{path.name} will not read back: {exc}") from exc
 
         return Snapshot(
-            game=str(header.get("game") or ""),
+            game=str(metadata.get("game") or ""),
             state=state,
-            observation=str(header.get("observation") or ""),
-            score=header.get("score"),
-            moves=header.get("moves"),
-            done=bool(header.get("done")),
+            observation=str(metadata.get("observation") or ""),
+            score=metadata.get("score"),
+            moves=metadata.get("moves"),
+            done=bool(metadata.get("done")),
+            location=_optional_text(metadata.get("location")),
+            comment=_optional_text(metadata.get("comment")),
+            personal_map=_decode_map(records.get(PERSONAL_MAP), path),
         )
 
     def info(self, name: str) -> SaveInfo:
@@ -234,12 +280,12 @@ class SaveStore:
         path = self.path(name)
         try:
             with path.open("rb") as handle:
-                header = _read_header(handle, path)
+                metadata = _read_metadata(handle, path)
         except FileNotFoundError as exc:
             raise SaveError(f"there is no save called {path.stem!r}") from exc
         except OSError as exc:
             raise SaveError(f"{path.name} will not read back: {exc}") from exc
-        return _info(path.stem, header)
+        return _info(path.stem, metadata)
 
     def list(self) -> list[SaveInfo]:
         """Every readable numbered save, in slot order.
@@ -315,17 +361,107 @@ def _buffer(run: bytes) -> np.ndarray[Any, np.dtype[np.uint8]]:
     return np.frombuffer(bytearray(run), dtype=np.uint8)
 
 
-def _read_header(handle: BinaryIO, path: Path) -> dict[str, Any]:
-    """Read the magic line and the header off an open save."""
+def _read_metadata(handle: BinaryIO, path: Path) -> dict[str, Any]:
+    """Read the magic and first, listing-friendly metadata record."""
     if handle.readline().rstrip(b"\n") != MAGIC:
         raise SaveError(f"{path.name} is not a save from this machine")
+    record = _read_json_record(handle.readline(), path)
+    if record.get("type") != METADATA:
+        raise SaveError(f"{path.name} has no metadata record")
+    return record
+
+
+def _read_records(handle: BinaryIO, path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """Read typed records through the data sentinel, skipping unknown types."""
+    metadata = _read_metadata(handle, path)
+    records = {METADATA: metadata}
+    while True:
+        line = handle.readline()
+        if not line:
+            raise SaveError(f"{path.name} has no {DATA_SENTINEL.decode()} marker")
+        if line.rstrip(b"\n") == DATA_SENTINEL:
+            return metadata, records
+        record = _read_json_record(line, path)
+        record_type = record.get("type")
+        if not isinstance(record_type, str):
+            raise SaveError(f"{path.name} has a record without a type")
+        if record_type in records:
+            raise SaveError(f"{path.name} has more than one {record_type!r} record")
+        if record_type == PERSONAL_MAP:
+            records[record_type] = record
+
+
+def _read_json_record(line: bytes, path: Path) -> dict[str, Any]:
+    """Decode one physical JSON record line."""
     try:
-        header = json.loads(handle.readline().decode("utf-8"))
+        record = json.loads(line.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SaveError(f"{path.name} has an unreadable header: {exc}") from exc
-    if not isinstance(header, dict):
+    if not isinstance(record, dict):
         raise SaveError(f"{path.name} has an unreadable header")
-    return header
+    return record
+
+
+def _json_line(record: dict[str, Any]) -> bytes:
+    """Encode one compact physical JSON record line."""
+    return json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
+
+
+def _encode_map(personal_map: PersonalMap) -> dict[str, Any]:
+    """Turn tuple-keyed directed routes into JSON records."""
+    edges = []
+    for source, destinations in personal_map.items():
+        for destination, command in destinations.items():
+            edges.append({"from": list(source), "to": list(destination), "command": command})
+    return {"type": PERSONAL_MAP, "version": 1, "edges": edges}
+
+
+def _decode_map(record: dict[str, Any] | None, path: Path) -> PersonalMap:
+    """Rebuild a tuple-keyed map, accepting a missing optional record."""
+    if record is None:
+        return {}
+    if record.get("version") != 1 or not isinstance(record.get("edges"), list):
+        raise SaveError(f"{path.name} has an unreadable personal map")
+    personal_map: PersonalMap = {}
+    try:
+        for edge in record["edges"]:
+            source = _decode_location(edge["from"])
+            destination = _decode_location(edge["to"])
+            command = str(edge["command"])
+            personal_map.setdefault(source, {})[destination] = command
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SaveError(f"{path.name} has an unreadable personal map: {exc}") from exc
+    return personal_map
+
+
+def _decode_location(value: Any) -> Location:
+    """Validate one ``[object number, room name]`` JSON location."""
+    if not isinstance(value, list) or len(value) != 2 or not isinstance(value[1], str):
+        raise ValueError("bad location")
+    return int(value[0]), value[1]
+
+
+def _comment(value: str | None) -> str | None:
+    """Normalize and bound an optional save comment."""
+    if value is None:
+        return None
+    comment = value.strip()
+    if len(comment) > COMMENT_LIMIT:
+        raise SaveError(f"a save comment cannot exceed {COMMENT_LIMIT} characters")
+    return comment or None
+
+
+def _optional_text(value: Any) -> str | None:
+    """Return a nonempty metadata string or no value."""
+    return value if isinstance(value, str) and value else None
+
+
+def _preview(comment: str) -> str:
+    """Collapse whitespace and shorten a comment for a multi-save listing."""
+    line = " ".join(comment.split())
+    if len(line) <= COMMENT_PREVIEW:
+        return line
+    return f"{line[: COMMENT_PREVIEW - 1].rstrip()}…"
 
 
 def _info(name: str, header: dict[str, Any]) -> SaveInfo:
@@ -342,4 +478,6 @@ def _info(name: str, header: dict[str, Any]) -> SaveInfo:
         moves=header.get("moves"),
         done=bool(header.get("done")),
         saved_at=saved_at,
+        location=_optional_text(header.get("location")),
+        comment=_optional_text(header.get("comment")),
     )
