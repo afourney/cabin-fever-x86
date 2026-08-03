@@ -128,7 +128,6 @@ uv run cf86-web
 # or
 uv run cf86-text
 # or, after syncing the optional dependency: uv run --extra telegram cf86-telegram
-# add --voice-replies to accompany text replies with Telegram voice notes
 ```
 
 If you use the web client, open the URL it prints in your browser (typically [http://127.0.0.1:8000](http://127.0.0.1:8000)).

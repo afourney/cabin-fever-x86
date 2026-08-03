@@ -11,7 +11,6 @@ import pytest
 from cabin_fever_x86_core.messages import AssistantMessage
 from cabin_fever_x86_core.telegram_client._main import (
     TelegramBridge,
-    _parse_args,
     is_stale,
     split_message,
 )
@@ -33,11 +32,6 @@ def test_only_old_messages_are_stale() -> None:
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     assert is_stale(now - timedelta(seconds=181), now)
     assert not is_stale(now - timedelta(seconds=180), now)
-
-
-def test_voice_replies_are_opt_in() -> None:
-    assert not _parse_args([]).voice_replies
-    assert _parse_args(["--voice-replies"]).voice_replies
 
 
 @pytest.mark.asyncio
@@ -123,7 +117,7 @@ async def test_voice_note_is_transcribed_and_forwarded_without_an_echo(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_enabled_voice_reply_accompanies_the_text(monkeypatch) -> None:
+async def test_first_reply_is_captioned_voice_then_text_follows_text(monkeypatch) -> None:
     class Bot:
         def __init__(self):
             self.actions = []
@@ -149,13 +143,18 @@ async def test_enabled_voice_reply_accompanies_the_text(monkeypatch) -> None:
 
     bot = Bot()
     transcript = Transcript()
-    session = SimpleNamespace(chat_id=8675309, voice_lock=asyncio.Lock(), transcript=transcript)
+    session = SimpleNamespace(
+        chat_id=8675309,
+        voice_lock=asyncio.Lock(),
+        transcript=transcript,
+        has_replied=False,
+        last_user_was_voice=False,
+    )
     bridge = TelegramBridge(
         bot,
         "ws://localhost:5000",
         {8675309},
         voice=object(),
-        voice_replies=True,
     )
     generated = []
 
@@ -167,6 +166,11 @@ async def test_enabled_voice_reply_accompanies_the_text(monkeypatch) -> None:
     message = AssistantMessage(content="There is a lamp here.")
 
     await bridge._deliver_assistant(session, message)
+    second = AssistantMessage(content="It is made of brass.")
+    await bridge._deliver_assistant(session, second)
+    session.last_user_was_voice = True
+    third = AssistantMessage(content="Yes, I heard you.")
+    await bridge._deliver_assistant(session, third)
 
     assert bot.actions == [
         (
@@ -176,6 +180,16 @@ async def test_enabled_voice_reply_accompanies_the_text(monkeypatch) -> None:
             b"OggS-opus",
             True,
             "There is a lamp here.",
+            None,
+        ),
+        ("text", 8675309, "It is made of brass."),
+        (
+            "voice",
+            8675309,
+            f"reply-{third.id}.ogg",
+            b"OggS-opus",
+            True,
+            "Yes, I heard you.",
             None,
         ),
     ]
@@ -190,5 +204,12 @@ async def test_enabled_voice_reply_accompanies_the_text(monkeypatch) -> None:
             message.id,
             "There is a lamp here.",
             f"audio/clean_{message.id}.ogg",
-        )
+        ),
+        ("assistant", second.id, "It is made of brass.", None),
+        (
+            "assistant",
+            third.id,
+            "Yes, I heard you.",
+            f"audio/clean_{third.id}.ogg",
+        ),
     ]

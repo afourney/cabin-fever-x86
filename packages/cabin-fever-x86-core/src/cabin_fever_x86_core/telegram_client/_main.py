@@ -102,6 +102,8 @@ class TelegramSession:
     pump: asyncio.Task[None] | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     voice_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    has_replied: bool = False
+    last_user_was_voice: bool = False
 
 
 class TelegramBridge:
@@ -113,13 +115,11 @@ class TelegramBridge:
         upstream_uri: str,
         allowed_accounts: set[int],
         voice: ElevenLabs | None = None,
-        voice_replies: bool = False,
     ) -> None:
         self.bot = bot
         self.upstream_uri = upstream_uri
         self.allowed_accounts = allowed_accounts
         self.voice = voice
-        self.voice_replies = voice_replies
         self.sessions: dict[int, TelegramSession] = {}
         self.last_sessions = _load_state()
 
@@ -195,10 +195,14 @@ class TelegramBridge:
                 self.sessions.pop(session.account_id, None)
 
     async def _deliver_assistant(self, session: TelegramSession, message: AssistantMessage) -> None:
-        """Send text normally, or as the caption of an enabled voice reply."""
+        """Answer in kind after the first, which is voiced when possible."""
         clip: str | None = None
+        send_voice = self.voice is not None and (
+            not session.has_replied or session.last_user_was_voice
+        )
+        session.has_replied = True
 
-        if self.voice_replies and self.voice is not None:
+        if send_voice:
             async with session.voice_lock:
                 try:
                     audio = await asyncio.to_thread(
@@ -373,6 +377,7 @@ class TelegramBridge:
                 return
 
             user_message.content = text
+            session.last_user_was_voice = True
             session.transcript.log("user", user_message.id, text, clip)
             await session.connection.send(user_message.model_dump_json())
 
@@ -431,6 +436,7 @@ class TelegramBridge:
 
         async with session.lock:
             message = UserMessage(content=text)
+            session.last_user_was_voice = False
             session.transcript.log("user", message.id, text)
             await session.connection.send(message.model_dump_json())
 
@@ -444,11 +450,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--port", type=int, default=None, help="Game server port; overrides client.port."
     )
-    parser.add_argument(
-        "--voice-replies",
-        action="store_true",
-        help="Also send each companion reply as a Telegram voice note.",
-    )
     return parser.parse_args(argv)
 
 
@@ -459,7 +460,6 @@ async def run_bot(
     uri: str,
     allowed: set[int],
     elevenlabs_api_key: str | None,
-    voice_replies: bool,
 ) -> None:
     """Start Telethon and relay updates until it disconnects."""
     try:
@@ -474,9 +474,7 @@ async def run_bot(
     voice = ElevenLabs(api_key=elevenlabs_api_key) if elevenlabs_api_key else None
     if voice is None:
         logger.warning("No ElevenLabs key: Telegram voice messages will be rejected.")
-    if voice_replies and voice is None:
-        logger.warning("--voice-replies has no effect without an ElevenLabs key.")
-    bridge = TelegramBridge(bot, uri, allowed, voice, voice_replies)
+    bridge = TelegramBridge(bot, uri, allowed, voice)
     bot.add_event_handler(bridge.handle, events.NewMessage(incoming=True))
     identity = await bot.get_me()
     logger.info(
@@ -530,7 +528,6 @@ def main() -> None:
                 f"ws://{host}:{port}",
                 set(telegram.allowed_accounts),
                 config.client.elevenlabs_api_key,
-                args.voice_replies,
             )
         )
     except (OSError, RuntimeError) as exc:
