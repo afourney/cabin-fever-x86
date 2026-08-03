@@ -396,9 +396,9 @@ def _read_json_record(line: bytes, path: Path) -> dict[str, Any]:
     try:
         record = json.loads(line.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise SaveError(f"{path.name} has an unreadable header: {exc}") from exc
+        raise SaveError(f"{path.name} has an unreadable record: {exc}") from exc
     if not isinstance(record, dict):
-        raise SaveError(f"{path.name} has an unreadable header")
+        raise SaveError(f"{path.name} has an unreadable record")
     return record
 
 
