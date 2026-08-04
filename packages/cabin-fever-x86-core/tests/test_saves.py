@@ -65,7 +65,7 @@ def test_the_machines_messages_name_the_tools_that_exist() -> None:
         assert tool.name in NO_GAME, f"{tool.__name__} is not offered at the prompt"
 
 
-async def test_a_game_boots_with_frotz_time_based_randomness(
+async def test_a_game_boots_with_a_fresh_random_seed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     game = tmp_path / "zork1.z5"
@@ -89,11 +89,12 @@ async def test_a_game_boots_with_frotz_time_based_randomness(
             pass
 
     monkeypatch.setattr("cabin_fever_x86_core.server._machine.FrotzEnv", FakeEnv)
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_rng_a", lambda: 123456789)
 
     machine = Machine(games_dir=tmp_path)
     await machine.new_game("zork1")
 
-    assert called_with == {"story_file": str(game), "seed": -1}
+    assert called_with == {"story_file": str(game), "seed": 123456789}
 
 
 def test_a_name_is_forgiven_its_spelling() -> None:
@@ -413,6 +414,37 @@ async def test_a_save_comes_back_where_it_was_left(machine: Machine) -> None:
 
     assert "Restored zork1 from zork1_0001" in await machine.load("zork1_0001")
     assert machine.screen() == was
+
+
+async def test_loading_an_ordinary_rng_state_gives_it_a_fresh_future(
+    machine: Machine, store: SaveStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save()
+    saved_rng = store.read("zork1_0001").state[7]
+    assert saved_rng[1] == 0
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_rng_a", lambda: 123456789)
+
+    await machine.load("zork1_0001")
+
+    assert store.read(AUTOSAVE).state[7] == (123456789, saved_rng[1], saved_rng[2])
+
+
+async def test_loading_a_predictable_rng_state_preserves_it(
+    machine: Machine, store: SaveStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    original = store.read(AUTOSAVE)
+    predictable_rng = (original.state[7][0], 12, 4)
+    state = (*original.state[:7], predictable_rng, original.state[8])
+    store.write("zork1_0001", replace(original, state=state))
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_rng_a", lambda: 123456789)
+
+    await machine.load("zork1_0001")
+
+    assert store.read(AUTOSAVE).state[7] == predictable_rng
 
 
 async def test_the_personal_map_appears_only_after_moving_to_a_known_room(
