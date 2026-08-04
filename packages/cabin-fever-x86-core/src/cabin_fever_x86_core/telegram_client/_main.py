@@ -394,6 +394,7 @@ class TelegramBridge:
                 chat_id,
                 "/start — start a new game\n"
                 "/resume [session-id] — resume a game (latest if omitted)\n"
+                "/continue — continue the most recent game\n"
                 "/sessions — list saved games\n"
                 "/session — show the current game\n"
                 "/quit — close the channel",
@@ -425,6 +426,11 @@ class TelegramBridge:
             return
         if command == "/resume":
             resume = UUID(argument.strip()) if argument.strip() else await self._latest()
+            session = await self.open(account_id, chat_id, resume)
+            await self.send(chat_id, f"Resumed session {session.session_id}.")
+            return
+        if command == "/continue":
+            resume = await self._latest()
             session = await self.open(account_id, chat_id, resume)
             await self.send(chat_id, f"Resumed session {session.session_id}.")
             return
