@@ -21,6 +21,11 @@ SERVER_COMPONENT = "server"
 TEXT_CLIENT_COMPONENT = "text_client"
 WEB_CLIENT_COMPONENT = "web_client"
 
+# The server's conversation journal is the authoritative indication of when a
+# session was last active.  Directory mtimes can also change for housekeeping
+# unrelated to play.
+MESSAGES_FILE = "messages.jsonl"
+
 
 def session_dir(
     session_id: UUID | str,
@@ -66,7 +71,14 @@ def find_sessions(
             session_id = UUID(entry.name)
         except ValueError:
             continue
-        modified = datetime.fromtimestamp(component_dir.stat().st_mtime, tz=UTC)
+        activity_path = (
+            component_dir / MESSAGES_FILE if component == SERVER_COMPONENT else component_dir
+        )
+        # A newly-created server session can briefly exist before its first
+        # message is journalled. Keep it listable during that window.
+        if not activity_path.exists():
+            activity_path = component_dir
+        modified = datetime.fromtimestamp(activity_path.stat().st_mtime, tz=UTC)
         found.append(SessionInfo(session_id=session_id, modified=modified))
 
     found.sort(key=lambda info: info.modified, reverse=True)

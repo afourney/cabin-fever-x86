@@ -49,14 +49,11 @@ from cabin_fever_x86_core.server._tools import (
     TransmitTool,
     TypeTool,
 )
-from cabin_fever_x86_core.sessions import SERVER_COMPONENT, session_dir
+from cabin_fever_x86_core.sessions import MESSAGES_FILE, SERVER_COMPONENT, session_dir
 
 logger = logging.getLogger(__name__)
 
 SendCallback = Callable[[AssistantMessage], Awaitable[None]]
-
-# One JSON item per line, in the order they entered the context.
-MESSAGES_FILE = "messages.jsonl"
 
 # What a tool call gets in place of the result it never lived to see.
 INTERRUPTED_TOOL_OUTPUT = "Tool call was interrupted, and did not complete."
