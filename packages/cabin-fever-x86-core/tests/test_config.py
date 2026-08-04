@@ -30,9 +30,7 @@ def test_defaults_when_the_file_says_nothing(tmp_path: Path) -> None:
 
 
 def test_cabin_event_inactivity_timeout_is_configurable(tmp_path: Path) -> None:
-    config = load_config(
-        write(tmp_path, "server:\n  cabin_events:\n    inactivity_timeout: 60\n")
-    )
+    config = load_config(write(tmp_path, "server:\n  cabin_events:\n    inactivity_timeout: 60\n"))
     assert config.server.cabin_events.inactivity_timeout == 60
 
 
