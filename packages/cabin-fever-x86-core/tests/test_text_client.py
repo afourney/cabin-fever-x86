@@ -14,7 +14,12 @@ from cabin_fever_x86_core.text_client._console import (
     LiveConsole,
     _xterm256,
 )
-from cabin_fever_x86_core.text_client._main import COMMANDS, LATEST, _resume_argument
+from cabin_fever_x86_core.text_client._main import (
+    COMMANDS,
+    LATEST,
+    _parse_args,
+    _resume_argument,
+)
 
 PLAIN = Ink(enabled=False)
 
@@ -308,3 +313,15 @@ def test_resume_argument_reads_ids_and_latest():
 def test_resume_argument_rejects_nonsense():
     with pytest.raises(Exception, match="not a session id"):
         _resume_argument("the one from tuesday")
+
+
+def test_continue_selects_the_latest_session():
+    args = _parse_args(["--continue"])
+
+    assert args.continue_latest
+    assert args.resume is None
+
+
+def test_continue_and_resume_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        _parse_args(["--continue", "--resume"])
