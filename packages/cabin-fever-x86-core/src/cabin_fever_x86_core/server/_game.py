@@ -249,6 +249,7 @@ class Game:
         self._worker: asyncio.Task[None] | None = None
         self._cabin: asyncio.Task[None] | None = None
         self._afk_until = 0.0
+        self._last_player_message_at: float | None = None
         self._resumed = False
         self._excuses: list[Excuse] = []
         # Saves belong to the session, and the folder is left to the store to
@@ -362,6 +363,7 @@ class Game:
         """Accept a transmission from the player, unless nobody is at the radio."""
         if self._worker is None:
             raise RuntimeError("Game.receive() called outside of the game context")
+        self._last_player_message_at = time.monotonic()
         if self._afk_seconds_left() > 0:
             logger.info("Away from the radio; missed %s", message.id)
             return
@@ -412,12 +414,27 @@ class Game:
 
         while True:
             await asyncio.sleep(random.uniform(delays.min_delay, delays.max_delay))
-            item = self._draw()
-            logger.info("%s: %s", item.kind, item.text)
-            if item.kind == STAGE_DIRECTION:
-                await self.stage_direction(item.text)
-            else:
-                await self.cabin_event(item.text)
+            await self._emit_scheduled_interruption()
+
+    def _player_is_active(self) -> bool:
+        """Whether the player has transmitted recently enough for a cabin interruption."""
+        last = self._last_player_message_at
+        if last is None:
+            return False
+        return time.monotonic() - last <= self._config.cabin_events.inactivity_timeout
+
+    async def _emit_scheduled_interruption(self) -> None:
+        """Draw and queue one interruption, provided the player is still active."""
+        if not self._player_is_active():
+            return
+        item = self._draw()
+        if not self._player_is_active():
+            return
+        logger.info("%s: %s", item.kind, item.text)
+        if item.kind == STAGE_DIRECTION:
+            await self.stage_direction(item.text)
+        else:
+            await self.cabin_event(item.text)
 
     async def _transmit(self, content: str) -> None:
         """Speak one line to the player."""

@@ -25,7 +25,15 @@ def test_defaults_when_the_file_says_nothing(tmp_path: Path) -> None:
     assert config.client.host == "127.0.0.1"
     assert config.server.port == 5000
     assert config.server.ai_client.provider == "openai"
+    assert config.server.cabin_events.inactivity_timeout == 300
     assert config.launcher.package_locator is None
+
+
+def test_cabin_event_inactivity_timeout_is_configurable(tmp_path: Path) -> None:
+    config = load_config(
+        write(tmp_path, "server:\n  cabin_events:\n    inactivity_timeout: 60\n")
+    )
+    assert config.server.cabin_events.inactivity_timeout == 60
 
 
 def test_launcher_package_locator_is_optional(tmp_path: Path) -> None:
