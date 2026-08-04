@@ -72,9 +72,7 @@ def find_sessions(
         except ValueError:
             continue
         activity_path = (
-            component_dir / MESSAGES_FILE
-            if component == SERVER_COMPONENT
-            else component_dir
+            component_dir / MESSAGES_FILE if component == SERVER_COMPONENT else component_dir
         )
         # A newly-created server session can briefly exist before its first
         # message is journalled. Keep it listable during that window.
