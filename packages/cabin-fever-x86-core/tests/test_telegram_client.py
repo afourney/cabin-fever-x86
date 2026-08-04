@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
@@ -60,6 +61,35 @@ async def test_rejected_account_is_logged_with_discoverable_id(caplog) -> None:
     assert event.responses == ["Not authorized."]
     assert "user_id=8675309" in caplog.text
     assert "username=@jenny" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_continue_resumes_the_most_recent_server_session(monkeypatch) -> None:
+    sent = []
+
+    async def send_message(chat_id, text):
+        sent.append((chat_id, text))
+
+    bridge = TelegramBridge(
+        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
+    )
+    latest = uuid4()
+    opened = []
+
+    async def find_latest():
+        return latest
+
+    async def open_session(account_id, chat_id, resume):
+        opened.append((account_id, chat_id, resume))
+        return SimpleNamespace(session_id=resume)
+
+    monkeypatch.setattr(bridge, "_latest", find_latest)
+    monkeypatch.setattr(bridge, "open", open_session)
+
+    await bridge._handle_text(8675309, 8675309, "/continue")
+
+    assert opened == [(8675309, 8675309, latest)]
+    assert sent == [(8675309, f"Resumed session {latest}.")]
 
 
 @pytest.mark.asyncio

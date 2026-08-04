@@ -7,6 +7,7 @@ how long the cabin has been sitting on the reply.
 
     uv run cf86-text
     uv run cf86-text --resume            # the most recent session
+    uv run cf86-text --continue          # likewise
     uv run cf86-text --list-sessions
 
 :mod:`cabin_fever_x86_core.text_client._console` owns the screen. This module owns
@@ -105,6 +106,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=_resume_argument,
         default=None,
         help="Resume a session instead of starting one. Bare, it takes the most recent.",
+    )
+    group.add_argument(
+        "--continue",
+        dest="continue_latest",
+        action="store_true",
+        help="Continue the most recently active session.",
     )
     group.add_argument(
         "--list-sessions",
@@ -310,7 +317,8 @@ def main() -> None:
         if args.list_sessions:
             asyncio.run(list_sessions(host, port))
             return
-        asyncio.run(run_client(host, port, args.resume, color=not args.no_color))
+        resume = LATEST if args.continue_latest else args.resume
+        asyncio.run(run_client(host, port, resume, color=not args.no_color))
     except SessionCommandError as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
