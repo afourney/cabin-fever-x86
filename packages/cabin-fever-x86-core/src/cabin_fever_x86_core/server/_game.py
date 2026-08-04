@@ -429,6 +429,7 @@ class Game:
             return
         item = self._draw()
         if not self._player_is_active():
+            self._deck.append(item)
             return
         logger.info("%s: %s", item.kind, item.text)
         if item.kind == STAGE_DIRECTION:
