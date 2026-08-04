@@ -56,6 +56,9 @@ server:
   cabin_events:
     min_delay: 90
     max_delay: 240
+    # Pause scheduled cabin events and stage directions after this many seconds
+    # without a transmission from the player.
+    inactivity_timeout: 300
 
   # Once a reply comes back having used this many tokens, the companion makes an
   # excuse, writes the night down, and carries on from its notes. The count is

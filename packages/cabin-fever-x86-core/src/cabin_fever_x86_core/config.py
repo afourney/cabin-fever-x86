@@ -83,6 +83,9 @@ class CabinEventsConfig(_Section):
 
     min_delay: Annotated[float, Field(gt=0)] = 90.0
     max_delay: Annotated[float, Field(gt=0)] = 240.0
+    #: Do not draw or emit a scheduled interruption after this many seconds
+    #: without a transmission from the player.
+    inactivity_timeout: Annotated[float, Field(gt=0)] = 300.0
 
     @model_validator(mode="after")
     def _check_order(self) -> Self:
