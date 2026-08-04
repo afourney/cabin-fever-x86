@@ -322,6 +322,10 @@ def test_continue_selects_the_latest_session():
     assert args.resume is None
 
 
-def test_continue_and_resume_are_mutually_exclusive():
+@pytest.mark.parametrize(
+    "argv",
+    [["--continue", "--resume"], ["--continue", "--list-sessions"]],
+)
+def test_continue_is_mutually_exclusive(argv):
     with pytest.raises(SystemExit):
-        _parse_args(["--continue", "--resume"])
+        _parse_args(argv)
