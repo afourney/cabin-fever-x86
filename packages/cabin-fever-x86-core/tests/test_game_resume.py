@@ -21,14 +21,15 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from cabin_fever_x86_core.config import ServerConfig
-from cabin_fever_x86_core.messages import AssistantMessage
+from cabin_fever_x86_core.config import CabinEventsConfig, ServerConfig
+from cabin_fever_x86_core.messages import AssistantMessage, UserMessage
 from cabin_fever_x86_core.server import _game as game_module
 from cabin_fever_x86_core.server._game import (
     INTERRUPTED_TOOL_OUTPUT,
     OPENING_DIRECTION,
     REOPENING_DIRECTION,
     Game,
+    Interruption,
     load_journal,
     resolve_interrupted_calls,
 )
@@ -88,6 +89,62 @@ def disk(tmp_path: Path, request: pytest.FixtureRequest) -> None:
 
 async def sent_nowhere(_message: AssistantMessage) -> None:
     return None
+
+
+def test_player_activity_expires_at_the_configured_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ServerConfig(cabin_events=CabinEventsConfig(inactivity_timeout=60))
+    game = Game(config, sent_nowhere)
+    game._last_player_message_at = 100.0
+
+    monkeypatch.setattr(game_module.time, "monotonic", lambda: 160.0)
+    assert game._player_is_active()
+    monkeypatch.setattr(game_module.time, "monotonic", lambda: 160.001)
+    assert not game._player_is_active()
+
+
+async def test_an_inactive_player_does_not_consume_an_interruption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    game = Game(ServerConfig(), sent_nowhere)
+    monkeypatch.setattr(
+        game,
+        "_draw",
+        lambda: pytest.fail("an interruption was selected while the player was inactive"),
+    )
+
+    await game._emit_scheduled_interruption()
+
+
+async def test_activity_is_rechecked_before_an_interruption_is_emitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    game = Game(ServerConfig(), sent_nowhere)
+    checks = iter((True, False))
+    monkeypatch.setattr(game, "_player_is_active", lambda: next(checks))
+    monkeypatch.setattr(
+        game, "_draw", lambda: Interruption(kind=game_module.CABIN_EVENT, text="a branch snaps")
+    )
+    emitted: list[str] = []
+
+    async def emit(text: str) -> None:
+        emitted.append(text)
+
+    monkeypatch.setattr(game, "cabin_event", emit)
+
+    await game._emit_scheduled_interruption()
+
+    assert emitted == []
+
+
+async def test_receiving_a_message_marks_the_player_active() -> None:
+    game = Game(ServerConfig(), sent_nowhere)
+    game._worker = object()  # type: ignore[assignment]
+
+    await game.receive(UserMessage(content="hello?"))
+
+    assert game._player_is_active()
 
 
 async def play_a_little(session_id: UUID | None = None) -> UUID:
