@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 GAMES_DIR = Path("data/games")
 
+# Jericho otherwise substitutes a supported game's walkthrough seed. Frotz
+# treats -1 as a request for a time-derived seed, which is what ordinary play
+# wants when a game first boots.
+RANDOM_SEED = -1
+
 NO_GAME = (
     "The computer is sitting at the DOS prompt. No game is running.\n"
     f"Use your `{ListGamesTool.name}` tool to see what is on the disk, and "
@@ -148,7 +153,7 @@ class Machine:
 
         self.reboot()
         try:
-            env = await asyncio.to_thread(FrotzEnv, str(path))
+            env = await asyncio.to_thread(FrotzEnv, str(path), seed=RANDOM_SEED)
             observation, info = await asyncio.to_thread(env.reset)
         except Exception as exc:
             logger.exception("Could not load %s", path)

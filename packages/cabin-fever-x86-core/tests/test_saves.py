@@ -65,6 +65,37 @@ def test_the_machines_messages_name_the_tools_that_exist() -> None:
         assert tool.name in NO_GAME, f"{tool.__name__} is not offered at the prompt"
 
 
+async def test_a_game_boots_with_frotz_time_based_randomness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game = tmp_path / "zork1.z5"
+    game.touch()
+    called_with: dict[str, object] = {}
+
+    class FakeEnv:
+        def __init__(self, story_file: str, *, seed: int) -> None:
+            called_with.update(story_file=story_file, seed=seed)
+
+        def reset(self) -> tuple[str, dict[str, int]]:
+            return "West of House", {"score": 0, "moves": 0}
+
+        def get_player_location(self) -> None:
+            return None
+
+        def get_max_score(self) -> int:
+            return 350
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine.FrotzEnv", FakeEnv)
+
+    machine = Machine(games_dir=tmp_path)
+    await machine.new_game("zork1")
+
+    assert called_with == {"story_file": str(game), "seed": -1}
+
+
 def test_a_name_is_forgiven_its_spelling() -> None:
     assert parse_name("zork1_0001") == ("zork1", 1)
     assert parse_name("ZORK1_0001.BIN") == ("zork1", 1)
