@@ -54,7 +54,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/server/_system_prompt.py" = ["RUF001", "RUF002", "RUF003"]
 "**/tests/**/*.py" = ["D"]
 
 [tool.poe.tasks]
