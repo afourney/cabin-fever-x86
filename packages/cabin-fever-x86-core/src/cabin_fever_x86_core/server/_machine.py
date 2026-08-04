@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,12 @@ from cabin_fever_x86_core.server._tools import (
 logger = logging.getLogger(__name__)
 
 GAMES_DIR = Path("data/games")
+
+
+def _fresh_rng_a() -> int:
+    """Return a portable, nonzero state for Frotz's normal RNG mode."""
+    return secrets.randbelow(0x7FFFFFFF) + 1
+
 
 NO_GAME = (
     "The computer is sitting at the DOS prompt. No game is running.\n"
@@ -148,7 +155,7 @@ class Machine:
 
         self.reboot()
         try:
-            env = await asyncio.to_thread(FrotzEnv, str(path))
+            env = await asyncio.to_thread(FrotzEnv, str(path), seed=_fresh_rng_a())
             observation, info = await asyncio.to_thread(env.reset)
         except Exception as exc:
             logger.exception("Could not load %s", path)
@@ -271,6 +278,10 @@ class Machine:
         except Exception as exc:
             logger.exception("Could not restore %s", name)
             return f"The machine chokes on that save: {exc}"
+
+        _a, interval, counter = snapshot.state[7]
+        if interval == 0:
+            env.frotz_lib.setRng(_fresh_rng_a(), interval, counter)
 
         # Taken from the restored interpreter rather than the file: the header
         # is what the screen said, the env is what is actually true now.
