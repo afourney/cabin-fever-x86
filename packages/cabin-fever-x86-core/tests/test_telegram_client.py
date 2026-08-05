@@ -243,3 +243,36 @@ async def test_first_reply_is_captioned_voice_then_text_follows_text(monkeypatch
             f"audio/clean_{third.id}.ogg",
         ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_empty_assistant_transmission_is_static_without_voice(monkeypatch) -> None:
+    sent = []
+
+    async def send_message(chat_id, text):
+        sent.append((chat_id, text))
+
+    records = []
+    session = SimpleNamespace(
+        chat_id=8675309,
+        voice_lock=asyncio.Lock(),
+        transcript=SimpleNamespace(log=lambda *record: records.append(record)),
+        has_replied=False,
+        last_user_was_voice=False,
+    )
+    bridge = TelegramBridge(
+        SimpleNamespace(send_message=send_message),
+        "ws://localhost:5000",
+        {8675309},
+        voice=object(),
+    )
+    monkeypatch.setattr(
+        "cabin_fever_x86_core.telegram_client._main.synthesize",
+        lambda *_args, **_kwargs: pytest.fail("empty transmissions must not be synthesized"),
+    )
+    message = AssistantMessage(content="")
+
+    await bridge._deliver_assistant(session, message)
+
+    assert sent == [(8675309, "[static]")]
+    assert records == [("assistant", message.id, "", None)]

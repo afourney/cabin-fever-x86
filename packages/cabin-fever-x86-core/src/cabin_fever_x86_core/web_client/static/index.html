@@ -329,6 +329,26 @@ function squelchTail(ctx, destination, at) {
   click(ctx, destination, at + length - 0.006, 0.5);
 }
 
+// An empty transmission is just the carrier dropping: no synthesized voice,
+// only the same tail heard after an ordinary reply.
+function playStatic() {
+  if (!audioCtx) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const length = 0.25;
+    squelchTail(audioCtx, audioCtx.destination, audioCtx.currentTime + 0.05);
+    playing = {};
+    rainLevel(RAIN_DUCKED);
+    setStatus("RECEIVING");
+    setTimeout(() => {
+      playing = null;
+      rainLevel(keyed ? RAIN_DUCKED : RAIN_UNDER);
+      setStatus(keyed ? "TRANSMITTING" : "");
+      resolve();
+    }, length * 1000);
+  });
+}
+
 async function play(url) {
   if (!audioCtx) return;
   const buffer = await fetch(url).then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b));
@@ -381,9 +401,10 @@ function connect() {
       $("talk").disabled = false;
       setStatus("");
     } else if (msg.type === "assistant") {
-      say("assistant", msg.text);
+      say("assistant", msg.text || "[static]");
       // Replies play in the order they arrived, never on top of each other.
       if (msg.audio) queue = queue.then(() => play(msg.audio)).catch(() => {});
+      else if (!msg.text) queue = queue.then(() => playStatic()).catch(() => {});
     } else if (msg.type === "user") {
       say("user", msg.text);
     } else if (msg.type === "error") {
