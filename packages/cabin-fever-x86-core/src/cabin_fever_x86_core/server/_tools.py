@@ -144,14 +144,18 @@ class TransmitTool(Tool):
         self._transmit = transmit
         self._cut_out_last = False
 
-    async def execute(self, args: dict[str, Any]) -> ToolOutput:
+    async def execute(self, args: dict[str, Any], *, force: bool = False) -> ToolOutput:
         message = str(args.get("message") or "").strip()
         if not message:
-            return ToolOutput("Nothing was sent: the message was empty.", end_turn=True)
+            # Silence is still a transmission. The client decides how to render
+            # it: an empty line, radio static, or something else appropriate to
+            # that client.
+            await self._transmit("")
+            return ToolOutput("Transmitted.", end_turn=True)
 
         # Never twice running: a second long one gets through regardless, so a
         # companion that cannot be brief is not left transmitting into a void.
-        if len(message) > MAX_TRANSMISSION and not self._cut_out_last:
+        if len(message) > MAX_TRANSMISSION and not self._cut_out_last and not force:
             # Nothing goes out, and the turn stays open so it can be said again.
             self._cut_out_last = True
             logger.info("Transmission cut out at %d characters", len(message))

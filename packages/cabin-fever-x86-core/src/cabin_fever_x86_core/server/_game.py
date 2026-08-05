@@ -58,9 +58,9 @@ SendCallback = Callable[[AssistantMessage], Awaitable[None]]
 # What a tool call gets in place of the result it never lived to see.
 INTERRUPTED_TOOL_OUTPUT = "Tool call was interrupted, and did not complete."
 
-# How many times one player transmission may go round the tool loop before we
-# stop, in case the model never settles.
-MAX_TOOL_TURNS = 8
+# How many ordinary model turns one player transmission may take before we
+# force one final transmission, in case the model never settles.
+MAX_MODEL_TURNS = 8
 
 # Long enough that nothing the operator says lands in the gap while the night is
 # being written down, and cleared again the moment it has been.
@@ -466,7 +466,13 @@ class Game:
         with self._journal.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(item) + "\n")
 
-    async def _run_tool(self, call: ResponseFunctionToolCall, cabin_turn: bool) -> ToolOutput:
+    async def _run_tool(
+        self,
+        call: ResponseFunctionToolCall,
+        cabin_turn: bool,
+        *,
+        force_transmit: bool = False,
+    ) -> ToolOutput:
         """Carry out one tool call, turning any failure into a result the model can read.
 
         Nothing that goes wrong here ends the turn: the companion is left able
@@ -488,6 +494,10 @@ class Game:
             return ToolOutput("Arguments must be a JSON object.")
 
         try:
+            if force_transmit and isinstance(tool, TransmitTool):
+                # The final model turn has no retry left. Let its transmission
+                # through even when it exceeds the usual radio limit.
+                return await tool.execute(args, force=True)
             return await tool.execute(args)
         except Exception as exc:
             logger.exception("Tool %r failed", call.name)
@@ -572,13 +582,18 @@ class Game:
         ]
 
         compacted = False
-        for _ in range(MAX_TOOL_TURNS):
+        for turn in range(MAX_MODEL_TURNS + 1):
+            final_turn = turn == MAX_MODEL_TURNS
             try:
                 response = await self._client.responses.create(
                     model=self._model,
                     instructions=SYSTEM_PROMPT,
                     input=self._messages,
                     tools=tools,
+                    tool_choice=(
+                        {"type": "function", "name": TransmitTool.name} if final_turn else "auto"
+                    ),
+                    parallel_tool_calls=False,
                     reasoning={"effort": "medium"},
                     # Zero data retention: nothing is kept server-side between
                     # turns, so the reasoning has to travel with us, encrypted.
@@ -617,8 +632,15 @@ class Game:
                 return
 
             done = False
+            # Parallel calls are disabled above, so there should currently be
+            # at most one. Keep handling the full response shape here in case
+            # we choose to allow batches again later.
             for call in calls:
-                result = await self._run_tool(call, cabin_turn)
+                result = await self._run_tool(
+                    call,
+                    cabin_turn,
+                    force_transmit=final_turn and call.name == TransmitTool.name,
+                )
                 self._append(
                     {
                         "type": "function_call_output",
@@ -631,4 +653,8 @@ class Game:
             if done:
                 return
 
-        logger.warning("Gave up on %s after %d tool turns", message.id, MAX_TOOL_TURNS)
+        logger.warning(
+            "Forced transmission for %s did not end the turn after %d model turns",
+            message.id,
+            MAX_MODEL_TURNS,
+        )

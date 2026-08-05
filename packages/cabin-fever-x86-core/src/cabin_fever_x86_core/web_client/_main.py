@@ -246,7 +246,7 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
             # One at a time: two replies speaking over each other is worse
             # than one arriving a beat late.
             async with radio.lock:
-                if voice is not None:
+                if voice is not None and message.content:
                     try:
                         spoken = await asyncio.to_thread(synthesize, voice, message.content)
                         clip = await asyncio.to_thread(
