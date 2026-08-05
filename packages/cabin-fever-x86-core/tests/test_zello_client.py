@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from cabin_fever_x86_core.messages import AssistantMessage
-from cabin_fever_x86_core.zello_client._main import ZelloBridge
+from cabin_fever_x86_core.zello_client._main import ZelloBridge, _static_burst
 
 
 class Transcript:
@@ -112,3 +112,30 @@ async def test_assistant_text_is_synthesized_sent_and_logged(monkeypatch) -> Non
             f"audio/clean_{message.id}.ogg",
         )
     ]
+
+
+def test_static_burst_is_ogg_opus() -> None:
+    assert _static_burst().startswith(b"OggS")
+
+
+@pytest.mark.asyncio
+async def test_empty_assistant_transmission_sends_static_without_synthesis(monkeypatch) -> None:
+    message = AssistantMessage(id=uuid4(), content="")
+    upstream = Upstream([message.model_dump_json()])
+    zello = Zello()
+    transcript = Transcript()
+    monkeypatch.setattr(
+        "cabin_fever_x86_core.zello_client._main.synthesize",
+        lambda *_args, **_kwargs: pytest.fail("empty transmissions must not be synthesized"),
+    )
+    monkeypatch.setattr(
+        "cabin_fever_x86_core.zello_client._main._static_burst",
+        lambda: b"OggS-static",
+    )
+    bridge = ZelloBridge(zello, VoiceMessage, upstream, transcript, object(), {"alice"})
+
+    await bridge._receive_server()
+
+    assert zello.sent == [b"OggS-static"]
+    assert transcript.audio[0][0::2] == ("clean", b"OggS-static")
+    assert transcript.records == [("assistant", message.id, "", f"audio/clean_{message.id}.ogg")]

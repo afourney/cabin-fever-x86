@@ -7,10 +7,13 @@ import asyncio
 import logging
 import sys
 from collections.abc import Sequence
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import numpy as np
+import soundfile as sf
 import yaml
 from elevenlabs.client import ElevenLabs
 from pydantic import ValidationError
@@ -36,6 +39,30 @@ logger = logging.getLogger(__name__)
 
 LATEST = "latest"
 ZELLO_TTS_FORMAT = "opus_48000_64"
+STATIC_SECONDS = 0.22
+STATIC_SAMPLE_RATE = 48_000
+
+
+def _static_burst() -> bytes:
+    """Make a short Ogg Opus burst for a keyed-up but silent transmission."""
+    frames = round(STATIC_SECONDS * STATIC_SAMPLE_RATE)
+    samples = np.random.default_rng().uniform(-0.18, 0.18, frames).astype(np.float32)
+    # Take the hard edge off the generated clip; Zello supplies the channel's
+    # own key-up and tail around it.
+    ramp = min(round(0.01 * STATIC_SAMPLE_RATE), frames // 2)
+    envelope = np.ones(frames, dtype=np.float32)
+    envelope[:ramp] = np.linspace(0, 1, ramp, dtype=np.float32)
+    envelope[-ramp:] = np.linspace(1, 0, ramp, dtype=np.float32)
+
+    encoded = BytesIO()
+    sf.write(
+        encoded,
+        samples * envelope,
+        STATIC_SAMPLE_RATE,
+        format="OGG",
+        subtype="OPUS",
+    )
+    return encoded.getvalue()
 
 
 class ZelloClientError(RuntimeError):
@@ -178,12 +205,15 @@ class ZelloBridge:
                 continue
 
             try:
-                audio = await asyncio.to_thread(
-                    synthesize,
-                    self.voice,
-                    message.content,
-                    output_format=ZELLO_TTS_FORMAT,
-                )
+                if message.content:
+                    audio = await asyncio.to_thread(
+                        synthesize,
+                        self.voice,
+                        message.content,
+                        output_format=ZELLO_TTS_FORMAT,
+                    )
+                else:
+                    audio = await asyncio.to_thread(_static_burst)
                 if not audio.startswith(b"OggS"):
                     raise VoiceError("ElevenLabs returned Opus without an OGG container")
                 clip = await asyncio.to_thread(
