@@ -197,6 +197,8 @@ class Console:
 
     def say(self, kind: str, text: str) -> None:
         """Put one transmission in the log, wrapped into the speaker column."""
+        if kind == "assistant" and not text:
+            text = "[static]"
         self._emit("\n".join(self.format(kind, text)))
 
     def echo(self, text: str) -> None:
