@@ -151,7 +151,10 @@ class TransmitTool(Tool):
             # it: an empty line, radio static, or something else appropriate to
             # that client.
             await self._transmit("")
-            return ToolOutput("Transmitted.", end_turn=True)
+            return ToolOutput(
+                "Kerchunk. You keyed up the radio without speaking.",
+                end_turn=True,
+            )
 
         # Never twice running: a second long one gets through regardless, so a
         # companion that cannot be brief is not left transmitting into a void.

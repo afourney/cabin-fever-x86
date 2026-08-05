@@ -627,8 +627,7 @@ class Game:
             if not calls:
                 # Nothing called: whatever it said in plain text is the transmission.
                 text = response.output_text.strip()
-                if text:
-                    await self._transmit(text)
+                await self._transmit(text)
                 return
 
             done = False

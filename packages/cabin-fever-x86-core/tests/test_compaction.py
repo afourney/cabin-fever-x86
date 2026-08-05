@@ -417,6 +417,19 @@ async def test_an_empty_transmission_still_reaches_the_client(
         await game._handle(game_module.Interruption(kind="stage_direction", text="say nothing"))
 
     assert spoken == [""]
+    assert game._messages[-1]["output"] == ("Kerchunk. You keyed up the radio without speaking.")
+
+
+async def test_an_empty_plain_reply_still_reaches_the_client(
+    sender: Any, spoken: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replies = [FakeResponse([], FakeUsage(20), output_text="   ")]
+    game, _responses = game_with(replies, sender, monkeypatch)
+
+    async with game:
+        await game._handle(game_module.Interruption(kind="stage_direction", text="say nothing"))
+
+    assert spoken == [""]
 
 
 async def test_the_extra_model_turn_forces_a_transmission(
