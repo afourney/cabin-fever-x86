@@ -197,8 +197,11 @@ class TelegramBridge:
     async def _deliver_assistant(self, session: TelegramSession, message: AssistantMessage) -> None:
         """Answer in kind after the first, which is voiced when possible."""
         clip: str | None = None
-        send_voice = self.voice is not None and (
-            not session.has_replied or session.last_user_was_voice
+        display = message.content or "[static]"
+        send_voice = (
+            bool(message.content)
+            and self.voice is not None
+            and (not session.has_replied or session.last_user_was_voice)
         )
         session.has_replied = True
 
@@ -243,7 +246,7 @@ class TelegramBridge:
                     session.transcript.log("assistant", message.id, message.content, clip)
                     return
 
-        await self.send(session.chat_id, message.content)
+        await self.send(session.chat_id, display)
         session.transcript.log("assistant", message.id, message.content, clip)
 
     async def _latest(self) -> UUID:
