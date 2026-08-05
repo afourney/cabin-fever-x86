@@ -405,3 +405,51 @@ async def test_the_night_is_written_down_once_per_transmission(
         # second set of notes, though the last reply was over the threshold too.
         assert len(responses.calls) == 3
         assert not list(Path(game._journal or "").parent.glob("messages.0002.jsonl"))
+
+
+async def test_an_empty_transmission_still_reaches_the_client(
+    sender: Any, spoken: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replies = [FakeResponse([transmit_call("")], FakeUsage(20))]
+    game, _responses = game_with(replies, sender, monkeypatch)
+
+    async with game:
+        await game._handle(game_module.Interruption(kind="stage_direction", text="say nothing"))
+
+    assert spoken == [""]
+    assert game._messages[-1]["output"] == ("Kerchunk. You keyed up the radio without speaking.")
+
+
+async def test_an_empty_plain_reply_still_reaches_the_client(
+    sender: Any, spoken: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replies = [FakeResponse([], FakeUsage(20), output_text="   ")]
+    game, _responses = game_with(replies, sender, monkeypatch)
+
+    async with game:
+        await game._handle(game_module.Interruption(kind="stage_direction", text="say nothing"))
+
+    assert spoken == [""]
+
+
+async def test_the_extra_model_turn_forces_a_transmission(
+    sender: Any, spoken: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    long_message = "x" * 500
+    replies = [
+        *(
+            FakeResponse([tool_call("read_screen", f"screen_{turn}")], FakeUsage(20))
+            for turn in range(game_module.MAX_MODEL_TURNS)
+        ),
+        FakeResponse([transmit_call(long_message, "final")], FakeUsage(20)),
+    ]
+    game, responses = game_with(replies, sender, monkeypatch)
+
+    async with game:
+        await game._handle(game_module.Interruption(kind="stage_direction", text="keep looking"))
+
+    assert spoken == [long_message]
+    assert len(responses.calls) == game_module.MAX_MODEL_TURNS + 1
+    assert all(call["tool_choice"] == "auto" for call in responses.calls[:-1])
+    assert all(call["parallel_tool_calls"] is False for call in responses.calls)
+    assert responses.calls[-1]["tool_choice"] == {"type": "function", "name": "transmit"}

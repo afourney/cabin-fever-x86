@@ -122,6 +122,13 @@ def test_one_exchange_is_kept_off_the_last():
     )
 
 
+def test_an_empty_assistant_transmission_is_static():
+    console = make_console()
+    console.say("assistant", "")
+
+    assert console._out.getvalue() == f"sam {UNICODE.tick} [static]\n\n"
+
+
 def test_a_pipe_gets_the_line_and_nothing_else():
     out = io.StringIO()
     out.isatty = lambda: False
