@@ -75,7 +75,11 @@ PERSONAL_MAP = "personal_map"
 COMMENT_LIMIT = 500
 COMMENT_PREVIEW = 120
 Location = tuple[int, str]
-PersonalMap = dict[Location, dict[Location, str]]
+RunMap = dict[Location, dict[Location, str]]
+KnownMap = dict[Location, dict[Location, str]]
+# Kept as a public alias while callers and old save records still use the
+# original name. In a save, this is the map of the run at that restore point.
+PersonalMap = RunMap
 
 # Jericho's state tuple, in the order get_state() returns it and set_state()
 # unpacks it. The two buffers and the rng triple are handled on their own; the
@@ -86,6 +90,35 @@ SCALARS = ("pc", "sp", "fp", "frame_count", "opcode")
 
 class SaveError(Exception):
     """A save could not be written, found, or read back."""
+
+
+@dataclass(frozen=True)
+class StorySignature:
+    """The standard Z-machine identity fields from a story-file header."""
+
+    release: int
+    serial: str
+    checksum: int
+
+    def as_record(self) -> dict[str, int | str]:
+        return {
+            "release": self.release,
+            "serial": self.serial,
+            "checksum": self.checksum,
+        }
+
+    @classmethod
+    def from_record(cls, value: Any) -> StorySignature:
+        if not isinstance(value, dict):
+            raise ValueError("not an object")
+        serial = value.get("serial")
+        if not isinstance(serial, str) or len(serial) != 6:
+            raise ValueError("serial must be six characters")
+        release = int(value["release"])
+        checksum = int(value["checksum"])
+        if not 0 <= release <= 0xFFFF or not 0 <= checksum <= 0xFFFF:
+            raise ValueError("release and checksum must be unsigned 16-bit values")
+        return cls(release=release, serial=serial, checksum=checksum)
 
 
 @dataclass(frozen=True)
@@ -101,6 +134,9 @@ class Snapshot:
     location: str | None = None
     comment: str | None = None
     personal_map: PersonalMap | None = None
+    # Absent in legacy CFX86SAVE2 files. A missing signature deliberately skips
+    # story identity validation so every existing save remains loadable.
+    story_signature: StorySignature | None = None
 
 
 @dataclass(frozen=True)
@@ -234,6 +270,8 @@ class SaveStore:
             metadata["location"] = snapshot.location
         if comment:
             metadata["comment"] = comment
+        if snapshot.story_signature is not None:
+            metadata["story_signature"] = snapshot.story_signature.as_record()
         map_record = _encode_map(snapshot.personal_map or {})
 
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -273,6 +311,7 @@ class SaveStore:
             location=_optional_text(metadata.get("location")),
             comment=_optional_text(metadata.get("comment")),
             personal_map=_decode_map(records.get(PERSONAL_MAP), path),
+            story_signature=_optional_story_signature(metadata, path),
         )
 
     def info(self, name: str) -> SaveInfo:
@@ -409,11 +448,16 @@ def _json_line(record: dict[str, Any]) -> bytes:
 
 def _encode_map(personal_map: PersonalMap) -> dict[str, Any]:
     """Turn tuple-keyed directed routes into JSON records."""
-    edges = []
+    return {"type": PERSONAL_MAP, "version": 1, "edges": encode_map_edges(personal_map)}
+
+
+def encode_map_edges(personal_map: PersonalMap) -> list[dict[str, Any]]:
+    """Turn a tuple-keyed map into portable JSON edge records."""
+    edges: list[dict[str, Any]] = []
     for source, destinations in personal_map.items():
         for destination, command in destinations.items():
             edges.append({"from": list(source), "to": list(destination), "command": command})
-    return {"type": PERSONAL_MAP, "version": 1, "edges": edges}
+    return edges
 
 
 def _decode_map(record: dict[str, Any] | None, path: Path) -> PersonalMap:
@@ -422,15 +466,22 @@ def _decode_map(record: dict[str, Any] | None, path: Path) -> PersonalMap:
         return {}
     if record.get("version") != 1 or not isinstance(record.get("edges"), list):
         raise SaveError(f"{path.name} has an unreadable personal map")
-    personal_map: PersonalMap = {}
     try:
-        for edge in record["edges"]:
-            source = _decode_location(edge["from"])
-            destination = _decode_location(edge["to"])
-            command = str(edge["command"])
-            personal_map.setdefault(source, {})[destination] = command
+        return decode_map_edges(record["edges"])
     except (KeyError, TypeError, ValueError) as exc:
         raise SaveError(f"{path.name} has an unreadable personal map: {exc}") from exc
+
+
+def decode_map_edges(edges: Any) -> PersonalMap:
+    """Validate portable JSON edge records and rebuild a tuple-keyed map."""
+    if not isinstance(edges, list):
+        raise ValueError("edges must be a list")
+    personal_map: PersonalMap = {}
+    for edge in edges:
+        source = _decode_location(edge["from"])
+        destination = _decode_location(edge["to"])
+        command = str(edge["command"])
+        personal_map.setdefault(source, {})[destination] = command
     return personal_map
 
 
@@ -454,6 +505,16 @@ def _comment(value: str | None) -> str | None:
 def _optional_text(value: Any) -> str | None:
     """Return a nonempty metadata string or no value."""
     return value if isinstance(value, str) and value else None
+
+
+def _optional_story_signature(metadata: dict[str, Any], path: Path) -> StorySignature | None:
+    """Read an optional signature, accepting old saves that have none."""
+    if "story_signature" not in metadata:
+        return None
+    try:
+        return StorySignature.from_record(metadata["story_signature"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SaveError(f"{path.name} has an unreadable story signature: {exc}") from exc
 
 
 def _preview(comment: str) -> str:

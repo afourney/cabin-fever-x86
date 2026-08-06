@@ -10,19 +10,27 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from jericho import FrotzEnv
 
+from cabin_fever_x86_core.server._game_memories import (
+    GameMemoryError,
+    GameMemoryStore,
+    merge_maps,
+)
 from cabin_fever_x86_core.server._saves import (
     AUTOSAVE,
+    KnownMap,
     Location,
-    PersonalMap,
+    RunMap,
     SaveError,
     SaveInfo,
     SaveStore,
     Snapshot,
+    StorySignature,
 )
 from cabin_fever_x86_core.server._tools import (
     ListGamesTool,
@@ -36,6 +44,21 @@ from cabin_fever_x86_core.server._tools import (
 logger = logging.getLogger(__name__)
 
 GAMES_DIR = Path("data/games")
+
+# Fixed fields in every Z-machine story-file header. Together these are the
+# conventional identity used by Quetzal saves to distinguish story builds.
+_RELEASE = slice(0x02, 0x04)
+_SERIAL = slice(0x12, 0x18)
+_CHECKSUM = slice(0x1C, 0x1E)
+_HEADER_NEEDED = 0x1E
+
+
+class VisitKind(Enum):
+    """How familiar the current room was before the move that entered it."""
+
+    REVISIT_THIS_RUN = "revisit_this_run"
+    FIRST_THIS_RUN = "first_this_run"
+    FIRST_EVER = "first_ever"
 
 
 def _fresh_rng_a() -> int:
@@ -82,19 +105,29 @@ class Machine:
     """One computer, running at most one game at a time.
 
     Given a *saves* store, the machine writes a restore point after every line
-    typed at it and can be put back to any save it has written.
+    typed at it and can be put back to any save it has written. A separate
+    *game_memories* store carries routes remembered across those restore points.
     """
 
-    def __init__(self, games_dir: Path = GAMES_DIR, saves: SaveStore | None = None) -> None:
+    def __init__(
+        self,
+        games_dir: Path = GAMES_DIR,
+        saves: SaveStore | None = None,
+        game_memories: GameMemoryStore | None = None,
+    ) -> None:
         self._games_dir = games_dir
         self._saves = saves
+        self._game_memories = game_memories
         self._env: FrotzEnv | None = None
         self._game: str | None = None
+        self._story_signature: StorySignature | None = None
         self._observation = ""
         self._info: dict[str, Any] = {}
         self._done = False
         self._location: Location | None = None
-        self._personal_map: PersonalMap = {}
+        self._run_map: RunMap = {}
+        self._known_map: KnownMap = {}
+        self._known_map_writable = True
 
     @property
     def game(self) -> str | None:
@@ -162,9 +195,11 @@ class Machine:
             return f"The machine refuses to load {path.stem}: {exc}"
 
         self._env, self._game = env, path.stem
+        self._story_signature = _story_signature(path)
         self._observation, self._info, self._done = observation, dict(info), False
         self._location = _player_location(env)
-        self._personal_map = {}
+        self._run_map = {}
+        self._known_map = self._load_known_map()
         logger.info("Loaded %s", path.stem)
         return self.screen()
 
@@ -213,9 +248,16 @@ class Machine:
             and self._location != old_location
         )
         if moved:
-            self._personal_map.setdefault(old_location, {})[self._location] = text
+            visit = _classify_visit(self._location, self._run_map, self._known_map)
+            self._run_map.setdefault(old_location, {})[self._location] = text
+            self._known_map.setdefault(old_location, {})[self._location] = text
+            await self._persist_known_map()
         await self._autosave()
-        remarks = _describe_routes(self._location, self._personal_map) if moved else None
+        remarks = (
+            _describe_routes(self._location, self._run_map, self._known_map, visit)
+            if moved
+            else None
+        )
         return self.screen(), remarks
 
     async def save(self, name: str | None = None, comment: str | None = None) -> str:
@@ -262,6 +304,24 @@ class Machine:
         if env is None:
             return f"The machine will not come up to load {name}."
 
+        # Old CFX86SAVE2 files do not carry this optional field and must remain
+        # loadable. When it is present, validate the precise story build before
+        # handing its RAM to the interpreter.
+        if (
+            snapshot.story_signature is not None
+            and snapshot.story_signature != self._story_signature
+        ):
+            logger.warning(
+                "Save %s belongs to story %r, loaded %r",
+                name,
+                snapshot.story_signature,
+                self._story_signature,
+            )
+            return (
+                f"That save was written by a different build of {snapshot.game} "
+                "and will not load on this one."
+            )
+
         expected = len(snapshot.state[0])
         actual = await asyncio.to_thread(env.frotz_lib.getRAMSize)
         if expected != actual:
@@ -289,7 +349,9 @@ class Machine:
         self._info = {"score": env.get_score(), "moves": env.get_moves()}
         self._done = env.game_over() or env.victory()
         self._location = _player_location(env)
-        self._personal_map = snapshot.personal_map or {}
+        self._run_map = snapshot.personal_map or {}
+        if merge_maps(self._known_map, self._run_map):
+            await self._persist_known_map()
         logger.info("Restored %s from %s", self._game, name)
 
         # The autosave has to follow the machine, or a resume after this would
@@ -343,9 +405,43 @@ class Machine:
                 done=self._done,
                 location=self._location[1] if self._location is not None else None,
                 comment=comment,
-                personal_map=self._personal_map,
+                personal_map=self._run_map,
+                story_signature=self._story_signature,
             ),
         )
+
+    def _load_known_map(self) -> KnownMap:
+        """Read the durable map for the running story, or start without one."""
+        self._known_map_writable = True
+        if self._game_memories is None or self._game is None or self._story_signature is None:
+            return {}
+        try:
+            return self._game_memories.read_map(self._game, self._story_signature)
+        except GameMemoryError as exc:
+            # Do not overwrite an unreadable file with a fresh empty map after
+            # the next move. Keep playing, but leave that artifact untouched.
+            self._known_map_writable = False
+            logger.warning("Could not load known map for %s: %s", self._game, exc)
+            return {}
+
+    async def _persist_known_map(self) -> None:
+        """Keep shared route knowledge durable without risking the game move."""
+        if (
+            not self._known_map_writable
+            or self._game_memories is None
+            or self._game is None
+            or self._story_signature is None
+        ):
+            return
+        try:
+            await asyncio.to_thread(
+                self._game_memories.write_map,
+                self._game,
+                self._story_signature,
+                self._known_map,
+            )
+        except GameMemoryError:
+            logger.exception("Could not save known map for %s", self._game)
 
     async def _autosave(self) -> None:
         """Keep the restore point level with the screen.
@@ -368,9 +464,10 @@ class Machine:
                 self._env.close()
             except Exception:
                 logger.exception("Error closing %s", was)
-        self._env, self._game = None, None
+        self._env, self._game, self._story_signature = None, None, None
         self._observation, self._info, self._done = "", {}, False
-        self._location, self._personal_map = None, {}
+        self._location, self._run_map, self._known_map = None, {}, {}
+        self._known_map_writable = True
         if was:
             logger.info("Rebooted, quitting %s", was)
         return NO_GAME
@@ -396,12 +493,95 @@ def _player_location(env: FrotzEnv) -> Location | None:
     return location.num, location.name
 
 
-def _describe_routes(location: Location, personal_map: PersonalMap) -> str | None:
-    """Describe known directed exits from a newly entered room."""
-    routes = personal_map.get(location)
-    if not routes:
+def _story_signature(path: Path) -> StorySignature | None:
+    """Read the conventional identity fields from a Z-machine story header."""
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(_HEADER_NEEDED)
+    except OSError:
+        logger.exception("Could not read the story header from %s", path)
         return None
-    lines = ["You've been keeping a personal map using paper and pencil. From here:"]
+    if len(header) < _HEADER_NEEDED:
+        logger.warning("Story file %s is too short to carry a signature", path)
+        return None
+    return StorySignature(
+        release=int.from_bytes(header[_RELEASE], "big"),
+        serial=header[_SERIAL].decode("latin-1"),
+        checksum=int.from_bytes(header[_CHECKSUM], "big"),
+    )
+
+
+def _classify_visit(location: Location, run_map: RunMap, known_map: KnownMap) -> VisitKind:
+    """Classify a destination before the movement into it is recorded."""
+    if _map_contains(run_map, location):
+        return VisitKind.REVISIT_THIS_RUN
+    if _map_contains(known_map, location):
+        return VisitKind.FIRST_THIS_RUN
+    return VisitKind.FIRST_EVER
+
+
+def _map_contains(route_map: RunMap | KnownMap, location: Location) -> bool:
+    """Whether a room appears as either end of a recorded route."""
+    return location in route_map or any(location in routes for routes in route_map.values())
+
+
+def _describe_routes(
+    location: Location,
+    run_map: RunMap,
+    known_map: KnownMap,
+    visit: VisitKind,
+) -> str:
+    """Describe room familiarity and routes known before entering it."""
+    lines = ["You've been keeping a personal map using paper and pencil.", ""]
+    routes = known_map.get(location, {})
+
+    if visit is VisitKind.FIRST_EVER:
+        lines.extend(
+            (
+                "Neither of you has encountered this room in any recorded run of this game.",
+                "You add it to the map.",
+            )
+        )
+        return "\n".join(lines)
+
+    if visit is VisitKind.FIRST_THIS_RUN:
+        if not routes:
+            lines.append(
+                "You recognize this room from an earlier run of this game, but your map has "
+                "no routes recorded from here."
+            )
+            return "\n".join(lines)
+        lines.extend(
+            (
+                (
+                    "This is the first time you've entered this room in the current run, but you "
+                    "recognize it from an earlier run of this game. Your map records these routes "
+                    "from here:"
+                ),
+                "",
+            )
+        )
+    elif not routes:
+        lines.append(
+            "You've visited this room before in the current run, but your map has no routes "
+            "recorded from here."
+        )
+        return "\n".join(lines)
+    else:
+        lines.extend(
+            (
+                (
+                    "You've visited this room before in the current run. Your map records these "
+                    "routes from here:"
+                ),
+                "",
+            )
+        )
+
+    run_routes = run_map.get(location, {})
     for destination, command in routes.items():
-        lines.append(f"- Type {command!r} to move to {destination[1]!r}")
+        if run_routes.get(destination) == command:
+            lines.append(f"- {command!r} led to {destination[1]!r} (current run)")
+        else:
+            lines.append(f"- {command!r} previously led to {destination[1]!r} (earlier run only)")
     return "\n".join(lines)

@@ -31,6 +31,7 @@ from cabin_fever_x86_core.server._compaction import (
     rewrite,
     rotate,
 )
+from cabin_fever_x86_core.server._game_memories import GAME_MEMORIES_DIR, GameMemoryStore
 from cabin_fever_x86_core.server._machine import Machine
 from cabin_fever_x86_core.server._saves import SAVES_DIR, SaveStore
 from cabin_fever_x86_core.server._system_prompt import SYSTEM_PROMPT
@@ -252,8 +253,10 @@ class Game:
         # Saves belong to the session, and the folder is left to the store to
         # create on its first write rather than made here for a game that may
         # never be played.
-        saves = SaveStore(session_dir(self._session_id, SERVER_COMPONENT, create=False) / SAVES_DIR)
-        self._machine = Machine(saves=saves)
+        server_dir = session_dir(self._session_id, SERVER_COMPONENT, create=False)
+        saves = SaveStore(server_dir / SAVES_DIR)
+        game_memories = GameMemoryStore(server_dir / GAME_MEMORIES_DIR)
+        self._machine = Machine(saves=saves, game_memories=game_memories)
         self._tools: dict[str, Tool] = {
             tool.name: tool
             for tool in (
