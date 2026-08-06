@@ -43,7 +43,12 @@ the game-memory format version, and the story signature used to validate every m
 directory before using Z-machine object numbers. `map.json` MUST contain the independently versioned
 known-map data. Memories for a mismatched story signature MUST be moved aside as one directory so
 that memory types cannot become separated from their identity. Other memory files MAY be added to
-this directory in the future; this specification does not currently define a history file.
+this directory in the future. `reload_reasons.jsonl` MAY record significant reasons for restoring an
+earlier save, one JSON object per line containing the room name before the restore and a concise
+reason. Routine or unexplained restores need not be recorded. These reasons SHOULD be recalled as
+private context when the companion deliberately starts a new run, whether through the dedicated
+tool or at the DOS prompt, but not when a save is restored or a session is resumed. This
+specification does not currently define a general history file.
 
 `vm` MUST contain prepared guest saves. These saves are replaceable caches and MAY be rebuilt or
 discarded without affecting `data` or `config.yaml`.
