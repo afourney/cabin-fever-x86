@@ -304,7 +304,9 @@ class Machine:
         if (
             reason
             and previous_game is not None
+            and previous_game == self._game
             and previous_signature is not None
+            and previous_signature == self._story_signature
             and previous_location is not None
         ):
             await self._remember_reload_reason(
