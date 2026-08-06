@@ -238,7 +238,8 @@ class AfkTool(Tool):
             f"You were away for {delay:.0f} seconds and are back at the radio. "
             "Both messages have already been sent, so do not repeat them; say "
             "nothing further unless you have something new to add. Anything the "
-            "operator transmitted while you were gone did not reach you."
+            "operator transmitted while you were gone did not reach you.",
+            end_turn=True,
         )
 
 
