@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from cabin_fever_x86_core.server._game_memories import GameMemoryStore
+from cabin_fever_x86_core.server._game_memories import RELOAD_REASONS_FILE, GameMemoryStore
 from cabin_fever_x86_core.server._machine import GAMES_DIR, NO_GAME, USE_THE_TOOLS, Machine
 from cabin_fever_x86_core.server._saves import (
     AUTOSAVE,
@@ -66,6 +66,16 @@ def test_the_machines_messages_name_the_tools_that_exist() -> None:
         assert tool.name in USE_THE_TOOLS, f"{tool.__name__} is not offered"
     for tool in (ListGamesTool, NewGameTool, ListSavedGamesTool, LoadGameTool):
         assert tool.name in NO_GAME, f"{tool.__name__} is not offered at the prompt"
+
+
+def test_load_reason_is_optional_and_explains_when_to_use_it() -> None:
+    reason = LoadGameTool.parameters["properties"]["reason"]
+
+    assert "reason" not in LoadGameTool.parameters["required"]
+    assert "something bad" in LoadGameTool.description
+    assert "learned something important" in LoadGameTool.description
+    assert "don't drop the lantern in a dark room" in reason["description"]
+    assert "reasons unknown" in reason["description"]
 
 
 async def test_a_game_boots_with_a_fresh_random_seed(
@@ -578,6 +588,93 @@ async def test_loading_an_older_run_keeps_routes_known_from_later_play(
     assert "(earlier run only)" in (remarks or "")
     run_map = store.read(AUTOSAVE).personal_map or {}
     assert not any(command == "east" for routes in run_map.values() for command in routes.values())
+
+
+async def test_load_tool_remembers_a_reason_without_recalling_it_immediately(
+    machine: Machine, store: SaveStore, game_memories: GameMemoryStore
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+    await machine.type_text("north")
+
+    result = await LoadGameTool(machine).execute(
+        {
+            "save_name": "zork1_0001",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    )
+
+    signature = store.read(AUTOSAVE).story_signature
+    assert signature is not None
+    assert game_memories.recall_reload_reasons("zork1", signature) == [
+        {
+            "location": "North of House",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    ]
+    assert result.remarks is None
+    assert "<personal_remarks>" not in result.for_model()
+
+
+async def test_new_game_tool_recalls_reload_reasons_as_personal_remarks(
+    machine: Machine,
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+    await machine.type_text("north")
+    await LoadGameTool(machine).execute(
+        {
+            "save_name": "zork1_0001",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    )
+
+    result = await NewGameTool(machine).execute({"rom_name": "zork1"})
+
+    assert "You've played this game before and learned some hard lessons. In particular:\n\n" in (
+        result.remarks or ""
+    )
+    assert "In North of House: don't drop the lantern in a dark room" in (result.remarks or "")
+    assert "<personal_remarks>" in result.for_model()
+
+
+async def test_starting_at_the_dos_prompt_also_recalls_reload_reasons(
+    machine: Machine,
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+    await machine.type_text("north")
+    await LoadGameTool(machine).execute(
+        {
+            "save_name": "zork1_0001",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    )
+    machine.reboot()
+
+    result = await TypeTool(machine).execute({"text": "zork1"})
+
+    assert "You've played this game before and learned some hard lessons. In particular:\n\n" in (
+        result.remarks or ""
+    )
+    assert "In North of House: don't drop the lantern in a dark room" in (result.remarks or "")
+    assert "<personal_remarks>" in result.for_model()
+
+
+async def test_a_routine_load_omits_the_reload_journal(
+    machine: Machine, game_memories: GameMemoryStore
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+
+    result = await LoadGameTool(machine).execute({"save_name": "zork1_0001"})
+
+    assert result.remarks is None
+    assert not (game_memories.game_dir("zork1") / RELOAD_REASONS_FILE).exists()
 
 
 async def test_a_same_run_revisit_distinguishes_current_and_earlier_routes(

@@ -8,6 +8,7 @@ import pytest
 from cabin_fever_x86_core.server._game_memories import (
     GAME_FILE,
     MAP_FILE,
+    RELOAD_REASONS_FILE,
     GameMemoryError,
     GameMemoryStore,
     merge_maps,
@@ -35,6 +36,23 @@ def test_a_game_memory_uses_the_rom_name_and_round_trips(tmp_path: Path) -> None
     assert game["story_signature"] == SIGNATURE.as_record()
     assert "story_signature" not in map_record
     assert not (game_dir / "history.jsonl").exists()
+    assert not (game_dir / RELOAD_REASONS_FILE).exists()
+
+
+def test_reload_reasons_are_appended_and_recalled(tmp_path: Path) -> None:
+    store = GameMemoryStore(tmp_path / "game-memories")
+    store.append_reload_reason("zork1", SIGNATURE, "Cellar", "don't drop the lantern")
+    store.append_reload_reason("zork1", SIGNATURE, "Kitchen", "the thief comes through here")
+
+    assert store.recall_reload_reasons("zork1", SIGNATURE) == [
+        {"location": "Cellar", "reason": "don't drop the lantern"},
+        {"location": "Kitchen", "reason": "the thief comes through here"},
+    ]
+    path = store.game_dir("zork1") / RELOAD_REASONS_FILE
+    assert [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] == [
+        {"location": "Cellar", "reason": "don't drop the lantern"},
+        {"location": "Kitchen", "reason": "the thief comes through here"},
+    ]
 
 
 def test_missing_game_memories_are_empty_and_create_no_folder(tmp_path: Path) -> None:

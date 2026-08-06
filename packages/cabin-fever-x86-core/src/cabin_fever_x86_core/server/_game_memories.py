@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 GAME_MEMORIES_DIR = "game-memories"
 GAME_FILE = "game.json"
 MAP_FILE = "map.json"
+RELOAD_REASONS_FILE = "reload_reasons.jsonl"
 GAME_MEMORY_VERSION = 1
 MAP_VERSION = 1
 _SAFE_GAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -86,6 +87,55 @@ class GameMemoryStore:
 
     def write_map(self, game: str, signature: StorySignature, known_map: KnownMap) -> None:
         """Atomically replace one ROM's map, creating its manifest if needed."""
+        game_dir = self._prepare(game, signature)
+
+        self._write_json(
+            game_dir / MAP_FILE,
+            {
+                "version": MAP_VERSION,
+                "edges": encode_map_edges(known_map),
+            },
+        )
+
+    def append_reload_reason(
+        self,
+        game: str,
+        signature: StorySignature,
+        location: str,
+        reason: str,
+    ) -> None:
+        """Remember why play was rewound from a room."""
+        game_dir = self._prepare(game, signature)
+        path = game_dir / RELOAD_REASONS_FILE
+        record = json.dumps(
+            {"location": location, "reason": reason},
+            ensure_ascii=False,
+        )
+        try:
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(record + "\n")
+        except OSError as exc:
+            raise GameMemoryError(f"could not write {game}/{RELOAD_REASONS_FILE}: {exc}") from exc
+
+    def recall_reload_reasons(self, game: str, signature: StorySignature) -> list[dict[str, str]]:
+        """Recall recorded reload reasons for a matching story build."""
+        game_dir = self.game_dir(game)
+        if not game_dir.exists():
+            return []
+        if not game_dir.is_dir():
+            raise GameMemoryError(f"{game_dir.name} is not a game-memory directory")
+        if not self._matches(game_dir, game, signature):
+            aside = self._rotate(game_dir)
+            logger.warning(
+                "Game memories in %s belong to another build; moved them to %s",
+                game_dir.name,
+                aside.name,
+            )
+            return []
+        return self._recall_reload_reasons(game_dir)
+
+    def _prepare(self, game: str, signature: StorySignature) -> Path:
+        """Return a matching game directory, creating or rotating as needed."""
         game_dir = self.game_dir(game)
         if game_dir.exists():
             if not game_dir.is_dir():
@@ -108,14 +158,41 @@ class GameMemoryStore:
                     "story_signature": signature.as_record(),
                 },
             )
+        return game_dir
 
-        self._write_json(
-            game_dir / MAP_FILE,
-            {
-                "version": MAP_VERSION,
-                "edges": encode_map_edges(known_map),
-            },
-        )
+    @staticmethod
+    def _recall_reload_reasons(game_dir: Path) -> list[dict[str, str]]:
+        """Read and validate a game's append-only reload journal."""
+        path = game_dir / RELOAD_REASONS_FILE
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            return []
+        except (OSError, UnicodeDecodeError) as exc:
+            raise GameMemoryError(
+                f"could not read {game_dir.name}/{RELOAD_REASONS_FILE}: {exc}"
+            ) from exc
+
+        reasons: list[dict[str, str]] = []
+        try:
+            for line in lines:
+                if not line.strip():
+                    continue
+                value = json.loads(line)
+                if not isinstance(value, dict):
+                    raise ValueError("record is not an object")
+                location = value.get("location")
+                reason = value.get("reason")
+                if not isinstance(location, str) or not location.strip():
+                    raise ValueError("location is not a non-empty string")
+                if not isinstance(reason, str) or not reason.strip():
+                    raise ValueError("reason is not a non-empty string")
+                reasons.append({"location": location, "reason": reason})
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise GameMemoryError(
+                f"{game_dir.name}/{RELOAD_REASONS_FILE} is unreadable: {exc}"
+            ) from exc
+        return reasons
 
     @staticmethod
     def _matches(game_dir: Path, game: str, signature: StorySignature) -> bool:

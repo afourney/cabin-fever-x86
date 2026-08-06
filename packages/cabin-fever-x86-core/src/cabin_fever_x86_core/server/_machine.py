@@ -214,6 +214,13 @@ class Machine:
         await self._autosave()
         return screen
 
+    async def new_game_with_memories(self, name: str) -> tuple[str, str | None]:
+        """Start a fresh run and recall lessons from earlier reloads."""
+        content = await self.new_game(name)
+        if self._game is None:
+            return content, None
+        return content, await self._recall_reload_reasons()
+
     async def type_text(self, text: str) -> tuple[str, str | None]:
         """Type a line and return its screen plus any private contextual remarks."""
         text = text.strip()
@@ -229,7 +236,7 @@ class Machine:
 
         if self._env is None:
             # At the DOS prompt, a line is the name of a game to start.
-            return await self.new_game(text), None
+            return await self.new_game_with_memories(text)
         if self._done:
             return self.screen(), None
 
@@ -281,8 +288,37 @@ class Machine:
 
     async def load(self, name: str) -> str:
         """Put the machine back to a save, booting the right game if need be."""
+        content, _loaded = await self._load(name)
+        return content
+
+    async def load_from_tool(self, name: str, reason: str | None = None) -> tuple[str, str | None]:
+        """Load for the companion, optionally remembering why."""
+        previous_game = self._game
+        previous_signature = self._story_signature
+        previous_location = self._location[1] if self._location is not None else None
+
+        content, loaded = await self._load(name)
+        if not loaded:
+            return content, None
+
+        if (
+            reason
+            and previous_game is not None
+            and previous_signature is not None
+            and previous_location is not None
+        ):
+            await self._remember_reload_reason(
+                previous_game,
+                previous_signature,
+                previous_location,
+                reason,
+            )
+        return content, None
+
+    async def _load(self, name: str) -> tuple[str, bool]:
+        """Restore a save and report whether the restore completed."""
         if self._saves is None:
-            return "This machine has no disk to read saves from."
+            return "This machine has no disk to read saves from.", False
 
         try:
             snapshot = await asyncio.to_thread(self._saves.read, name)
@@ -290,7 +326,7 @@ class Machine:
             # reported back the way the listing shows it.
             filed = await asyncio.to_thread(self._saves.path, name)
         except SaveError as exc:
-            return f"That save will not load: {exc}"
+            return f"That save will not load: {exc}", False
         name = filed.stem
 
         # The state only means anything to the game it came out of, and handing
@@ -298,11 +334,11 @@ class Machine:
         if snapshot.game != self._game:
             booted = await self._boot(snapshot.game)
             if self._game != snapshot.game:
-                return f"{name} is a save of {snapshot.game}, which will not load:\n{booted}"
+                return f"{name} is a save of {snapshot.game}, which will not load:\n{booted}", False
 
         env = self._env
         if env is None:
-            return f"The machine will not come up to load {name}."
+            return f"The machine will not come up to load {name}.", False
 
         # Old CFX86SAVE2 files do not carry this optional field and must remain
         # loadable. When it is present, validate the precise story build before
@@ -318,8 +354,11 @@ class Machine:
                 self._story_signature,
             )
             return (
-                f"That save was written by a different build of {snapshot.game} "
-                "and will not load on this one."
+                (
+                    f"That save was written by a different build of {snapshot.game} "
+                    "and will not load on this one."
+                ),
+                False,
             )
 
         expected = len(snapshot.state[0])
@@ -329,15 +368,18 @@ class Machine:
                 "Save %s expects %d bytes of RAM, %s has %d", name, expected, self._game, actual
             )
             return (
-                f"That save was written by a different build of {snapshot.game} "
-                "and will not load on this one."
+                (
+                    f"That save was written by a different build of {snapshot.game} "
+                    "and will not load on this one."
+                ),
+                False,
             )
 
         try:
             await asyncio.to_thread(env.set_state, snapshot.state)
         except Exception as exc:
             logger.exception("Could not restore %s", name)
-            return f"The machine chokes on that save: {exc}"
+            return f"The machine chokes on that save: {exc}", False
 
         _a, interval, counter = snapshot.state[7]
         if interval == 0:
@@ -357,7 +399,50 @@ class Machine:
         # The autosave has to follow the machine, or a resume after this would
         # quietly rewind to before the load.
         await self._autosave()
-        return f"Restored {snapshot.game} from {name}.\n\n{self.screen()}"
+        return f"Restored {snapshot.game} from {name}.\n\n{self.screen()}", True
+
+    async def _remember_reload_reason(
+        self,
+        game: str,
+        signature: StorySignature,
+        location: str,
+        reason: str,
+    ) -> None:
+        """Append a significant reason without risking the completed restore."""
+        if self._game_memories is None:
+            return
+        try:
+            await asyncio.to_thread(
+                self._game_memories.append_reload_reason,
+                game,
+                signature,
+                location,
+                reason,
+            )
+        except GameMemoryError:
+            logger.exception("Could not remember reload reason for %s", game)
+
+    async def _recall_reload_reasons(self) -> str | None:
+        """Render this game's significant prior reloads as a private reminder."""
+        if self._game_memories is None or self._game is None or self._story_signature is None:
+            return None
+        try:
+            reasons = await asyncio.to_thread(
+                self._game_memories.recall_reload_reasons,
+                self._game,
+                self._story_signature,
+            )
+        except GameMemoryError:
+            logger.exception("Could not recall reload reasons for %s", self._game)
+            return None
+        if not reasons:
+            return None
+        lines = [
+            "You've played this game before and learned some hard lessons. In particular:",
+            "",
+        ]
+        lines.extend(f"- In {item['location']}: {item['reason']}" for item in reasons)
+        return "\n".join(lines)
 
     async def resume(self) -> str | None:
         """Come back to where the autosave left off, if there is anywhere to come back to.
