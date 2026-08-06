@@ -34,7 +34,7 @@ The SWR meter needle twitches higher than it should be.
 The PC's fan starts making a bearing noise, then quiets down.
 The monitor flickers and the image shrinks briefly before recovering.
 The floppy drive clatters for no reason anyone can explain.
-The hard disk chatters for several seconds with nothing running.
+A disk drive chatters for several seconds with nothing running.
 Condensation has fogged the inside of the window over the desk.
 It is getting dark noticeably earlier than it did last week.
 A log shifts in the woodpile outside and the whole stack resettles.
