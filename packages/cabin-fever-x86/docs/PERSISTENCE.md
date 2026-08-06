@@ -26,8 +26,24 @@ launch.
 SHOULD contain references rather than literal credentials.
 
 `data` MUST contain user-owned and game-night state, including downloaded or user-supplied games,
-sessions, transcripts, saved games, and runtime logs. It MUST be writable from the guest and MUST
-survive guest shutdown, prepared-guest replacement, and `--rebuild`.
+sessions, transcripts, saved games, game memories, and runtime logs. It MUST be writable from the guest
+and MUST survive guest shutdown, prepared-guest replacement, and `--rebuild`.
+
+A saved game MAY carry a story signature made from the Z-machine release number, serial, and
+checksum. A missing signature identifies a legacy save and MUST NOT prevent it from loading. When a
+signature is present, the runtime SHOULD reject a restore against a different story build before
+handing the saved state to the interpreter.
+
+Each session's known map records routes the player and companion have discovered across runs of a
+game. It MUST be stored separately from the run map embedded in a saved game: restoring an older
+save MAY rewind the protagonist's route history, but MUST NOT erase shared route knowledge.
+
+Game memories MUST live beneath `game-memories/<rom-name>/`. `game.json` MUST identify the ROM name,
+the game-memory format version, and the story signature used to validate every memory in that
+directory before using Z-machine object numbers. `map.json` MUST contain the independently versioned
+known-map data. Memories for a mismatched story signature MUST be moved aside as one directory so
+that memory types cannot become separated from their identity. Other memory files MAY be added to
+this directory in the future; this specification does not currently define a history file.
 
 `vm` MUST contain prepared guest saves. These saves are replaceable caches and MAY be rebuilt or
 discarded without affecting `data` or `config.yaml`.
@@ -55,4 +71,3 @@ series automatically.
 
 The launcher SHOULD treat loss of prepared VM state as recoverable. It MUST treat loss of persistent
 user data as a materially different and more serious condition.
-
