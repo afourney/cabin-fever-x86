@@ -372,7 +372,8 @@ class NewGameTool(Tool):
         name = str(args.get("rom_name") or "").strip()
         if not name:
             return ToolOutput("No game was named, so nothing was started.")
-        return ToolOutput(await self._machine.new_game(name))
+        content, remarks = await self._machine.new_game_with_memories(name)
+        return ToolOutput(content, remarks=remarks)
 
 
 class SaveGameTool(Tool):
@@ -412,7 +413,9 @@ class LoadGameTool(Tool):
     description = (
         "Load a saved game, putting the computer back exactly where that save "
         "was written and starting the right game first if it is not already "
-        "running. Anything unsaved since is lost. Call list_saved_games first "
+        "running. Anything unsaved since is lost. Reloading often means something "
+        "bad happened or you learned something important; when so, briefly record "
+        "why so you can remember it in later attempts. Call list_saved_games first "
         "if you are not certain what a save holds."
     )
     parameters: ClassVar[dict[str, Any]] = {
@@ -424,6 +427,17 @@ class LoadGameTool(Tool):
                     "Which save to load, as list_saved_games gives it, such as "
                     "'zork1_0003'. Both halves are needed: each game is numbered "
                     "from 0001 on its own."
+                ),
+            },
+            "reason": {
+                "type": "string",
+                "maxLength": 300,
+                "description": (
+                    "An optional short, one-sentence summary of the significant lesson or "
+                    "setback prompting the reload, such as 'don't drop the lantern in a "
+                    "dark room'. Omit this when the reload is routine or has no clear, "
+                    "attributable reason—for example, the user requested it for reasons "
+                    "unknown."
                 ),
             },
         },
@@ -438,7 +452,9 @@ class LoadGameTool(Tool):
         name = str(args.get("save_name") or "").strip()
         if not name:
             return ToolOutput("No save was named, so nothing was loaded.")
-        return ToolOutput(await self._machine.load(name))
+        reason = str(args.get("reason") or "").strip() or None
+        content, remarks = await self._machine.load_from_tool(name, reason)
+        return ToolOutput(content, remarks=remarks)
 
 
 class ListSavedGamesTool(Tool):

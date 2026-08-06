@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from cabin_fever_x86_core.server._game_memories import RELOAD_REASONS_FILE, GameMemoryStore
 from cabin_fever_x86_core.server._machine import GAMES_DIR, NO_GAME, USE_THE_TOOLS, Machine
 from cabin_fever_x86_core.server._saves import (
     AUTOSAVE,
@@ -25,6 +26,7 @@ from cabin_fever_x86_core.server._saves import (
     SaveError,
     SaveStore,
     Snapshot,
+    StorySignature,
     parse_name,
 )
 from cabin_fever_x86_core.server._tools import (
@@ -41,6 +43,7 @@ from cabin_fever_x86_core.server._tools import (
 # Shaped like what Jericho hands out — (ram, stack, pc, sp, fp, frame_count,
 # opcode, rng, narrative) — without needing Jericho to hand it out.
 FAKE_STATE = (b"\x01\x02\x03\x04", b"\x05\x06", 22797, 989, 1000, 2, 228, (-146906654, 0, 0), b"hi")
+FAKE_SIGNATURE = StorySignature(release=88, serial="840726", checksum=0x1234)
 
 
 def snapshot(game: str = "zork1", moves: int = 3) -> Snapshot:
@@ -63,6 +66,16 @@ def test_the_machines_messages_name_the_tools_that_exist() -> None:
         assert tool.name in USE_THE_TOOLS, f"{tool.__name__} is not offered"
     for tool in (ListGamesTool, NewGameTool, ListSavedGamesTool, LoadGameTool):
         assert tool.name in NO_GAME, f"{tool.__name__} is not offered at the prompt"
+
+
+def test_load_reason_is_optional_and_explains_when_to_use_it() -> None:
+    reason = LoadGameTool.parameters["properties"]["reason"]
+
+    assert "reason" not in LoadGameTool.parameters["required"]
+    assert "something bad" in LoadGameTool.description
+    assert "learned something important" in LoadGameTool.description
+    assert "don't drop the lantern in a dark room" in reason["description"]
+    assert "reasons unknown" in reason["description"]
 
 
 async def test_a_game_boots_with_a_fresh_random_seed(
@@ -152,6 +165,15 @@ def test_a_save_round_trips(tmp_path: Path) -> None:
     assert ram.flags.writeable and stack.flags.writeable
 
 
+def test_a_story_signature_is_optional_and_round_trips_when_present(tmp_path: Path) -> None:
+    store = SaveStore(tmp_path / "saves")
+    store.write("zork1_0001", snapshot())
+    store.write("zork1_0002", replace(snapshot(), story_signature=FAKE_SIGNATURE))
+
+    assert store.read("zork1_0001").story_signature is None
+    assert store.read("zork1_0002").story_signature == FAKE_SIGNATURE
+
+
 def test_a_state_of_the_wrong_shape_is_refused_on_the_way_in(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     bad = Snapshot(game="zork1", state=(b"", b"", 1), observation="", score=0, moves=0, done=False)
@@ -216,6 +238,22 @@ def test_a_save_starts_with_listing_metadata_and_typed_records(tmp_path: Path) -
     assert map_record["type"] == "personal_map"
     assert map_record["edges"][0]["command"] == "north"
 
+    assert path.read_bytes().endswith(FAKE_STATE[0] + FAKE_STATE[1] + FAKE_STATE[8])
+
+
+def test_a_signed_save_adds_only_optional_header_metadata(tmp_path: Path) -> None:
+    store = SaveStore(tmp_path / "saves")
+    store.write("zork1_0007", replace(snapshot(), story_signature=FAKE_SIGNATURE))
+
+    path = store.path("zork1_0007")
+    with path.open("rb") as handle:
+        assert handle.readline().rstrip(b"\n") == MAGIC
+        header = json.loads(handle.readline())
+        map_record = json.loads(handle.readline())
+        assert handle.readline().rstrip(b"\n") == DATA_SENTINEL
+
+    assert header["story_signature"] == FAKE_SIGNATURE.as_record()
+    assert map_record["type"] == "personal_map"
     assert path.read_bytes().endswith(FAKE_STATE[0] + FAKE_STATE[1] + FAKE_STATE[8])
 
 
@@ -376,8 +414,13 @@ def store(tmp_path: Path) -> SaveStore:
 
 
 @pytest.fixture
-def machine(store: SaveStore) -> Iterator[Machine]:
-    machine = Machine(saves=store)
+def game_memories(tmp_path: Path) -> GameMemoryStore:
+    return GameMemoryStore(tmp_path / "game-memories")
+
+
+@pytest.fixture
+def machine(store: SaveStore, game_memories: GameMemoryStore) -> Iterator[Machine]:
+    machine = Machine(saves=store, game_memories=game_memories)
     yield machine
     machine.reboot()  # frees the interpreter, whatever the test did
 
@@ -414,6 +457,40 @@ async def test_a_save_comes_back_where_it_was_left(machine: Machine) -> None:
 
     assert "Restored zork1 from zork1_0001" in await machine.load("zork1_0001")
     assert machine.screen() == was
+
+
+async def test_a_legacy_unsigned_save_still_loads(machine: Machine, store: SaveStore) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    legacy = replace(store.read(AUTOSAVE), story_signature=None)
+    store.write("zork1_0001", legacy)
+    before = store.path("zork1_0001").read_bytes()
+
+    assert "Restored zork1" in await machine.load("zork1_0001")
+    assert store.path("zork1_0001").read_bytes() == before
+    assert store.read("zork1_0001").story_signature is None
+    assert store.read(AUTOSAVE).story_signature is not None
+
+
+async def test_a_signed_save_for_another_story_build_is_refused(
+    machine: Machine, store: SaveStore
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    current = store.read(AUTOSAVE)
+    assert current.story_signature is not None
+    wrong = replace(
+        current,
+        story_signature=replace(
+            current.story_signature,
+            checksum=(current.story_signature.checksum + 1) & 0xFFFF,
+        ),
+    )
+    store.write("zork1_0001", wrong)
+
+    result = await machine.load("zork1_0001")
+
+    assert "different build" in result
 
 
 async def test_loading_an_ordinary_rng_state_gives_it_a_fresh_future(
@@ -455,12 +532,15 @@ async def test_the_personal_map_appears_only_after_moving_to_a_known_room(
 
     north, north_remarks = await machine.type_text("north")
     assert "Personal map" not in north
-    assert north_remarks is None
+    assert "Neither of you has encountered this room" in (north_remarks or "")
+    assert "You add it to the map." in (north_remarks or "")
     returned, remarks = await machine.type_text("southwest")
     assert "personal map" not in returned.casefold()
     assert "personal map using paper and pencil" in (remarks or "")
+    assert "visited this room before in the current run" in (remarks or "")
     assert "'north'" in (remarks or "")
     assert "'North House'" in (remarks or "")
+    assert "(current run)" in (remarks or "")
     opened, opened_remarks = await machine.type_text("open mailbox")
     assert "Personal map" not in opened
     assert opened_remarks is None
@@ -479,6 +559,187 @@ async def test_a_loaded_save_restores_the_personal_map(machine: Machine) -> None
     assert "personal map" not in moved.casefold()
     assert "'southwest'" in (remarks or "")
     assert "'West House'" in (remarks or "")
+
+
+async def test_loading_an_older_run_keeps_routes_known_from_later_play(
+    machine: Machine, store: SaveStore, game_memories: GameMemoryStore
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="before exploring")
+    await machine.type_text("north")
+    await machine.type_text("east")
+
+    signature = store.read(AUTOSAVE).story_signature
+    assert signature is not None
+    assert any(
+        command == "east"
+        for routes in game_memories.read_map("zork1", signature).values()
+        for command in routes.values()
+    )
+
+    await machine.load("zork1_0001")
+    moved, remarks = await machine.type_text("north")
+
+    assert "personal map" not in moved.casefold()
+    assert "first time you've entered this room in the current run" in (remarks or "")
+    assert "'east'" in (remarks or "")
+    assert "'Behind House'" in (remarks or "")
+    assert "(earlier run only)" in (remarks or "")
+    run_map = store.read(AUTOSAVE).personal_map or {}
+    assert not any(command == "east" for routes in run_map.values() for command in routes.values())
+
+
+async def test_load_tool_remembers_a_reason_without_recalling_it_immediately(
+    machine: Machine, store: SaveStore, game_memories: GameMemoryStore
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+    await machine.type_text("north")
+
+    result = await LoadGameTool(machine).execute(
+        {
+            "save_name": "zork1_0001",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    )
+
+    signature = store.read(AUTOSAVE).story_signature
+    assert signature is not None
+    assert game_memories.recall_reload_reasons("zork1", signature) == [
+        {
+            "location": "North of House",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    ]
+    assert result.remarks is None
+    assert "<personal_remarks>" not in result.for_model()
+
+
+async def test_new_game_tool_recalls_reload_reasons_as_personal_remarks(
+    machine: Machine,
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+    await machine.type_text("north")
+    await LoadGameTool(machine).execute(
+        {
+            "save_name": "zork1_0001",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    )
+
+    result = await NewGameTool(machine).execute({"rom_name": "zork1"})
+
+    assert "You've played this game before and learned some hard lessons. In particular:\n\n" in (
+        result.remarks or ""
+    )
+    assert "In North of House: don't drop the lantern in a dark room" in (result.remarks or "")
+    assert "<personal_remarks>" in result.for_model()
+
+
+async def test_starting_at_the_dos_prompt_also_recalls_reload_reasons(
+    machine: Machine,
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+    await machine.type_text("north")
+    await LoadGameTool(machine).execute(
+        {
+            "save_name": "zork1_0001",
+            "reason": "don't drop the lantern in a dark room",
+        }
+    )
+    machine.reboot()
+
+    result = await TypeTool(machine).execute({"text": "zork1"})
+
+    assert "You've played this game before and learned some hard lessons. In particular:\n\n" in (
+        result.remarks or ""
+    )
+    assert "In North of House: don't drop the lantern in a dark room" in (result.remarks or "")
+    assert "<personal_remarks>" in result.for_model()
+
+
+async def test_a_routine_load_omits_the_reload_journal(
+    machine: Machine, game_memories: GameMemoryStore
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="at the house")
+
+    result = await LoadGameTool(machine).execute({"save_name": "zork1_0001"})
+
+    assert result.remarks is None
+    assert not (game_memories.game_dir("zork1") / RELOAD_REASONS_FILE).exists()
+
+
+async def test_a_same_run_revisit_distinguishes_current_and_earlier_routes(
+    machine: Machine,
+) -> None:
+    rom("zork1")
+    await machine.type_text("zork1")
+    await machine.save(comment="before exploring")
+
+    # Teach the Known Map two ways out of North House in the abandoned branch.
+    await machine.type_text("north")
+    await machine.type_text("east")
+    await machine.type_text("north")
+    await machine.type_text("southwest")
+
+    # In the restored run, take only the east route and then return to the room.
+    await machine.load("zork1_0001")
+    await machine.type_text("north")
+    await machine.type_text("east")
+    _screen, remarks = await machine.type_text("north")
+
+    assert "visited this room before in the current run" in (remarks or "")
+    assert "'east' led to 'Behind House' (current run)" in (remarks or "")
+    assert "'southwest' previously led to 'West House' (earlier run only)" in (remarks or "")
+
+
+async def test_a_known_map_survives_reconstructing_the_machine(
+    store: SaveStore, game_memories: GameMemoryStore
+) -> None:
+    rom("zork1")
+    first = Machine(saves=store, game_memories=game_memories)
+    await first.type_text("zork1")
+    await first.type_text("north")
+    await first.type_text("east")
+    first.reboot()
+
+    second = Machine(saves=store, game_memories=game_memories)
+    await second.new_game("zork1")
+    assert store.read(AUTOSAVE).personal_map == {}
+    _screen, remarks = await second.type_text("north")
+    second.reboot()
+
+    assert "'east'" in (remarks or "")
+    assert "'Behind House'" in (remarks or "")
+
+
+async def test_loading_a_legacy_save_imports_its_map_into_the_known_map(
+    store: SaveStore, game_memories: GameMemoryStore
+) -> None:
+    rom("zork1")
+    source = Machine(saves=store)
+    await source.type_text("zork1")
+    await source.type_text("north")
+    await source.type_text("east")
+    legacy = replace(store.read(AUTOSAVE), story_signature=None)
+    store.write("zork1_0001", legacy)
+    source.reboot()
+
+    restored = Machine(saves=store, game_memories=game_memories)
+    assert "Restored zork1" in await restored.load("zork1_0001")
+    signature = store.read(AUTOSAVE).story_signature
+    restored.reboot()
+
+    assert signature is not None
+    assert game_memories.read_map("zork1", signature) == (legacy.personal_map or {})
 
 
 async def test_type_tool_marks_map_guidance_as_personal_remarks(machine: Machine) -> None:
