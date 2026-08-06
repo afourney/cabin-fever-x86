@@ -48,7 +48,18 @@ class GameMemoryStore:
             return {}
         if not game_dir.is_dir():
             raise GameMemoryError(f"{game_dir.name} is not a game-memory directory")
-        if not self._matches(game_dir, game, signature):
+        try:
+            matches = self._matches(game_dir, game, signature)
+        except GameMemoryError as exc:
+            aside = self._rotate(game_dir)
+            logger.warning(
+                "Game memories in %s are unreadable (%s); moved them to %s",
+                game_dir.name,
+                exc,
+                aside.name,
+            )
+            return {}
+        if not matches:
             aside = self._rotate(game_dir)
             logger.warning(
                 "Game memories in %s belong to another build; moved them to %s",
