@@ -4,7 +4,7 @@ Every message carries a ``type`` discriminator so the receiving side can tell
 them apart, and an ``id`` so a single transmission can be traced through both
 sides' logs.
 
-A connection starts with the client issuing one of the session commands —
+A connection starts with the client issuing a session command such as
 :class:`NewGameCommand`, :class:`ResumeGameCommand`, or
 :class:`ListSessionsCommand`. The server answers each with a result carrying
 the ``request_id`` of the command it answers. No game exists, and no
@@ -53,12 +53,19 @@ class ListSessionsCommand(BaseModel):
     id: UUID = Field(default_factory=uuid4)
 
 
+class CompactSessionCommand(BaseModel):
+    """Ask the server to compact the active session's conversation."""
+
+    type: Literal["compact_session"] = "compact_session"
+    id: UUID = Field(default_factory=uuid4)
+
+
 ClientMessage = Annotated[
-    UserMessage | NewGameCommand | ResumeGameCommand | ListSessionsCommand,
+    UserMessage | NewGameCommand | ResumeGameCommand | ListSessionsCommand | CompactSessionCommand,
     Field(discriminator="type"),
 ]
 
-SessionCommand = NewGameCommand | ResumeGameCommand | ListSessionsCommand
+SessionCommand = NewGameCommand | ResumeGameCommand | ListSessionsCommand | CompactSessionCommand
 
 # --- Server -> client -------------------------------------------------------
 
@@ -69,6 +76,15 @@ class AssistantMessage(BaseModel):
     type: Literal["assistant"] = "assistant"
     id: UUID = Field(default_factory=uuid4)
     content: str
+
+
+class CompactionCompleted(BaseModel):
+    """Confirmation that a requested session compaction completed."""
+
+    type: Literal["compaction_completed"] = "compaction_completed"
+    id: UUID = Field(default_factory=uuid4)
+    request_id: UUID
+    session_id: UUID
 
 
 class SessionResult(BaseModel):
@@ -111,7 +127,7 @@ class ErrorResult(BaseModel):
 
 
 ServerMessage = Annotated[
-    AssistantMessage | SessionResult | SessionListResult | ErrorResult,
+    AssistantMessage | CompactionCompleted | SessionResult | SessionListResult | ErrorResult,
     Field(discriminator="type"),
 ]
 

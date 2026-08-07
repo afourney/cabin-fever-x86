@@ -72,6 +72,24 @@ COMPACTION_AFK = 300.0
 CABIN_EVENT = "cabin_event"
 STAGE_DIRECTION = "stage_direction"
 
+
+def _log_token_usage(response: Any) -> None:
+    """Log the token breakdown returned with a model response."""
+    usage = response.usage
+    if usage is None:
+        return
+
+    input_details = getattr(usage, "input_tokens_details", None)
+    output_details = getattr(usage, "output_tokens_details", None)
+    logger.info(
+        "Input Tokens: %d (%d cached); Output Tokens: %d (%d reasoning)",
+        getattr(usage, "input_tokens", 0),
+        getattr(input_details, "cached_tokens", 0),
+        getattr(usage, "output_tokens", 0),
+        getattr(output_details, "reasoning_tokens", 0),
+    )
+
+
 INTERRUPTION_FILES: dict[str, Path] = {
     CABIN_EVENT: Path(__file__).with_name("cabin_events.txt"),
     STAGE_DIRECTION: Path(__file__).with_name("stage_direction.txt"),
@@ -393,6 +411,13 @@ class Game:
         """
         await self.stage_direction(self.opening_direction())
 
+    async def compact(self) -> None:
+        """Write the conversation down into notes and continue from them."""
+        if self._client is None:
+            raise RuntimeError("Game.compact() called outside of the game context")
+        tools = [tool.definition for tool in self._tools.values() if not tool.cabin_event_only]
+        await self._compact([], 0, tools)
+
     async def _interrupt(self, interruption: Interruption) -> None:
         if self._worker is None:
             raise RuntimeError("Game interrupted outside of the game context")
@@ -547,6 +572,7 @@ class Game:
                 reasoning={"effort": "medium"},
                 store=False,
             )
+            _log_token_usage(response)
             summary = response.output_text.strip()
             if not summary:
                 raise OpenAIError("the notes came back empty")
@@ -603,6 +629,7 @@ class Game:
                     store=False,
                     include=["reasoning.encrypted_content"],
                 )
+                _log_token_usage(response)
             except OpenAIError as exc:
                 logger.exception("Response failed for %s", message.id)
                 await self._transmit(f"[model error: {exc}]")
