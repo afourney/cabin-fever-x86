@@ -8,9 +8,12 @@ rotation and the two transmissions can be checked without a model.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -175,6 +178,10 @@ def test_the_journal_is_rewritten_one_item_per_line(tmp_path: Path) -> None:
 @dataclass
 class FakeUsage:
     total_tokens: int
+    input_tokens: int = 0
+    output_tokens: int = 0
+    input_tokens_details: Any = None
+    output_tokens_details: Any = None
 
 
 @dataclass
@@ -229,6 +236,21 @@ def transmit_call(text: str, call_id: str = "call_1") -> ResponseFunctionToolCal
 
 def reasoning() -> FakeItem:
     return FakeItem({"type": "reasoning", "encrypted_content": "shhh", "summary": []})
+
+
+def test_response_token_usage_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    usage = FakeUsage(
+        total_tokens=1800,
+        input_tokens=1000,
+        output_tokens=800,
+        input_tokens_details=SimpleNamespace(cached_tokens=500),
+        output_tokens_details=SimpleNamespace(reasoning_tokens=300),
+    )
+
+    with caplog.at_level(logging.INFO, logger=game_module.__name__):
+        game_module._log_token_usage(SimpleNamespace(usage=usage))
+
+    assert "Input Tokens: 1000 (500 cached); Output Tokens: 800 (300 reasoning)" in caplog.messages
 
 
 @pytest.fixture
@@ -310,6 +332,89 @@ async def test_crossing_the_threshold_writes_the_night_down(
             "function_call_output",  # and its answer, appended after
         ]
         assert "Up a tree" in game._messages[1]["content"]
+
+
+async def test_compact_publicly_writes_down_the_current_conversation(
+    sender: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replies = [FakeResponse([], FakeUsage(30), output_text="Operator is Sam. Playing zork1.")]
+    game, responses = game_with(replies, sender, monkeypatch)
+
+    async with game:
+        game._append({"role": "user", "content": "Let's play zork1."})
+        await game.compact()
+
+        assert len(responses.calls) == 1
+        assert COMPACTION_PROMPT in responses.calls[0]["input"][-1]["content"]
+        assert "Operator is Sam" in game._messages[1]["content"]
+        assert Path(game._journal or "").with_name("messages.0001.jsonl").is_file()
+
+
+async def test_public_compaction_waits_for_an_in_flight_turn(
+    sender: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replies = [FakeResponse([], FakeUsage(30), output_text="notes")]
+    game, responses = game_with(replies, sender, monkeypatch)
+    handling = asyncio.Event()
+    release = asyncio.Event()
+
+    async def blocked_handle(_message: Any) -> None:
+        handling.set()
+        await release.wait()
+
+    async with game:
+        game._handle = blocked_handle  # type: ignore[method-assign]
+        await game.receive(game_module.UserMessage(content="hello"))
+        await handling.wait()
+
+        compacting = asyncio.create_task(game.compact())
+        await asyncio.sleep(0)
+        assert not compacting.done()
+        assert not responses.calls
+
+        release.set()
+        await compacting
+        assert len(responses.calls) == 1
+
+
+async def test_shutdown_releases_a_queued_compaction_waiter(
+    sender: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game, _responses = game_with([], sender, monkeypatch)
+    handling = asyncio.Event()
+
+    async def blocked_handle(_message: Any) -> None:
+        handling.set()
+        await asyncio.Event().wait()
+
+    async with game:
+        game._handle = blocked_handle  # type: ignore[method-assign]
+        await game.receive(game_module.UserMessage(content="hello"))
+        await handling.wait()
+        compacting = asyncio.create_task(game.compact())
+        await asyncio.sleep(0)
+
+    with pytest.raises(RuntimeError, match="closed before compaction completed"):
+        await compacting
+
+
+async def test_shutdown_releases_an_in_flight_compaction_waiter(
+    sender: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game, _responses = game_with([], sender, monkeypatch)
+    compacting_now = asyncio.Event()
+
+    async def blocked_compaction(*_args: Any) -> None:
+        compacting_now.set()
+        await asyncio.Event().wait()
+
+    async with game:
+        game._compact = blocked_compaction  # type: ignore[method-assign]
+        compacting = asyncio.create_task(game.compact())
+        await compacting_now.wait()
+
+    with pytest.raises(RuntimeError, match="closed before compaction completed"):
+        await compacting
 
 
 async def test_the_notes_are_asked_for_without_the_triggering_reply(

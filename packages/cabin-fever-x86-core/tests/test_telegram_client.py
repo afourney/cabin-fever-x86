@@ -5,11 +5,11 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
-from cabin_fever_x86_core.messages import AssistantMessage
+from cabin_fever_x86_core.messages import AssistantMessage, CompactionCompleted
 from cabin_fever_x86_core.telegram_client._main import (
     TelegramBridge,
     is_stale,
@@ -90,6 +90,59 @@ async def test_continue_resumes_the_most_recent_server_session(monkeypatch) -> N
 
     assert opened == [(8675309, 8675309, latest)]
     assert sent == [(8675309, f"Resumed session {latest}.")]
+
+
+@pytest.mark.asyncio
+async def test_compact_requests_compaction_and_waits_for_completion() -> None:
+    sent = []
+    wire = []
+    session_id = uuid4()
+    holder = {}
+
+    async def send_message(chat_id, text):
+        sent.append((chat_id, text))
+
+    class Connection:
+        async def send(self, raw):
+            command = json.loads(raw)
+            wire.append(command)
+            session = holder["session"]
+            session.pending_compactions[UUID(command["id"])].set_result(
+                CompactionCompleted(request_id=command["id"], session_id=session_id)
+            )
+
+    session = SimpleNamespace(
+        lock=asyncio.Lock(),
+        connection=Connection(),
+        pending_compactions={},
+    )
+    holder["session"] = session
+    bridge = TelegramBridge(
+        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
+    )
+    bridge.sessions[8675309] = session
+
+    await bridge._handle_text(8675309, 8675309, "/compact")
+
+    assert wire[0]["type"] == "compact_session"
+    assert session.pending_compactions == {}
+    assert sent == [(8675309, "Compaction completed.")]
+
+
+@pytest.mark.asyncio
+async def test_compact_requires_an_open_game() -> None:
+    sent = []
+
+    async def send_message(chat_id, text):
+        sent.append((chat_id, text))
+
+    bridge = TelegramBridge(
+        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
+    )
+
+    await bridge._handle_text(8675309, 8675309, "/compact")
+
+    assert sent == [(8675309, "No game is open.")]
 
 
 @pytest.mark.asyncio
