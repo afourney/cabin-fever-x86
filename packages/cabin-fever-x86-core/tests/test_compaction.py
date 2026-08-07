@@ -314,10 +314,14 @@ async def test_crossing_the_threshold_writes_the_night_down(
         # The notes.
         FakeResponse([], FakeUsage(30), output_text="Playing zork1. Operator is Sam. Up a tree."),
     ]
-    game, _asked = game_with(replies, sender, monkeypatch)
+    game, responses = game_with(replies, sender, monkeypatch)
     async with game:
         await game._handle(game_module.Interruption(kind="stage_direction", text="say hello"))
 
+        assert [call["prompt_cache_key"] for call in responses.calls] == [
+            str(game.session_id),
+            str(game.session_id),
+        ]
         # Excuse, notes, return — and the transmission the reply had decided on.
         assert spoken == [EXCUSE.away, EXCUSE.back, "still here"]
 
