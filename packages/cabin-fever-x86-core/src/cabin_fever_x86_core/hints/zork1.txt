@@ -1,0 +1,348 @@
+ZORK I: THE GREAT UNDERGROUND EMPIRE
+A Friendly, Full-Score Walkthrough
+
+
+INTRODUCTION
+
+Zork is happy to let chance complicate a good plan. Combat in particular can
+produce different results from one game to another, and the wandering thief may
+take objects you expect to find elsewhere. SAVE often—especially
+before fighting the troll or thief, before boating, and before entering the coal
+mine. If a fight goes badly, RESTORE and try again. You can type SCORE whenever
+you want to check your progress.
+
+The brass lantern has limited power and cannot be recharged. This route turns it
+off whenever the permanent torch can provide light. Do not casually burn turns
+with the lantern lit. Darkness is fatal: if the guide says to light it, do so
+before moving farther.
+
+The trophy case in the Living Room is your bank. A treasure normally awards
+some points when found and the rest when placed in the case. The house will be
+our base between expeditions; objects dropped in the Living Room can be picked
+up again when needed.
+
+
+1. THE EGG, THE HOUSE, AND THE TROLL
+
+The first thing we need is the jewel-encrusted egg. From West of House go N
+twice, from North of House into Forest Path, then U to climb the tree. GET EGG.
+Do not try to open it yourself: only the thief has the dexterity to do so
+without ruining its contents. We will deliberately leave it where he can find
+it later.
+
+Climb D, then go S to North of House and E to Behind House. OPEN WINDOW and go
+W through it into the Kitchen. OPEN SACK and GET GARLIC. The lunch and bottle
+of water are not needed for this route, but the garlic will eventually protect
+you from a vampire bat.
+
+Go W into the Living Room and GET LAMP. Return E to the Kitchen and go U to the
+Attic. LIGHT LAMP, then GET ROPE and GET KNIFE. Go D to the Kitchen, DOUSE LAMP
+to save its battery, and go W to the Living Room.
+
+GET SWORD. MOVE RUG, OPEN TRAPDOOR, and go D. The trap door slams behind you,
+so LIGHT LAMP immediately. Go N into the Troll Room. The troll blocks every
+exit; KILL TROLL WITH SWORD until he is dead. Combat is random, so repeat the
+attack if necessary, or restore if you are badly wounded.
+
+Once the troll is gone, DROP EGG in the Troll Room. The thief will eventually
+steal it, open it, and carry it back to his hideout. This is intentional.
+
+
+2. THE TORCH, TEMPLE, AND GOLD COFFIN
+
+From the Troll Room go E, E to the Round Room, SE to Engravings Cave, and E to
+the Dome Room. TIE ROPE TO RAILING, then climb D into the Torch Room. DOUSE
+LAMP and GET TORCH. The torch is both a treasure and a permanent light source,
+so it lets us preserve the lantern for the one puzzle where we truly need two
+lights.
+
+Go D to the Temple, then S to the Altar. DROP SWORD here to reduce your load.
+GET CANDLES, DOUSE CANDLES, and GET BOOK. Return N and GET BELL in the Temple.
+Go E to the Egyptian Room, OPEN COFFIN, and GET SCEPTRE from inside it.
+
+Return W to the Temple and S to the Altar. PRAY. The prayer transports you to a
+forest clearing above ground. Go E to Forest Path, S to North of House, E to
+Behind House, W to the Kitchen, and W to the Living Room.
+
+READ BOOK now if you want to understand the ritual we will perform in Hades.
+The marked prayer and the references to noises and lights hint at the bell,
+candles, and book. DROP ALL in the Living Room, then pick up only the TORCH and
+LAMP. Leave the remaining gear here for later. OPEN TRAPDOOR and go D, N, E, E,
+SE, E, D, D. In full, that is Cellar, Troll Room, East-West Passage, Round Room,
+Engravings Cave, Dome Room, Torch Room, Temple. From the Temple go D to the
+Egyptian Room and GET COFFIN.
+
+Carry the coffin U to the Temple, S to the Altar, and PRAY again. Return to the
+house by E, S, E, W, W: Forest Path, North of House, Behind House, Kitchen,
+Living Room. OPEN CASE and PUT COFFIN IN CASE. You should now have 88 points.
+
+
+3. THE PAINTING, PLATINUM BAR, AND HADES
+
+In the Living Room GET BOOK, GET BELL, and GET CANDLES. Go D to the Cellar, S
+across the chasm to the Gallery, and GET PAINTING. Return W to East of Chasm
+and N to the Cellar.
+
+Now head N, E, E from the Cellar, passing through the Troll and East-West
+Passage to the Round Room. Go E to the Loud Room. The expedient solution to its
+acoustic puzzle is simply to type ECHO. Once silence falls, GET BAR—the
+platinum bar is a treasure.
+
+Go U to Deep Canyon, E to the Dam, and N to the Dam Lobby. DROP PAINTING here
+temporarily, because your load is about to matter, and GET MATCHBOOK. Return S
+to the Dam, S to Deep Canyon, D to the Loud Room, W to the Round Room, S to
+Narrow Passage, S to the Mirror Room, E to Cave, and D to the Entrance to
+Hades.
+
+The ritual must be done in the right order:
+
+  1. RING BELL. The hot bell falls, and the candles tumble and go out.
+  2. GET CANDLES.
+  3. LIGHT MATCH.
+  4. LIGHT CANDLES WITH MATCH.
+  5. READ PRAYER while holding the lit candles.
+
+The spirits should now be banished. DROP MATCHBOOK, DROP CANDLES, and DROP BOOK
+to make room, then go S into the Land of the Dead and GET SKULL.
+
+Retrace your route N, U, N, N, N, W, W, S, U: Entrance to Hades, Cave, Mirror
+Room, Narrow Passage, Round Room, East-West Passage, Troll Room, Cellar, Living
+Room. PUT SKULL IN CASE and PUT BAR IN CASE. Your score should be 127.
+
+
+4. THE MAZE, THE CYCLOPS, AND A SHORTCUT HOME
+
+From the Living Room go D, N, then W from the Troll Room to enter the maze.
+Follow this route exactly:
+
+    W, W, W, U
+
+GET KNIFE (the rusty knife beside the skeleton) and GET BAG (the leather bag of
+coins), but do not disturb the skeleton itself. Then go:
+
+    SW, E, S, SE
+
+You arrive in the Cyclops Room. Say ODYSSEUS. The cyclops flees in terror and,
+more importantly, smashes open a permanent route to the house. Go E through
+the new Strange Passage and E again to the Living Room. PUT BAG IN CASE and
+DROP RUSTY KNIFE. This western door will save a great deal of travel later.
+
+
+5. OPENING THE DAM
+
+Go D, N, E, E, N, NE, E: from the Cellar through the Troll and Round Room, then
+North-South Passage and Deep Canyon, to the Dam. Go D to Dam Base and GET PILE.
+This unpromising pile of plastic is actually a deflated inflatable boat.
+
+Return U to the Dam, then N to the Dam Lobby and N to the Maintenance Room. GET
+SCREWDRIVER and GET WRENCH. PRESS RED BUTTON to turn on the room's lights, then
+PRESS YELLOW BUTTON. The yellow button enables the dam controls; avoid the blue
+button, which only starts a leak.
+
+Go S, S back to the Dam and TURN BOLT WITH WRENCH. This opens the sluice gates
+and begins lowering the reservoir. DROP WRENCH; it has done its job.
+
+The water needs some time to drain, so make a brief round trip. Go W to
+Reservoir South, W to Stream View, then E back to Reservoir South. Continue SW
+to Chasm, S to North-South Passage, S to the Round Room, W, W, S to the Cellar,
+and U to the Living Room. DROP PILE and DROP SCREWDRIVER here for safekeeping.
+
+
+6. ATLANTIS AND THE LOWERED RESERVOIR
+
+Return D, N, E, E, S, S to the Mirror Room. TOUCH MIRROR. Now go E to Cave and
+D into Atlantis. GET TRIDENT.
+
+From Atlantis go S to Reservoir North. The reservoir is now drained enough to
+cross. GET PUMP, then go S through the Reservoir and S to Reservoir South.
+Continue SW, S, S, W, W, S, U to return by Chasm, North-South Passage, Round
+Room, East-West Passage, Troll Room, and Cellar to the Living Room.
+
+PUT TRIDENT IN CASE. Then GET SCEPTRE and GET PILE. The sceptre's sharp point
+can puncture an inflated boat, so the order in which we load it soon will be
+important.
+
+
+7. DOWN THE FRIGID RIVER AND OVER THE RAINBOW
+
+From the Living Room go D, N, E, E, E to the Loud Room, E to Damp Cave, and E
+to White Cliffs Beach. DROP PILE, INFLATE PILE, and DROP PUMP. You now have a
+seaworthy magic boat. GET LABEL, READ LABEL if you like, then DROP LABEL.
+
+Do not enter while holding the sharp sceptre. THROW SCEPTRE IN BOAT first, then
+ENTER BOAT and LAUNCH. Once afloat, GET SCEPTRE safely from inside the boat.
+
+WAIT once as the current carries you downstream. GET BUOY when it appears, then
+WAIT once more and LAND. GET OUT OF BOAT at the Shore.
+
+Go N to Sandy Beach. OPEN BUOY and GET EMERALD, then DROP BUOY. GET SHOVEL and
+go NE to Sandy Cave. DIG SAND four times. Stop after the fourth dig—the scarab
+is exposed, and further digging risks burying you. DROP SHOVEL and GET SCARAB.
+
+Return SW to Sandy Beach, S to Shore, and S to Aragain Falls. WAVE SCEPTRE. A
+rainbow becomes solid enough to cross. Go W to On the Rainbow, W to End of
+Rainbow, and GET POT OF GOLD.
+
+From End of Rainbow go SW to Canyon Bottom, U to Rocky Ledge, U to Canyon View,
+NW to Clearing, W to Behind House, W to the Kitchen, and W to the Living Room.
+Bank the expedition's treasures:
+
+    PUT SCEPTRE IN CASE
+    PUT POT IN CASE
+    PUT EMERALD IN CASE
+    PUT SCARAB IN CASE
+
+Your score should now be 208.
+
+
+8. THE THIEF'S LAST STAND
+
+The thief should by now have taken the egg, opened it to reveal the clockwork
+canary, and stored it in his Treasure Room. He may also have collected the
+painting we left in the Dam Lobby. We now need to defeat him both to recover
+those objects and to make the silver chalice safe to take. If the painting is
+not among the treasures that reappear when he dies, it is still safe in the Dam
+Lobby; retrieve it there before trying to complete the case.
+
+SAVE before this fight. In the Living Room GET RUSTY KNIFE and GET NASTY KNIFE,
+then go W through Strange Passage and W to the Cyclops Room. Go U into the
+Treasure Room. The thief rushes to defend his hideout, and the treasures may
+vanish until he dies.
+
+KILL THIEF WITH NASTY KNIFE repeatedly. Several attacks may be needed, and
+chance can give you a short fight or a very ugly one. Keep attacking with the
+nasty knife while you are able; restore if you die or become too badly wounded.
+When the fatal blow lands, his magic fades and all his hoarded treasures
+reappear.
+
+GET PAINTING and GET EGG. The opened egg should contain the golden clockwork
+canary. DROP RUSTY KNIFE and DROP NASTY KNIFE, then GET CHALICE. (The weapons
+are not treasures; dropping them also keeps your load manageable.)
+
+Go D to the Cyclops Room, E to Strange Passage, and E to the Living Room. PUT
+PAINTING IN CASE, then GET CANARY; if necessary, use GET CANARY FROM EGG. PUT
+CHALICE IN CASE and PUT EGG IN CASE. Keep the canary with you for one short trip
+above ground.
+
+
+9. THE CANARY'S SONG
+
+Go E to the Kitchen, E to Behind House, N to North of House, N to Forest Path,
+and E into the Forest. WIND CANARY. A songbird responds to it by dropping a
+beautiful brass bauble. GET BAUBLE.
+
+Return W, S, E, W, W through Forest Path, North of House, Behind House, Kitchen,
+and Living Room. PUT CANARY IN CASE and PUT BAUBLE IN CASE. You should have 271
+points.
+
+
+10. THE COAL MINE AND THE DIAMOND MACHINE
+
+This is the most inventory-sensitive expedition in the game. You need the
+lantern as the light you carry through the mine, the torch as the light you
+send down in the basket, garlic for the bat, coal for the machine, and the
+screwdriver to operate it. The narrow Timber Room passage will admit you only
+while you carry nothing at all.
+
+In the Living Room GET SCREWDRIVER and GET GARLIC. You should already be
+carrying both the lamp and the torch from the earlier expeditions; pick either
+one up here if you happened to leave it behind. Go D, N, E, E, S, S to the
+Mirror Room and TOUCH MIRROR. Go N to Cold Passage, W to Slide Room, N to Mine
+Entrance, W to Squeaky Room, N to Bat Room, and E to Shaft Room. The garlic
+keeps the vampire bat at a respectful distance.
+
+At Shaft Room PUT TORCH IN BASKET and PUT SCREWDRIVER IN BASKET. LIGHT LAMP.
+Do not put the lamp in the basket: you need it to navigate the mine, and the
+open flame of the torch would be disastrous in the Gas Room if you carried it.
+
+Go N to Smelly Room, D to Gas Room, E into the Coal Mine, then follow this
+exact sequence through its confusing passages:
+
+    NE, SE, SW, D, D, S
+
+You end in Dead End. GET COAL, return N, U, U, then take this route back:
+
+    N, E, S, N, U, S
+
+You are back at Shaft Room. PUT COAL IN BASKET, then LOWER BASKET.
+
+Now repeat the outward mine route to the lower side:
+
+    N, D, E, NE, SE, SW, D, D, W
+
+The final W takes you from Ladder Bottom into Timber Room. DROP ALL. This is
+essential: the passage west is too narrow for anyone carrying an object. Go W
+to Drafty Room, where the lowered basket supplies both your tools and safe
+torchlight. GET ALL FROM BASKET. Receiving the torch here is worth points.
+
+Go S into the Machine Room. OPEN LID, PUT COAL IN MACHINE, CLOSE LID, and TURN
+SWITCH WITH SCREWDRIVER. When the noise and colored lights stop, OPEN LID and
+GET DIAMOND.
+
+To get everything back through the narrow passage, go N to Drafty Room and put
+the carried equipment into the basket:
+
+    PUT DIAMOND IN BASKET
+    PUT TORCH IN BASKET
+    PUT SCREWDRIVER IN BASKET
+
+Go E through the narrow passage to Timber Room. GET LAMP and GET GARLIC, the
+objects dropped there earlier. Go E, U, U to return to the mine, then follow:
+
+    N, E, S, N
+
+You are in the Gas Room. GET BRACELET, then go U to Smelly Room and S to Shaft
+Room. RAISE BASKET and GET ALL FROM BASKET. Go W to Bat Room and GET FIGURINE.
+
+Leave by S to Squeaky Room, E to Mine Entrance, S to Slide Room, and D. The
+slide drops you directly into the Cellar. DROP GARLIC, go U to the Living Room,
+and bank everything:
+
+    PUT DIAMOND IN CASE
+    PUT TORCH IN CASE
+    PUT BRACELET IN CASE
+    PUT FIGURINE IN CASE
+
+Your score should now be 330. The permanent torch has served its final purpose,
+so it is safe to place it in the case.
+
+
+11. THE LAST TREASURE AND THE STONE BARROW
+
+One treasure remains in the thief's former lair. From the Living Room go W, W,
+U to the Treasure Room and TAKE TRUNK. Return D, E, E and PUT TRUNK IN CASE.
+Your score reaches the full 350 points, and a faint voice tells you to look to
+your treasures for the final secret.
+
+LOOK. An ancient parchment map has appeared in the trophy case. GET MAP and
+EXAMINE MAP. It shows a newly revealed path southwest from the clearing by the
+house.
+
+Go E to the Kitchen, E to Behind House, N to North of House, and W to West of
+House. Go SW along the secret path to the Stone Barrow. Finally, go W through
+the open stone door.
+
+The door closes behind you, the game congratulates you on completing a great
+and perilous adventure, and your final rank is Master Adventurer: 350 points
+out of 350.
+
+
+QUICK TREASURE CHECKLIST
+
+Before the map appears, the trophy case should contain all nineteen treasures:
+
+  gold coffin                 crystal skull
+  platinum bar                leather bag of coins
+  crystal trident             sceptre
+  pot of gold                 large emerald
+  jeweled scarab              painting
+  silver chalice              jewel-encrusted egg
+  golden clockwork canary     brass bauble
+  huge diamond                ivory torch
+  sapphire bracelet           jade figurine
+  trunk of jewels
+
+If your score is short, compare the case with this list. A missing treasure is
+often in the Living Room, the thief's Treasure Room, or wherever the wandering
+thief last relieved you of it. Once every item is safely in the case, LOOK for
+the map and make the final walk to the barrow.
