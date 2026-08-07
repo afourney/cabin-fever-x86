@@ -598,6 +598,7 @@ class Game:
             history = self._messages[: len(self._messages) - len(tail)]
             response = await self._client.responses.create(
                 model=self._model,
+                prompt_cache_key=str(self._session_id),
                 instructions=SYSTEM_PROMPT,
                 input=notes_request(history),
                 # The tools stay declared because the conversation being summarised
@@ -652,6 +653,7 @@ class Game:
             try:
                 response = await self._client.responses.create(
                     model=self._model,
+                    prompt_cache_key=str(self._session_id),
                     instructions=SYSTEM_PROMPT,
                     input=self._messages,
                     tools=tools,
