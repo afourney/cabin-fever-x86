@@ -21,6 +21,8 @@ from cabin_fever_x86_core.config import (
 )
 from cabin_fever_x86_core.messages import (
     CLIENT_MESSAGE_ADAPTER,
+    CompactionCompleted,
+    CompactSessionCommand,
     ErrorResult,
     ListSessionsCommand,
     ResumeGameCommand,
@@ -69,12 +71,19 @@ async def _run_command(
     config: ServerConfig,
     send: SendCallback,
     games: AsyncExitStack,
-) -> tuple[Game | None, SessionResult | SessionListResult]:
+) -> tuple[Game | None, SessionResult | SessionListResult | CompactionCompleted]:
     """Carry out a session command, returning the game it left in place."""
     if isinstance(command, ListSessionsCommand):
         sessions = find_sessions(SERVER_COMPONENT)
         logger.info("Listed %d session(s)", len(sessions))
         return game, SessionListResult(request_id=command.id, sessions=sessions)
+
+    if isinstance(command, CompactSessionCommand):
+        if game is None:
+            raise CommandRefused("no game in progress; send new_game or resume_game first")
+        await game.compact()
+        logger.info("Compacted session %s on request", game.session_id)
+        return game, CompactionCompleted(request_id=command.id, session_id=game.session_id)
 
     if game is not None:
         raise CommandRefused(f"a game is already running for session {game.session_id}")

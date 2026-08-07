@@ -67,10 +67,32 @@ MAX_MODEL_TURNS = 8
 # being written down, and cleared again the moment it has been.
 COMPACTION_AFK = 300.0
 
+# Returned to public compact() callers when the game closes before their
+# request reaches a successful end.
+COMPACTION_INTERRUPTED = "Game closed before compaction completed"
+
 # What interrupts the game, and where each kind is written down. How far apart
 # they arrive is config.
 CABIN_EVENT = "cabin_event"
 STAGE_DIRECTION = "stage_direction"
+
+
+def _log_token_usage(response: Any) -> None:
+    """Log the token breakdown returned with a model response."""
+    usage = response.usage
+    if usage is None:
+        return
+
+    input_details = getattr(usage, "input_tokens_details", None)
+    output_details = getattr(usage, "output_tokens_details", None)
+    logger.info(
+        "Input Tokens: %d (%d cached); Output Tokens: %d (%d reasoning)",
+        getattr(usage, "input_tokens", 0),
+        getattr(input_details, "cached_tokens", 0),
+        getattr(usage, "output_tokens", 0),
+        getattr(output_details, "reasoning_tokens", 0),
+    )
+
 
 INTERRUPTION_FILES: dict[str, Path] = {
     CABIN_EVENT: Path(__file__).with_name("cabin_events.txt"),
@@ -118,6 +140,14 @@ class Interruption:
     @property
     def content(self) -> str:
         return f"<{self.kind}>{self.text}</{self.kind}>"
+
+
+@dataclass
+class CompactionRequest:
+    """A request for the worker to compact after every earlier inbox item."""
+
+    completed: asyncio.Future[None]
+    id: UUID = field(default_factory=uuid4)
 
 
 def _read_lines(path: Path) -> list[str]:
@@ -243,7 +273,7 @@ class Game:
         self._messages: list[dict[str, Any]] = []
         self._journal: Path | None = None
         self._deck: list[Interruption] = []
-        self._inbox: asyncio.Queue[UserMessage | Interruption] = asyncio.Queue()
+        self._inbox: asyncio.Queue[UserMessage | Interruption | CompactionRequest] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
         self._cabin: asyncio.Task[None] | None = None
         self._afk_until = 0.0
@@ -352,6 +382,15 @@ class Game:
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
 
+        while True:
+            try:
+                pending = self._inbox.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if isinstance(pending, CompactionRequest) and not pending.completed.done():
+                pending.completed.set_exception(RuntimeError(COMPACTION_INTERRUPTED))
+            self._inbox.task_done()
+
         self._machine.reboot()
 
         client = self._client
@@ -392,6 +431,14 @@ class Game:
         transmission does not race the handshake.
         """
         await self.stage_direction(self.opening_direction())
+
+    async def compact(self) -> None:
+        """Queue compaction behind any in-flight turns and wait for it to finish."""
+        if self._worker is None:
+            raise RuntimeError("Game.compact() called outside of the game context")
+        completed = asyncio.get_running_loop().create_future()
+        await self._inbox.put(CompactionRequest(completed))
+        await completed
 
     async def _interrupt(self, interruption: Interruption) -> None:
         if self._worker is None:
@@ -451,10 +498,24 @@ class Game:
         while True:
             message = await self._inbox.get()
             try:
-                await self._handle(message)
-            except Exception:
+                if isinstance(message, CompactionRequest):
+                    tools = [
+                        tool.definition
+                        for tool in self._tools.values()
+                        if not tool.cabin_event_only
+                    ]
+                    await self._compact([], 0, tools)
+                    if not message.completed.done():
+                        message.completed.set_result(None)
+                else:
+                    await self._handle(message)
+            except Exception as exc:
                 logger.exception("Error while handling %s", message.id)
+                if isinstance(message, CompactionRequest) and not message.completed.done():
+                    message.completed.set_exception(exc)
             finally:
+                if isinstance(message, CompactionRequest) and not message.completed.done():
+                    message.completed.set_exception(RuntimeError(COMPACTION_INTERRUPTED))
                 self._inbox.task_done()
 
     def _append(self, item: dict[str, Any]) -> None:
@@ -547,6 +608,7 @@ class Game:
                 reasoning={"effort": "medium"},
                 store=False,
             )
+            _log_token_usage(response)
             summary = response.output_text.strip()
             if not summary:
                 raise OpenAIError("the notes came back empty")
@@ -603,6 +665,7 @@ class Game:
                     store=False,
                     include=["reasoning.encrypted_content"],
                 )
+                _log_token_usage(response)
             except OpenAIError as exc:
                 logger.exception("Response failed for %s", message.id)
                 await self._transmit(f"[model error: {exc}]")
