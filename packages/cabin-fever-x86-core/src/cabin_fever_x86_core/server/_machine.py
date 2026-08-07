@@ -16,6 +16,7 @@ from typing import Any
 
 from jericho import FrotzEnv
 
+from cabin_fever_x86_core.hints import has_hints
 from cabin_fever_x86_core.server._game_memories import (
     GameMemoryError,
     GameMemoryStore,
@@ -78,6 +79,16 @@ GAME_OVER = "The game has ended. Reboot the machine to play something else."
 
 NOTHING_TO_SAVE = "Nothing is running, so there is nothing to save."
 
+HINTS_AVAILABLE = (
+    "Printed walkthroughs and InvisiClues-style hint books are available for this game through "
+    "`request_hint`. They are reference materials in the cabin, not something you remember. "
+    "Do not consult them unless the operator explicitly asks for a hint or agrees to look one up."
+)
+HINTS_UNAVAILABLE = (
+    "There are no walkthroughs or InvisiClues-style hint books available for this game. "
+    "Do not call `request_hint`."
+)
+
 # Z-machine games have their own verbs for saving, restoring, and quitting.
 # We want to intercept those and tell the agent to use the tools instead.
 #
@@ -128,6 +139,7 @@ class Machine:
         self._run_map: RunMap = {}
         self._known_map: KnownMap = {}
         self._known_map_writable = True
+        self._hint_availability_pending = False
 
     @property
     def game(self) -> str | None:
@@ -174,6 +186,10 @@ class Machine:
             body = f"{body}\n\n{GAME_OVER}"
         return f"{header}\n\n{body}"
 
+    def observe(self) -> tuple[str, str | None]:
+        """Show the screen and consume any one-shot private boot reminder."""
+        return self.screen(), self._take_hint_availability_remark()
+
     async def _boot(self, name: str) -> str:
         """Load a game and return its opening screen.
 
@@ -200,6 +216,7 @@ class Machine:
         self._location = _player_location(env)
         self._run_map = {}
         self._known_map = self._load_known_map()
+        self._hint_availability_pending = True
         logger.info("Loaded %s", path.stem)
         return self.screen()
 
@@ -219,7 +236,10 @@ class Machine:
         content = await self.new_game(name)
         if self._game is None:
             return content, None
-        return content, await self._recall_reload_reasons()
+        return content, _join_remarks(
+            self._take_hint_availability_remark(),
+            await self._recall_reload_reasons(),
+        )
 
     async def type_text(self, text: str) -> tuple[str, str | None]:
         """Type a line and return its screen plus any private contextual remarks."""
@@ -315,7 +335,14 @@ class Machine:
                 previous_location,
                 reason,
             )
-        return content, None
+        return content, self._take_hint_availability_remark()
+
+    def _take_hint_availability_remark(self) -> str | None:
+        """Return the hint-book status once after a ROM successfully boots."""
+        if not self._hint_availability_pending or self._game is None:
+            return None
+        self._hint_availability_pending = False
+        return HINTS_AVAILABLE if has_hints(self._game) else HINTS_UNAVAILABLE
 
     async def _load(self, name: str) -> tuple[str, bool]:
         """Restore a save and report whether the restore completed."""
@@ -555,9 +582,16 @@ class Machine:
         self._observation, self._info, self._done = "", {}, False
         self._location, self._run_map, self._known_map = None, {}, {}
         self._known_map_writable = True
+        self._hint_availability_pending = False
         if was:
             logger.info("Rebooted, quitting %s", was)
         return NO_GAME
+
+
+def _join_remarks(*remarks: str | None) -> str | None:
+    """Combine private reminders without adding empty personal-remarks blocks."""
+    kept = [remark.strip() for remark in remarks if remark and remark.strip()]
+    return "\n\n".join(kept) or None
 
 
 def _instead_of_typing(text: str) -> str | None:

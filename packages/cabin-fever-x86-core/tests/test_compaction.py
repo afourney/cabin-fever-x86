@@ -314,10 +314,14 @@ async def test_crossing_the_threshold_writes_the_night_down(
         # The notes.
         FakeResponse([], FakeUsage(30), output_text="Playing zork1. Operator is Sam. Up a tree."),
     ]
-    game, _asked = game_with(replies, sender, monkeypatch)
+    game, responses = game_with(replies, sender, monkeypatch)
     async with game:
         await game._handle(game_module.Interruption(kind="stage_direction", text="say hello"))
 
+        assert [call["prompt_cache_key"] for call in responses.calls] == [
+            str(game.session_id),
+            str(game.session_id),
+        ]
         # Excuse, notes, return — and the transmission the reply had decided on.
         assert spoken == [EXCUSE.away, EXCUSE.back, "still here"]
 
@@ -525,6 +529,25 @@ async def test_an_empty_transmission_still_reaches_the_client(
     assert game._messages[-1]["output"] == ("Kerchunk. You keyed up the radio without speaking.")
 
 
+async def test_hint_tool_stays_defined_but_is_allowed_only_when_material_exists(
+    sender: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game, _responses = game_with([], sender, monkeypatch)
+
+    async with game:
+        definitions = [tool.definition for tool in game._tools.values()]
+        assert any(tool["name"] == "request_hint" for tool in definitions)
+
+        monkeypatch.setattr(game_module, "has_hints", lambda _game: False)
+        without_hints = game._allowed_tool_choice(cabin_turn=False)
+        assert not any(tool["name"] == "request_hint" for tool in without_hints["tools"])
+
+        monkeypatch.setattr(game_module, "has_hints", lambda _game: True)
+        with_hints = game._allowed_tool_choice(cabin_turn=False)
+        assert any(tool["name"] == "request_hint" for tool in with_hints["tools"])
+        assert definitions == [tool.definition for tool in game._tools.values()]
+
+
 async def test_an_empty_plain_reply_still_reaches_the_client(
     sender: Any, spoken: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -555,6 +578,6 @@ async def test_the_extra_model_turn_forces_a_transmission(
 
     assert spoken == [long_message]
     assert len(responses.calls) == game_module.MAX_MODEL_TURNS + 1
-    assert all(call["tool_choice"] == "auto" for call in responses.calls[:-1])
+    assert all(call["tool_choice"]["type"] == "allowed_tools" for call in responses.calls[:-1])
     assert all(call["parallel_tool_calls"] is False for call in responses.calls)
     assert responses.calls[-1]["tool_choice"] == {"type": "function", "name": "transmit"}
