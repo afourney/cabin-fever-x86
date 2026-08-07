@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from openai.types.responses import FunctionToolParam
 
+from cabin_fever_x86_core.hints import HintLevel, has_hints, provide_hint
 from cabin_fever_x86_core.server._saves import SaveError
 
 if TYPE_CHECKING:  # Machine names these tools in its own messages, so the
@@ -304,7 +305,77 @@ class ReadScreenTool(Tool):
         self._machine = machine
 
     async def execute(self, args: dict[str, Any]) -> ToolOutput:
-        return ToolOutput(self._machine.screen())
+        content, remarks = self._machine.observe()
+        return ToolOutput(content, remarks=remarks)
+
+
+class RequestHintTool(Tool):
+    """Consults the printed hint material for the game in the drive."""
+
+    name = "request_hint"
+    description = (
+        "Consult the old printed walkthroughs and InvisiClues-style hint books kept with the "
+        "cabin's games. Some were bought years ago, some were printed, and some may have been "
+        "left behind by previous occupants. Use this only when the operator explicitly asks "
+        "for a hint or clearly agrees to consult the hint material; never quietly look "
+        "something up merely because the two of you are stuck. Ask one standalone, well-scoped "
+        "question about a specific puzzle, obstacle, object, location, or immediate goal. "
+        "'How do I open the egg?' is suitable; 'What do I do with it?', 'Where do I go?', and "
+        "'Give me a walkthrough' are not. The result comes from the printed material, not your "
+        "memory, and you must not strengthen it beyond the requested hint level."
+    )
+    parameters: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "properties": {
+            "question": {
+                "type": "string",
+                "description": (
+                    "A standalone question naming one specific puzzle, obstacle, object, "
+                    "location, or immediate goal."
+                ),
+            },
+            "hint_level": {
+                "type": "string",
+                "enum": [level.value for level in HintLevel],
+                "description": (
+                    "SMALL_HINT is a gentle nudge, MEDIUM_HINT is strongly actionable, and "
+                    "LARGE_HINT gives the direct solution."
+                ),
+            },
+        },
+        "required": ["question", "hint_level"],
+        "additionalProperties": False,
+    }
+
+    def __init__(self, client: Any, model: str, machine: Machine) -> None:
+        self._client = client
+        self._model = model
+        self._machine = machine
+
+    async def execute(self, args: dict[str, Any]) -> ToolOutput:
+        game = self._machine.game
+        if not game or not has_hints(game):
+            return ToolOutput(f"No hints are available for {game or 'the DOS prompt'}.")
+        question = str(args.get("question") or "").strip()
+        if not question:
+            return ToolOutput(
+                "No question was provided. Ask one standalone question about a specific puzzle."
+            )
+        try:
+            level = HintLevel(str(args.get("hint_level") or ""))
+        except ValueError:
+            choices = ", ".join(item.value for item in HintLevel)
+            return ToolOutput(f"The hint level must be one of: {choices}.")
+        # In practice, the hint model consistently answers one level more directly than
+        # requested, so compensate here while leaving the public levels and prompts intact.
+        calibrated_level = {
+            HintLevel.SMALL_HINT: HintLevel.SMALL_HINT,
+            HintLevel.MEDIUM_HINT: HintLevel.SMALL_HINT,
+            HintLevel.LARGE_HINT: HintLevel.MEDIUM_HINT,
+        }[level]
+        return ToolOutput(
+            await provide_hint(self._client, self._model, game, question, calibrated_level)
+        )
 
 
 class TypeTool(Tool):

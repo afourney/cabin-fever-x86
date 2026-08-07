@@ -20,6 +20,7 @@ from openai import AsyncOpenAI, OpenAIError
 from openai.types.responses import FunctionToolParam, ResponseFunctionToolCall
 
 from cabin_fever_x86_core.config import ServerConfig
+from cabin_fever_x86_core.hints import has_hints
 from cabin_fever_x86_core.messages import AssistantMessage, UserMessage
 from cabin_fever_x86_core.server._ai_client import create_client
 from cabin_fever_x86_core.server._compaction import (
@@ -44,6 +45,7 @@ from cabin_fever_x86_core.server._tools import (
     NoopTool,
     ReadScreenTool,
     RebootTool,
+    RequestHintTool,
     SaveGameTool,
     Tool,
     ToolOutput,
@@ -336,6 +338,11 @@ class Game:
         if self._resumed:
             logger.info("Picked the conversation back up: %d item(s)", len(self._messages))
         self._client, self._model = create_client(self._config.ai_client, str(self._session_id))
+        self._tools[RequestHintTool.name] = RequestHintTool(
+            self._client,
+            self._model,
+            self._machine,
+        )
         logger.info(
             "Session %s: provider %r, model %r, data in %s",
             self._session_id,
@@ -499,11 +506,7 @@ class Game:
             message = await self._inbox.get()
             try:
                 if isinstance(message, CompactionRequest):
-                    tools = [
-                        tool.definition
-                        for tool in self._tools.values()
-                        if not tool.cabin_event_only
-                    ]
+                    tools = [tool.definition for tool in self._tools.values()]
                     await self._compact([], 0, tools)
                     if not message.completed.done():
                         message.completed.set_result(None)
@@ -641,11 +644,9 @@ class Game:
         cabin_turn = isinstance(message, Interruption) and message.kind == CABIN_EVENT
         self._append({"role": "user", "content": message.content})
 
-        tools = [
-            tool.definition
-            for tool in self._tools.values()
-            if cabin_turn or not tool.cabin_event_only
-        ]
+        # Keep every definition, and its order, stable for prompt caching. What
+        # the model may actually call on this turn is narrowed with allowed_tools.
+        tools = [tool.definition for tool in self._tools.values()]
 
         compacted = False
         for turn in range(MAX_MODEL_TURNS + 1):
@@ -658,7 +659,9 @@ class Game:
                     input=self._messages,
                     tools=tools,
                     tool_choice=(
-                        {"type": "function", "name": TransmitTool.name} if final_turn else "auto"
+                        {"type": "function", "name": TransmitTool.name}
+                        if final_turn
+                        else self._allowed_tool_choice(cabin_turn)
                     ),
                     parallel_tool_calls=False,
                     reasoning={"effort": "medium"},
@@ -725,3 +728,14 @@ class Game:
             message.id,
             MAX_MODEL_TURNS,
         )
+
+    def _allowed_tool_choice(self, cabin_turn: bool) -> dict[str, Any]:
+        """Restrict calls without changing the cacheable tool definitions."""
+        allowed: list[dict[str, str]] = []
+        for tool in self._tools.values():
+            if tool.cabin_event_only and not cabin_turn:
+                continue
+            if isinstance(tool, RequestHintTool) and not has_hints(self._machine.game):
+                continue
+            allowed.append({"type": "function", "name": tool.name})
+        return {"type": "allowed_tools", "mode": "auto", "tools": allowed}
