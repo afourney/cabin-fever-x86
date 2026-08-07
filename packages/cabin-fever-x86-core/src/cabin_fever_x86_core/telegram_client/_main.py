@@ -25,6 +25,8 @@ from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_c
 from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
     AssistantMessage,
+    CompactionCompleted,
+    CompactSessionCommand,
     ErrorResult,
     UserMessage,
 )
@@ -102,6 +104,9 @@ class TelegramSession:
     pump: asyncio.Task[None] | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     voice_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    pending_compactions: dict[UUID, asyncio.Future[CompactionCompleted]] = field(
+        default_factory=dict
+    )
     has_replied: bool = False
     last_user_was_voice: bool = False
 
@@ -178,9 +183,21 @@ class TelegramBridge:
                     continue
                 if isinstance(message, AssistantMessage):
                     await self._deliver_assistant(session, message)
+                elif isinstance(message, CompactionCompleted):
+                    pending = session.pending_compactions.pop(message.request_id, None)
+                    if pending is not None and not pending.done():
+                        pending.set_result(message)
                 elif isinstance(message, ErrorResult):
-                    session.transcript.log("error", message.request_id, message.message)
-                    await self.send(session.chat_id, f"Error: {message.message}")
+                    pending = (
+                        session.pending_compactions.pop(message.request_id, None)
+                        if message.request_id is not None
+                        else None
+                    )
+                    if pending is not None and not pending.done():
+                        pending.set_exception(SessionCommandError(message.message))
+                    else:
+                        session.transcript.log("error", message.request_id, message.message)
+                        await self.send(session.chat_id, f"Error: {message.message}")
         except ConnectionClosed as exc:
             logger.warning(
                 "Server connection closed for Telegram account %d: %s", session.account_id, exc
@@ -191,6 +208,10 @@ class TelegramBridge:
             with suppress(Exception):
                 await self.send(session.chat_id, "The connection to the game failed.")
         finally:
+            for pending in session.pending_compactions.values():
+                if not pending.done():
+                    pending.set_exception(SessionCommandError("game server connection closed"))
+            session.pending_compactions.clear()
             if self.sessions.get(session.account_id) is session:
                 self.sessions.pop(session.account_id, None)
 
@@ -400,6 +421,7 @@ class TelegramBridge:
                 "/continue — continue the most recent game\n"
                 "/sessions — list saved games\n"
                 "/session — show the current game\n"
+                "/compact — compact the current conversation\n"
                 "/quit — close the channel",
             )
             return
@@ -412,6 +434,22 @@ class TelegramBridge:
             await self.send(
                 chat_id, f"Session {session.session_id}." if session else "No game is open."
             )
+            return
+        if command == "/compact":
+            session = self.sessions.get(account_id)
+            if session is None:
+                await self.send(chat_id, "No game is open.")
+                return
+            async with session.lock:
+                compact = CompactSessionCommand()
+                completed = asyncio.get_running_loop().create_future()
+                session.pending_compactions[compact.id] = completed
+                try:
+                    await session.connection.send(compact.model_dump_json())
+                    await completed
+                finally:
+                    session.pending_compactions.pop(compact.id, None)
+            await self.send(chat_id, "Compaction completed.")
             return
         if command == "/sessions":
             async with connect(self.upstream_uri) as connection:
