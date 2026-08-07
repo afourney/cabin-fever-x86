@@ -37,6 +37,22 @@ def test_game_names_are_normalized_without_accepting_paths() -> None:
     assert hints.normalize_game(r"folder\zork1.z5") == ""
 
 
+def test_rot13_preserves_case_and_nonletters_and_is_its_own_inverse() -> None:
+    original = "Abc Nop, ZORK 1!"
+    encoded = hints.rot13(original)
+
+    assert encoded == "Nop Abc, MBEX 1!"
+    assert hints.rot13(encoded) == original
+
+
+def test_packaged_hints_are_obfuscated_and_decode_when_loaded() -> None:
+    encoded = hints._hint_resource("zork1").read_text(encoding="utf-8")
+
+    assert hints.has_hints("zork1")
+    assert "ZORK I: THE GREAT UNDERGROUND EMPIRE" not in encoded
+    assert (hints._load_hints("zork1") or "").startswith("ZORK I: THE GREAT UNDERGROUND EMPIRE")
+
+
 @pytest.mark.asyncio
 async def test_missing_material_returns_without_calling_the_model(monkeypatch) -> None:
     responses = FakeResponses({"status": "answered", "hint": "should not be reached"})

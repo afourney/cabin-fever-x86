@@ -670,6 +670,28 @@ async def test_new_game_reports_when_no_hint_material_exists(
     assert "Do not call `request_hint`" in (result.remarks or "")
 
 
+async def test_failed_load_leaves_hint_availability_for_the_next_observation(
+    machine: Machine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rom("zork1")
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine.has_hints", lambda _game: True)
+    await machine.new_game("zork1")
+    monkeypatch.setattr(machine, "_load", lambda _name: _failed_load())
+
+    content, remarks = await machine.load_from_tool("broken_save")
+    _screen, observed_remarks = machine.observe()
+
+    assert content == "That save will not load."
+    assert remarks is None
+    assert "Printed walkthroughs and InvisiClues-style hint books are available" in (
+        observed_remarks or ""
+    )
+
+
+async def _failed_load() -> tuple[str, bool]:
+    return "That save will not load.", False
+
+
 async def test_starting_at_the_dos_prompt_also_recalls_reload_reasons(
     machine: Machine,
 ) -> None:

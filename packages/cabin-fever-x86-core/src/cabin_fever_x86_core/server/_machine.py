@@ -319,7 +319,7 @@ class Machine:
 
         content, loaded = await self._load(name)
         if not loaded:
-            return content, self._take_hint_availability_remark()
+            return content, None
 
         if (
             reason

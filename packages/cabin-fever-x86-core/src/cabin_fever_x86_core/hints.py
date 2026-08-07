@@ -58,6 +58,10 @@ NO_HINT_FOUND = "The hint material doesn't appear to cover that question."
 
 _HINTS_PACKAGE = "cabin_fever_x86_core"
 _HINTS_DIRECTORY = "hints"
+_ROT13 = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+    "NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm",
+)
 
 _SYSTEM_PROMPT = f"""\
 You answer questions using one supplied old walkthrough or InvisiClues-style hint book.
@@ -119,8 +123,13 @@ def normalize_game(game: str) -> str:
     return name
 
 
+def rot13(text: str) -> str:
+    """Apply the symmetric, case-preserving ROT13 substitution to ASCII letters."""
+    return text.translate(_ROT13)
+
+
 def _hint_resource(game: str) -> Any:
-    return files(_HINTS_PACKAGE).joinpath(_HINTS_DIRECTORY, f"{normalize_game(game)}.txt")
+    return files(_HINTS_PACKAGE).joinpath(_HINTS_DIRECTORY, f"{normalize_game(game)}.rot13")
 
 
 def has_hints(game: str | None) -> bool:
@@ -133,7 +142,7 @@ def has_hints(game: str | None) -> bool:
 def _load_hints(game: str) -> str | None:
     if not has_hints(game):
         return None
-    return _hint_resource(game).read_text(encoding="utf-8")
+    return rot13(_hint_resource(game).read_text(encoding="utf-8"))
 
 
 async def provide_hint(
