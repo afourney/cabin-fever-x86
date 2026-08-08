@@ -65,7 +65,8 @@ lint-fix = "ruff check --fix packages"
 
 # Tests are skipped on purpose: some of them spell things wrong deliberately,
 # to assert that a typo in a config file is reported rather than ignored.
-spell = "codespell -I .codespellignore --skip '*/tests/*' packages README.md"
+# The ROT-13 hint books are skipped because their ciphertext is not English.
+spell = "codespell -I .codespellignore --skip '*/tests/*,*/hints/*.rot13' packages README.md"
 
 # Run from inside each package so pytest picks up that package's
 # [tool.pytest.ini_options]; from the root it would find this file instead,
