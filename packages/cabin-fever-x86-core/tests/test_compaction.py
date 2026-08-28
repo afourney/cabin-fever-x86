@@ -560,14 +560,14 @@ async def test_an_empty_plain_reply_still_reaches_the_client(
     assert spoken == [""]
 
 
-async def test_the_extra_model_turn_forces_a_transmission(
+async def test_the_extra_model_round_forces_a_transmission(
     sender: Any, spoken: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     long_message = "x" * 500
     replies = [
         *(
-            FakeResponse([tool_call("read_screen", f"screen_{turn}")], FakeUsage(20))
-            for turn in range(game_module.MAX_MODEL_TURNS)
+            FakeResponse([tool_call("read_screen", f"screen_{model_round}")], FakeUsage(20))
+            for model_round in range(game_module.MAX_MODEL_ROUNDS)
         ),
         FakeResponse([transmit_call(long_message, "final")], FakeUsage(20)),
     ]
@@ -577,7 +577,7 @@ async def test_the_extra_model_turn_forces_a_transmission(
         await game._handle(game_module.Interruption(kind="stage_direction", text="keep looking"))
 
     assert spoken == [long_message]
-    assert len(responses.calls) == game_module.MAX_MODEL_TURNS + 1
+    assert len(responses.calls) == game_module.MAX_MODEL_ROUNDS + 1
     assert all(call["tool_choice"]["type"] == "allowed_tools" for call in responses.calls[:-1])
     assert all(call["parallel_tool_calls"] is False for call in responses.calls)
     assert responses.calls[-1]["tool_choice"] == {"type": "function", "name": "transmit"}

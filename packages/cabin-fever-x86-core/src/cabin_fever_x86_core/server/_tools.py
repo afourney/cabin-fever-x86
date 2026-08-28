@@ -352,7 +352,9 @@ class RequestHintTool(Tool):
         self._model = model
         self._machine = machine
 
-    async def execute(self, args: dict[str, Any]) -> ToolOutput:
+    async def execute(
+        self, args: dict[str, Any], *, record_usage: Callable[[Any], None] | None = None
+    ) -> ToolOutput:
         game = self._machine.game
         if not game or not has_hints(game):
             return ToolOutput(f"No hints are available for {game or 'the DOS prompt'}.")
@@ -374,7 +376,14 @@ class RequestHintTool(Tool):
             HintLevel.LARGE_HINT: HintLevel.MEDIUM_HINT,
         }[level]
         return ToolOutput(
-            await provide_hint(self._client, self._model, game, question, calibrated_level)
+            await provide_hint(
+                self._client,
+                self._model,
+                game,
+                question,
+                calibrated_level,
+                record_usage=record_usage,
+            )
         )
 
 

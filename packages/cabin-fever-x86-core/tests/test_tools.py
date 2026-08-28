@@ -61,7 +61,7 @@ async def test_request_hint_calibrates_the_level_down(
 ) -> None:
     calls: list[tuple[object, str, str, str, HintLevel]] = []
 
-    async def fake_provide_hint(client, model, game, question, level) -> str:
+    async def fake_provide_hint(client, model, game, question, level, record_usage=None) -> str:
         calls.append((client, model, game, question, level))
         return "a restrained hint"
 
