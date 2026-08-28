@@ -61,9 +61,9 @@ SendCallback = Callable[[AssistantMessage], Awaitable[None]]
 # What a tool call gets in place of the result it never lived to see.
 INTERRUPTED_TOOL_OUTPUT = "Tool call was interrupted, and did not complete."
 
-# How many ordinary model turns one player transmission may take before we
+# How many ordinary model rounds one player transmission may take before we
 # force one final transmission, in case the model never settles.
-MAX_MODEL_TURNS = 8
+MAX_MODEL_ROUNDS = 8
 
 # Long enough that nothing the operator says lands in the gap while the night is
 # being written down, and cleared again the moment it has been.
@@ -245,7 +245,7 @@ class Game:
 
     The conversation is carried in ``_messages`` and mirrored to
     ``messages.jsonl`` as it grows. Requests run with zero data retention, so
-    nothing is held server-side between turns: every turn resends the whole
+    nothing is held server-side between rounds: every round resends the whole
     context, reasoning included, as encrypted items.
 
     Incoming transmissions are handed to :meth:`receive`, which queues them and
@@ -562,7 +562,7 @@ class Game:
 
         try:
             if force_transmit and isinstance(tool, TransmitTool):
-                # The final model turn has no retry left. Let its transmission
+                # The final model round has no retry left. Let its transmission
                 # through even when it exceeds the usual radio limit.
                 return await tool.execute(args, force=True)
             return await tool.execute(args)
@@ -649,8 +649,8 @@ class Game:
         tools = [tool.definition for tool in self._tools.values()]
 
         compacted = False
-        for turn in range(MAX_MODEL_TURNS + 1):
-            final_turn = turn == MAX_MODEL_TURNS
+        for model_round in range(MAX_MODEL_ROUNDS + 1):
+            final_round = model_round == MAX_MODEL_ROUNDS
             try:
                 response = await self._client.responses.create(
                     model=self._model,
@@ -660,7 +660,7 @@ class Game:
                     tools=tools,
                     tool_choice=(
                         {"type": "function", "name": TransmitTool.name}
-                        if final_turn
+                        if final_round
                         else self._allowed_tool_choice(cabin_turn)
                     ),
                     parallel_tool_calls=False,
@@ -709,7 +709,7 @@ class Game:
                 result = await self._run_tool(
                     call,
                     cabin_turn,
-                    force_transmit=final_turn and call.name == TransmitTool.name,
+                    force_transmit=final_round and call.name == TransmitTool.name,
                 )
                 self._append(
                     {
@@ -724,9 +724,9 @@ class Game:
                 return
 
         logger.warning(
-            "Forced transmission for %s did not end the turn after %d model turns",
+            "Forced transmission for %s did not end the turn after %d model rounds",
             message.id,
-            MAX_MODEL_TURNS,
+            MAX_MODEL_ROUNDS,
         )
 
     def _allowed_tool_choice(self, cabin_turn: bool) -> dict[str, Any]:

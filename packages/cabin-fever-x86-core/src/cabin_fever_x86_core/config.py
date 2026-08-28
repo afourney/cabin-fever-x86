@@ -96,7 +96,7 @@ class ServerConfig(_Section):
     cabin_events: CabinEventsConfig = CabinEventsConfig()
     #: Once a request comes back having used this many tokens, the conversation
     #: is summarised and started over from the summary. Read after the fact, so
-    #: leave room for one more turn between here and the model's context limit.
+    #: leave room for one more round between here and the model's context limit.
     compaction_threshold: Annotated[int, Field(gt=0)] = 140_000
 
 
