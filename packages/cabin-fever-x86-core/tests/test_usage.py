@@ -22,6 +22,7 @@ from openai.types.responses.response_usage import (
     ResponseUsage,
 )
 
+from cabin_fever_x86_core import hints as hints_module
 from cabin_fever_x86_core.config import ServerConfig
 from cabin_fever_x86_core.messages import AssistantMessage, UserMessage
 from cabin_fever_x86_core.server import _game as game_module
@@ -333,22 +334,10 @@ async def test_a_compaction_the_operator_asked_for_has_no_turn_behind_it(
 async def test_a_hint_is_charged_to_the_turn_whose_call_asked_for_it(
     sender: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    hint_response = FakeResponse([], FakeUsage(41715), prompt_cache_key="zork1_hint")
-
-    async def fake_provide_hint(
-        _client: Any,
-        _model: str,
-        _game: str,
-        _question: str,
-        _level: Any,
-        record_usage: Any = None,
-    ) -> str:
-        assert record_usage is not None
-        record_usage(hint_response)
-        return "Listen for a singing bird."
-
+    # Only the hint book is stood in for: the hint itself runs the real
+    # provide_hint, so the accounting hook it calls is the one under test.
     monkeypatch.setattr(tools_module, "has_hints", lambda _game: True)
-    monkeypatch.setattr(tools_module, "provide_hint", fake_provide_hint)
+    monkeypatch.setattr(hints_module, "_load_hints", lambda _game: "The canary matters.")
 
     replies = [
         FakeResponse(
@@ -358,6 +347,13 @@ async def test_a_hint_is_charged_to_the_turn_whose_call_asked_for_it(
                 )
             ],
             FakeUsage(20),
+        ),
+        # The hint is answered by the same client, between the two rounds.
+        FakeResponse(
+            [],
+            FakeUsage(41715),
+            output_text=json.dumps({"status": "answered", "hint": "Listen for a singing bird."}),
+            prompt_cache_key="zork1_hint",
         ),
         FakeResponse([transmit_call("try the bird")], FakeUsage(25)),
     ]
