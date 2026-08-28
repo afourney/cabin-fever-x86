@@ -11,6 +11,7 @@ import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -52,7 +53,18 @@ from cabin_fever_x86_core.server._tools import (
     TransmitTool,
     TypeTool,
 )
-from cabin_fever_x86_core.sessions import MESSAGES_FILE, SERVER_COMPONENT, session_dir
+from cabin_fever_x86_core.server._usage import (
+    COMPACTION_TURN,
+    HINT_TURN,
+    PLAYER_TURN,
+    UsageLog,
+)
+from cabin_fever_x86_core.sessions import (
+    MESSAGES_FILE,
+    SERVER_COMPONENT,
+    USAGE_FILE,
+    session_dir,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +73,9 @@ SendCallback = Callable[[AssistantMessage], Awaitable[None]]
 # What a tool call gets in place of the result it never lived to see.
 INTERRUPTED_TOOL_OUTPUT = "Tool call was interrupted, and did not complete."
 
-# How many ordinary model turns one player transmission may take before we
+# How many ordinary model rounds one player transmission may take before we
 # force one final transmission, in case the model never settles.
-MAX_MODEL_TURNS = 8
+MAX_MODEL_ROUNDS = 8
 
 # Long enough that nothing the operator says lands in the gap while the night is
 # being written down, and cleared again the moment it has been.
@@ -245,7 +257,7 @@ class Game:
 
     The conversation is carried in ``_messages`` and mirrored to
     ``messages.jsonl`` as it grows. Requests run with zero data retention, so
-    nothing is held server-side between turns: every turn resends the whole
+    nothing is held server-side between rounds: every round resends the whole
     context, reasoning included, as encrypted items.
 
     Incoming transmissions are handed to :meth:`receive`, which queues them and
@@ -274,6 +286,7 @@ class Game:
         self._data_dir: Path | None = None
         self._messages: list[dict[str, Any]] = []
         self._journal: Path | None = None
+        self._usage: UsageLog | None = None
         self._deck: list[Interruption] = []
         self._inbox: asyncio.Queue[UserMessage | Interruption | CompactionRequest] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
@@ -314,6 +327,7 @@ class Game:
     async def __aenter__(self) -> Self:
         self._data_dir = session_dir(self._session_id, SERVER_COMPONENT)
         self._journal = self._data_dir / MESSAGES_FILE
+        self._usage = UsageLog(self._data_dir / USAGE_FILE, self._session_id)
 
         # Everything said last time, back in the shape it goes to the API in.
         # Read before the worker starts, so nothing can be answered out of a
@@ -533,11 +547,34 @@ class Game:
         with self._journal.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(item) + "\n")
 
+    def _account(
+        self,
+        response: Any,
+        *,
+        turn_type: str,
+        turn_id: UUID,
+        parent_turn_id: UUID | None = None,
+        call_id: str | None = None,
+        model_round: int = 0,
+    ) -> None:
+        """Log what one response cost, and write it down in the session ledger."""
+        _log_token_usage(response)
+        if self._usage is not None:
+            self._usage.record(
+                response,
+                turn_type=turn_type,
+                turn_id=turn_id,
+                parent_turn_id=parent_turn_id,
+                call_id=call_id,
+                model_round=model_round,
+            )
+
     async def _run_tool(
         self,
         call: ResponseFunctionToolCall,
         cabin_turn: bool,
         *,
+        parent_turn_id: UUID,
         force_transmit: bool = False,
     ) -> ToolOutput:
         """Carry out one tool call, turning any failure into a result the model can read.
@@ -562,9 +599,22 @@ class Game:
 
         try:
             if force_transmit and isinstance(tool, TransmitTool):
-                # The final model turn has no retry left. Let its transmission
+                # The final model round has no retry left. Let its transmission
                 # through even when it exceeds the usual radio limit.
                 return await tool.execute(args, force=True)
+            if isinstance(tool, RequestHintTool):
+                # The hint is answered in a context of its own, so it is a turn
+                # of its own in the ledger, charged back to the turn that asked.
+                return await tool.execute(
+                    args,
+                    record_usage=partial(
+                        self._account,
+                        turn_type=HINT_TURN,
+                        turn_id=uuid4(),
+                        parent_turn_id=parent_turn_id,
+                        call_id=call.call_id,
+                    ),
+                )
             return await tool.execute(args)
         except Exception as exc:
             logger.exception("Tool %r failed", call.name)
@@ -575,6 +625,8 @@ class Game:
         tail: list[dict[str, Any]],
         used: int,
         tools: list[FunctionToolParam],
+        *,
+        parent_turn_id: UUID | None = None,
     ) -> None:
         """Step away, write the night down, and carry on from the notes.
 
@@ -583,10 +635,15 @@ class Game:
         notes do not come back the conversation goes on at full length, which
         risks the next request but is better than dropping the session on the
         floor mid-sentence.
+
+        *parent_turn_id* is the turn whose reply tripped the threshold, so the
+        notes are charged back to it. An operator asking for compaction outright
+        has no turn behind it, and leaves it unset.
         """
         if self._client is None:
             return
 
+        turn_id = uuid4()
         excuse = draw_excuse(self._excuses)
         logger.info(
             "Compacting at %d tokens, %d item(s) in the conversation", used, len(self._messages)
@@ -612,7 +669,12 @@ class Game:
                 reasoning={"effort": "medium"},
                 store=False,
             )
-            _log_token_usage(response)
+            self._account(
+                response,
+                turn_type=COMPACTION_TURN,
+                turn_id=turn_id,
+                parent_turn_id=parent_turn_id,
+            )
             summary = response.output_text.strip()
             if not summary:
                 raise OpenAIError("the notes came back empty")
@@ -642,6 +704,8 @@ class Game:
         # A cabin event may be let pass; a stage direction may not, so the
         # tools for shrugging one off are kept out of reach on every other turn.
         cabin_turn = isinstance(message, Interruption) and message.kind == CABIN_EVENT
+        # An interruption is a turn in its own right, and says which kind it was.
+        turn_type = message.kind if isinstance(message, Interruption) else PLAYER_TURN
         self._append({"role": "user", "content": message.content})
 
         # Keep every definition, and its order, stable for prompt caching. What
@@ -649,8 +713,8 @@ class Game:
         tools = [tool.definition for tool in self._tools.values()]
 
         compacted = False
-        for turn in range(MAX_MODEL_TURNS + 1):
-            final_turn = turn == MAX_MODEL_TURNS
+        for model_round in range(MAX_MODEL_ROUNDS + 1):
+            final_round = model_round == MAX_MODEL_ROUNDS
             try:
                 response = await self._client.responses.create(
                     model=self._model,
@@ -660,7 +724,7 @@ class Game:
                     tools=tools,
                     tool_choice=(
                         {"type": "function", "name": TransmitTool.name}
-                        if final_turn
+                        if final_round
                         else self._allowed_tool_choice(cabin_turn)
                     ),
                     parallel_tool_calls=False,
@@ -670,7 +734,12 @@ class Game:
                     store=False,
                     include=["reasoning.encrypted_content"],
                 )
-                _log_token_usage(response)
+                self._account(
+                    response,
+                    turn_type=turn_type,
+                    turn_id=message.id,
+                    model_round=model_round,
+                )
             except OpenAIError as exc:
                 logger.exception("Response failed for %s", message.id)
                 await self._transmit(f"[model error: {exc}]")
@@ -693,7 +762,7 @@ class Game:
             used = response.usage.total_tokens if response.usage else 0
             if used >= self._config.compaction_threshold and not compacted:
                 compacted = True
-                await self._compact(tail, used, tools)
+                await self._compact(tail, used, tools, parent_turn_id=message.id)
 
             if not calls:
                 # Nothing called: whatever it said in plain text is the transmission.
@@ -709,7 +778,8 @@ class Game:
                 result = await self._run_tool(
                     call,
                     cabin_turn,
-                    force_transmit=final_turn and call.name == TransmitTool.name,
+                    parent_turn_id=message.id,
+                    force_transmit=final_round and call.name == TransmitTool.name,
                 )
                 self._append(
                     {
@@ -724,9 +794,9 @@ class Game:
                 return
 
         logger.warning(
-            "Forced transmission for %s did not end the turn after %d model turns",
+            "Forced transmission for %s did not end the turn after %d model rounds",
             message.id,
-            MAX_MODEL_TURNS,
+            MAX_MODEL_ROUNDS,
         )
 
     def _allowed_tool_choice(self, cabin_turn: bool) -> dict[str, Any]:

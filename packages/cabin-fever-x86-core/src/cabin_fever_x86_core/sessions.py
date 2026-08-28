@@ -27,6 +27,12 @@ TELEGRAM_CLIENT_COMPONENT = "telegram_client"
 # unrelated to play.
 MESSAGES_FILE = "messages.jsonl"
 
+# What every request to the model cost, beside the conversation it was spent
+# on. Compaction rotates and rewrites the journal; this file is only ever
+# appended to, because what was spent stays spent however the context is later
+# cut down.
+USAGE_FILE = "usage.jsonl"
+
 
 def session_dir(
     session_id: UUID | str,

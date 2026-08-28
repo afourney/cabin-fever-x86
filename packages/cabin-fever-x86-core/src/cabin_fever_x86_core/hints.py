@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import PurePath
@@ -151,8 +152,13 @@ async def provide_hint(
     game: str,
     question: str,
     hint_level: HintLevel | str,
+    record_usage: Callable[[Any], None] | None = None,
 ) -> str:
-    """Answer one question from a game's hint book in a fresh model context."""
+    """Answer one question from a game's hint book in a fresh model context.
+
+    *record_usage*, when given, is handed the response so the caller can account
+    for it. A question that never reaches the model never calls it.
+    """
     normalized = normalize_game(game)
     material = _load_hints(normalized)
     if material is None:
@@ -184,6 +190,8 @@ async def provide_hint(
         reasoning={"effort": "medium"},
         store=False,
     )
+    if record_usage is not None:
+        record_usage(response)
 
     try:
         result = json.loads(response.output_text)
