@@ -47,6 +47,10 @@ from cabin_fever_x86_core.sessions import SERVER_COMPONENT, USAGE_FILE, session_
 # is warned about: they are billed as the ordinary input they came in as, which
 # keeps the total honest, and the warning says how many went that way.
 #
+# Every rate here is for the standard service tier. Flex, priority and the rest
+# are priced differently, so a row served through one of those is refused rather
+# than costed at these rates -- see SERVICE_TIERS.
+#
 # The gpt-5.4 and later families are listed at their *short context* prices. A
 # request long enough to fall into a long-context tier will be under-counted.
 RATES: dict[str, dict[str, float]] = {
@@ -110,6 +114,12 @@ RATES: dict[str, dict[str, float]] = {
 RATE_FIELDS = ("uncached", "cache_read", "cache_write", "output")
 
 PER = 1_000_000
+
+# The service tiers RATES actually describes. A row that names no tier is taken
+# as the standard one, because that is what the price list prices and what a
+# request gets without asking for anything else; a row that names a different
+# tier is priced by nobody here, and is refused rather than guessed at.
+SERVICE_TIERS = {None, "default"}
 
 
 @dataclass(frozen=True)
@@ -408,6 +418,17 @@ def report_raw_turn_costs(rows: list[dict[str, Any]], rates: dict[str, dict[str,
             + ".\nAdd them to RATES in this script, or pass --rates with a file like:\n"
             + json.dumps(template, indent=2)
             + "\n(dollars per million tokens)"
+        )
+
+    tiers = sorted({tier for row in rows if (tier := row.get("service_tier")) not in SERVICE_TIERS})
+    if tiers:
+        counts = {tier: sum(1 for row in rows if row.get("service_tier") == tier) for tier in tiers}
+        raise SystemExit(
+            "error: "
+            + ", ".join(
+                f"{count} request(s) served at the {tier!r} tier" for tier, count in counts.items()
+            )
+            + ".\nRATES prices the standard tier only, and these are billed differently."
         )
 
     running = Costs()

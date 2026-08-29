@@ -24,13 +24,6 @@ DEFAULT_PORT = 5000
 
 Provider = Literal["openai", "azure", "gateway"]
 
-# How long the provider may keep a cached prompt prefix alive. Every request
-# resends the whole conversation, so a prefix that is still cached is most of
-# what a turn costs; without this the default for an organisation with zero data
-# retention is the short-lived one, and a break long enough to make tea is
-# enough to lose it.
-PROMPT_CACHE_RETENTION = "24h"
-
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 Port = Annotated[int, Field(ge=1, le=65535)]
