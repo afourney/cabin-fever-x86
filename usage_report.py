@@ -403,6 +403,9 @@ def fractional_digits(stamp: str) -> int:
 
 def report_raw_turn_costs(rows: list[dict[str, Any]], rates: dict[str, dict[str, float]]) -> None:
     """Print every request, grouped by the turn it was serving."""
+    missing_model = sum(row.get("model") is None for row in rows)
+    if missing_model:
+        raise SystemExit(f"error: {missing_model} request(s) have no model and cannot be priced")
     missing = sorted(
         {
             model
@@ -459,7 +462,7 @@ def report_raw_turn_costs(rows: list[dict[str, Any]], rates: dict[str, dict[str,
             if when is not None and previous is not None:
                 seconds = (when - previous).total_seconds()
                 # No finer than the coarser of the two stamps it came from.
-                digits = max(fractional_digits(started), previous_digits)
+                digits = min(fractional_digits(started), previous_digits)
                 gap = f" ({seconds:+.{digits}f} seconds)"
             print(f"Time: {started}{gap}")
 
@@ -540,9 +543,7 @@ def main() -> None:
     if not args.raw_turn_costs:
         raise SystemExit("error: nothing to do; pass --raw-turn-costs")
 
-    rates = dict(RATES)
-    if args.rates is not None:
-        rates.update(load_rates(args.rates))
+    rates = load_rates(args.rates) if args.rates is not None else dict(RATES)
 
     path = resolve(args.target)
     rows = load_rows(path)
