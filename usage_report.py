@@ -519,9 +519,7 @@ def main() -> None:
     if not args.raw_turn_costs:
         raise SystemExit("error: nothing to do; pass --raw-turn-costs")
 
-    rates = dict(RATES)
-    if args.rates is not None:
-        rates.update(load_rates(args.rates))
+    rates = load_rates(args.rates) if args.rates is not None else dict(RATES)
 
     path = resolve(args.target)
     rows = load_rows(path)
