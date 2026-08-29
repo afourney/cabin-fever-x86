@@ -393,6 +393,9 @@ def fractional_digits(stamp: str) -> int:
 
 def report_raw_turn_costs(rows: list[dict[str, Any]], rates: dict[str, dict[str, float]]) -> None:
     """Print every request, grouped by the turn it was serving."""
+    missing_model = sum(row.get("model") is None for row in rows)
+    if missing_model:
+        raise SystemExit(f"error: {missing_model} request(s) have no model and cannot be priced")
     missing = sorted(
         {
             model
