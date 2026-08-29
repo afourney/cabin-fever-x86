@@ -6,11 +6,27 @@ from typing import assert_never
 
 from openai import AsyncOpenAI
 
-from cabin_fever_x86_core.config import AIClientConfig
+from cabin_fever_x86_core.config import AIClientConfig, Provider
 
 # The standard Azure AI scope. Any other endpoint — a research gateway, a
 # private deployment — sets its own through config or AZURE_SCOPE.
 AZURE_SCOPE = "https://cognitiveservices.azure.com/.default"
+
+# How long each provider may be asked to keep a cached prompt prefix alive.
+#
+# Every request resends the whole conversation, so a prefix that is still cached
+# is most of what a turn costs, and the default for an organisation with zero
+# data retention is the short-lived one. Asking for longer is worth real money.
+#
+# But the parameter is not universal: Azure refuses it outright, and what a
+# gateway in front of somebody else's deployment will accept is its own
+# business. It is therefore sent only where it is known to be understood, and a
+# provider mapped to None is simply never asked.
+PROMPT_CACHE_RETENTION: dict[Provider, str | None] = {
+    "openai": "24h",
+    "azure": None,
+    "gateway": None,
+}
 
 
 def create_client(config: AIClientConfig, session_id: str) -> tuple[AsyncOpenAI, str]:
@@ -19,13 +35,25 @@ def create_client(config: AIClientConfig, session_id: str) -> tuple[AsyncOpenAI,
     For each setting the resolution order is: config field → env var → built-in default.
     """
     if config.provider == "openai":
-        return _create_openai(config)
+        client, model = _create_openai(config)
     elif config.provider == "azure":
-        return _create_azure(config)
+        client, model = _create_azure(config)
     elif config.provider == "gateway":
-        return _create_gateway(config, session_id=session_id)
+        client, model = _create_gateway(config, session_id=session_id)
     else:
         assert_never(config.provider)
+
+    # Bound here rather than at the call sites: how long a prefix may be cached
+    # is a property of the provider, and the code asking for a reply has no
+    # business knowing which ones support it.
+    retention = PROMPT_CACHE_RETENTION[config.provider]
+    if retention is not None:
+        client.responses.create = partial(  # ty:ignore[invalid-assignment]
+            client.responses.create,
+            prompt_cache_retention=retention,
+        )
+
+    return client, model
 
 
 def _create_openai(config: AIClientConfig) -> tuple[AsyncOpenAI, str]:

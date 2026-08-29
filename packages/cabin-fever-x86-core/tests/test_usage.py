@@ -56,6 +56,7 @@ class FakeResponse:
     model: str = "gpt-test-5"
     service_tier: str = "default"
     prompt_cache_key: str = "cache-key"
+    prompt_cache_retention: str = "24h"
     reasoning: Any = None
 
 
@@ -146,6 +147,7 @@ def test_a_record_says_what_was_spent_and_what_served_it(tmp_path: Path) -> None
         "model": "gpt-test-5",
         "service_tier": "default",
         "prompt_cache_key": "zork1_hint",
+        "prompt_cache_retention": "24h",
         "reasoning": {"effort": "medium", "context": "current_turn"},
         "usage": {
             "input_tokens": 41203,
