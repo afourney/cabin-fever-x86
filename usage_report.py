@@ -25,7 +25,7 @@ import json
 import os
 import sys
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -139,6 +139,12 @@ class Costs:
     #: it does not, there is no such thing to show and the amount is not listed.
     priced_reads: bool = False
     priced_writes: bool = False
+    #: The same amount said in output tokens: what it cost, over what one output
+    #: token costs on the model that served it. It drops the model's price scale
+    #: while keeping its shape, so the same work on a mini and on a flagship
+    #: reads the same, and summing it across models stays meaningful because
+    #: each request is converted at its own rate before being added.
+    output_equivalent: float = 0.0
 
     @property
     def total(self) -> float:
@@ -154,6 +160,7 @@ class Costs:
             output=self.output + other.output,
             priced_reads=self.priced_reads or other.priced_reads,
             priced_writes=self.priced_writes or other.priced_writes,
+            output_equivalent=self.output_equivalent + other.output_equivalent,
         )
 
     def __str__(self) -> str:
@@ -232,6 +239,17 @@ def overcounted(row: dict[str, Any]) -> tuple[int, int, int] | None:
     return (cached, written, whole) if cached + written > whole else None
 
 
+def priced(costs: Costs) -> str:
+    """Render one amount and what it is in output tokens, in fixed columns.
+
+    Both are right-aligned so that everything after them stays in line down the
+    block; a figure wide enough to overflow its field pushes only its own row
+    out rather than breaking the format.
+    """
+    amount = f"${costs.total:.4f}"
+    return f"Cost = {amount:>8} ({round(costs.output_equivalent):>7,} output-eq)"
+
+
 def costs_of(tokens: Tokens, rate: dict[str, float]) -> Costs:
     """Return what those tokens come to, in dollars, part by part.
 
@@ -246,7 +264,7 @@ def costs_of(tokens: Tokens, rate: dict[str, float]) -> Costs:
         uncached += tokens.cache_read
     if not priced_writes:
         uncached += tokens.cache_write
-    return Costs(
+    costs = Costs(
         uncached=uncached * rate.get("uncached", 0.0) / PER,
         cache_read=tokens.cache_read * rate.get("cache_read", 0.0) / PER,
         cache_write=tokens.cache_write * rate.get("cache_write", 0.0) / PER,
@@ -254,6 +272,12 @@ def costs_of(tokens: Tokens, rate: dict[str, float]) -> Costs:
         priced_reads=priced_reads,
         priced_writes=priced_writes,
     )
+    # A rate table with no output price cannot say this in output tokens; the
+    # dollars still stand, so the figure is left at nothing rather than refused.
+    per_output = rate.get("output", 0.0)
+    if not per_output:
+        return costs
+    return replace(costs, output_equivalent=costs.total / per_output * PER)
 
 
 def load_rates(path: Path) -> dict[str, dict[str, float]]:
@@ -443,13 +467,13 @@ def report_raw_turn_costs(rows: list[dict[str, Any]], rates: dict[str, dict[str,
             # Not a word about models that have no cache to miss: on those,
             # every request reads nothing back and the note would be noise.
             miss = " [CACHE MISS]" if costs.priced_reads and not tokens.cache_read else ""
-            print(f"    {label_for(row, key, members)}: Cost = ${costs.total:.4f}  {costs}{miss}")
+            print(f"    {label_for(row, key, members)}: {priced(costs)}  {costs}{miss}")
 
-        print(f"Total: Cost = ${totals.total:.4f}  {totals}")
+        print(f"Total: {priced(totals)}  {totals}")
         print()
         running = running + totals
 
-    print(f"All turns: Cost = ${running.total:.4f}  {running}")
+    print(f"All turns: {priced(running)}  {running}")
 
     # The report is on stdout and the warnings on stderr, so that a redirected
     # report stays clean. Flushed first, or the two arrive out of order when
