@@ -438,7 +438,7 @@ def report_raw_turn_costs(rows: list[dict[str, Any]], rates: dict[str, dict[str,
             if when is not None and previous is not None:
                 seconds = (when - previous).total_seconds()
                 # No finer than the coarser of the two stamps it came from.
-                digits = max(fractional_digits(started), previous_digits)
+                digits = min(fractional_digits(started), previous_digits)
                 gap = f" ({seconds:+.{digits}f} seconds)"
             print(f"Time: {started}{gap}")
 
