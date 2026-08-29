@@ -113,6 +113,10 @@ class UsageLog:
             "model": getattr(response, "model", None),
             "service_tier": getattr(response, "service_tier", None),
             "prompt_cache_key": getattr(response, "prompt_cache_key", None),
+            # How long the prefix was allowed to stay cached, as the provider
+            # settled it rather than as it was asked for: a miss reads very
+            # differently under a policy that expires in minutes.
+            "prompt_cache_retention": getattr(response, "prompt_cache_retention", None),
             "reasoning": {
                 "effort": getattr(reasoning, "effort", None),
                 "context": getattr(reasoning, "context", None),
