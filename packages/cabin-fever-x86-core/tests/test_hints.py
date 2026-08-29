@@ -88,6 +88,7 @@ async def test_hint_request_has_a_fresh_cacheable_context(monkeypatch) -> None:
     call = responses.calls[0]
     assert call["model"] == "test-model"
     assert call["prompt_cache_key"] == "zork1_hint"
+    assert call["prompt_cache_retention"] == "24h"
     assert call["store"] is False
     assert "previous_response_id" not in call
     assert call["input"][0]["content"].index("The canary matters") >= 0

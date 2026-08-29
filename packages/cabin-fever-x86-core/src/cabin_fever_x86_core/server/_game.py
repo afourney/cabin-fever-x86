@@ -20,7 +20,7 @@ from uuid import UUID, uuid4
 from openai import AsyncOpenAI, OpenAIError
 from openai.types.responses import FunctionToolParam, ResponseFunctionToolCall
 
-from cabin_fever_x86_core.config import ServerConfig
+from cabin_fever_x86_core.config import PROMPT_CACHE_RETENTION, ServerConfig
 from cabin_fever_x86_core.hints import has_hints
 from cabin_fever_x86_core.messages import AssistantMessage, UserMessage
 from cabin_fever_x86_core.server._ai_client import create_client
@@ -660,6 +660,7 @@ class Game:
                 model=self._model,
                 prompt_cache_key=str(self._session_id),
                 instructions=SYSTEM_PROMPT,
+                prompt_cache_retention=PROMPT_CACHE_RETENTION,
                 input=notes_request(history),
                 # The tools stay declared because the conversation being summarised
                 # is full of calls to them, and refused because notes are wanted,
@@ -720,6 +721,7 @@ class Game:
                     model=self._model,
                     prompt_cache_key=str(self._session_id),
                     instructions=SYSTEM_PROMPT,
+                    prompt_cache_retention=PROMPT_CACHE_RETENTION,
                     input=self._messages,
                     tools=tools,
                     tool_choice=(

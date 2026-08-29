@@ -322,6 +322,9 @@ async def test_crossing_the_threshold_writes_the_night_down(
             str(game.session_id),
             str(game.session_id),
         ]
+        # Both the turn and the notes behind it ask for the long retention: a
+        # summary written under the short one would go cold before it was read.
+        assert [call["prompt_cache_retention"] for call in responses.calls] == ["24h", "24h"]
         # Excuse, notes, return — and the transmission the reply had decided on.
         assert spoken == [EXCUSE.away, EXCUSE.back, "still here"]
 

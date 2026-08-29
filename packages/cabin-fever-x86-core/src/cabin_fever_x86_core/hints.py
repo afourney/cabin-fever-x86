@@ -11,6 +11,8 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from cabin_fever_x86_core.config import PROMPT_CACHE_RETENTION
+
 
 class HintLevel(StrEnum):
     """How much of a solution the operator has agreed to reveal."""
@@ -169,6 +171,7 @@ async def provide_hint(
     response = await client.responses.create(
         model=model,
         prompt_cache_key=f"{normalized}_hint",
+        prompt_cache_retention=PROMPT_CACHE_RETENTION,
         instructions=_SYSTEM_PROMPT,
         input=[
             {
