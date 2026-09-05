@@ -50,6 +50,15 @@ jobs:
       # Anything that needs a real guest belongs in a manual workflow.
       - run: uv run --no-sync poe test
 
+  test-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test packages/cabin-fever-x86-core/tests/pcm-player.test.mjs
+
   build-core:
     runs-on: ubuntu-latest
     steps:
@@ -67,6 +76,7 @@ jobs:
             cabin_fever_x86_core/server/cabin_events.txt \
             cabin_fever_x86_core/server/stage_direction.txt \
             cabin_fever_x86_core/web_client/static/index.html \
+            cabin_fever_x86_core/web_client/static/pcm-player.js \
             cabin_fever_x86_core/web_client/static/splash.jpg
           do
             unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }

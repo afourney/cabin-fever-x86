@@ -94,13 +94,17 @@
   <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
   <button id="weather" class="quiet" hidden title="Rain on the roof">rain: on</button>
 
-<script>
+<script type="module">
+import { PCMPlayer } from "/pcm-player.js";
+
 const $ = (id) => document.getElementById(id);
 const log = $("log"), status = $("status"), sessionLabel = $("session");
 
 let ws = null, audioCtx = null, recorder = null, chunks = [], sessionId = null;
 let playing = null, keyed = false, queue = Promise.resolve();
 let rain = null;
+const streams = new Map();
+let playbackGeneration = 0;
 
 const RAIN_LOUD = 0.30;    // on the splash, before anyone is talking
 const RAIN_UNDER = 0.10;    // once the channel is open
@@ -251,6 +255,12 @@ function radioChain(ctx, destination) {
   input.connect(high); high.connect(low); low.connect(peak);
   peak.connect(squash); squash.connect(makeup); makeup.connect(wobble);
   wobble.connect(grit); grit.connect(out); out.connect(destination);
+  input.dispose = () => {
+    lfo.stop();
+    for (const node of [input, high, low, peak, squash, makeup, wobble, lfo, lfoDepth, grit, out]) {
+      node.disconnect();
+    }
+  };
   return input;
 }
 
@@ -329,60 +339,91 @@ function squelchTail(ctx, destination, at) {
   click(ctx, destination, at + length - 0.006, 0.5);
 }
 
-// An empty transmission is just the carrier dropping: no synthesized voice,
-// only the same tail heard after an ordinary reply.
-function playStatic() {
-  if (!audioCtx) return Promise.resolve();
-
-  return new Promise((resolve) => {
-    const length = 0.25;
-    squelchTail(audioCtx, audioCtx.destination, audioCtx.currentTime + 0.05);
-    playing = {};
-    rainLevel(RAIN_DUCKED);
-    setStatus("RECEIVING");
-    setTimeout(() => {
+// Each transmission owns its output, so interrupting it also silences any
+// already-scheduled squelch. A null stream is an empty, static-only reply.
+async function playTransmission(stream = null) {
+  if (!audioCtx || keyed || stream?.cancelled) { stream?.stop(); return; }
+  const output = audioCtx.createGain();
+  output.connect(audioCtx.destination);
+  const input = stream ? radioChain(audioCtx, output) : null;
+  let noise = null, tail = null;
+  const playback = {
+    stopped: false,
+    stop() {
+      this.stopped = true;
+      stream?.stop();
+      output.disconnect();
+      if (tail) tail.stop();
+    },
+  };
+  playing = playback;
+  try {
+    if (stream) {
+      await stream.play(input, at => {
+        noise = hiss(audioCtx, output, 1);
+        noise.loop = true;
+        noise.start(at);
+        squelchOpen(audioCtx, output, at);
+        rainLevel(RAIN_DUCKED);
+        setStatus("RECEIVING");
+      });
+    }
+    if (!playback.stopped && !stream?.cancelled && (!stream || stream.started)) {
+      if (noise) { noise.stop(); noise.disconnect(); noise = null; }
+      rainLevel(RAIN_DUCKED);
+      setStatus("RECEIVING");
+      const at = audioCtx.currentTime + 0.02;
+      squelchTail(audioCtx, output, at);
+      // Use the audio clock, including when the context is suspended.
+      await new Promise(resolve => {
+        tail = audioCtx.createBufferSource();
+        tail.buffer = audioCtx.createBuffer(1, Math.ceil(audioCtx.sampleRate * 0.22), audioCtx.sampleRate);
+        tail.connect(output);
+        tail.onended = resolve;
+        tail.start(at);
+      });
+    }
+  } finally {
+    stream?.stop();
+    if (noise) { noise.stop(); noise.disconnect(); }
+    tail?.disconnect();
+    input?.dispose();
+    output.disconnect();
+    if (playing === playback) {
       playing = null;
       rainLevel(keyed ? RAIN_DUCKED : RAIN_UNDER);
       setStatus(keyed ? "TRANSMITTING" : "");
-      resolve();
-    }, length * 1000);
-  });
+    }
+  }
 }
 
-async function play(url) {
-  if (!audioCtx) return;
-  const buffer = await fetch(url).then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b));
-
-  return new Promise((resolve) => {
-    const source = audioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(radioChain(audioCtx, audioCtx.destination));
-
-    const noise = hiss(audioCtx, audioCtx.destination, buffer.duration + 0.4);
-    const now = audioCtx.currentTime + 0.05;
-    squelchOpen(audioCtx, audioCtx.destination, now);
-    noise.start(now);
-    source.start(now + 0.08);
-    squelchTail(audioCtx, audioCtx.destination, now + 0.08 + buffer.duration);
-
-    playing = { source, noise };
-    rainLevel(RAIN_DUCKED);
-    setStatus("RECEIVING");
-    source.onended = () => {
-      try { noise.stop(); } catch {}
-      playing = null;
-      rainLevel(keyed ? RAIN_DUCKED : RAIN_UNDER);
-      setStatus(keyed ? "TRANSMITTING" : "");
-      resolve();
-    };
+function enqueuePlayback(stream = null) {
+  const generation = playbackGeneration;
+  queue = queue.then(() => {
+    if (generation !== playbackGeneration || keyed) { stream?.stop(); return; }
+    return playTransmission(stream);
+  }).catch(() => {
+    stream?.stop();
+    say("error", "Could not play the transmission.");
   });
+  return queue;
 }
 
 function cutPlayback() {
-  if (!playing) return;
-  try { playing.source.stop(); } catch {}
-  try { playing.noise.stop(); } catch {}
+  playbackGeneration++;
+  for (const stream of streams.values()) stream.stop();
+  streams.clear();
+  playing?.stop();
   playing = null;
+  queue = Promise.resolve();
+  rainLevel(keyed ? RAIN_DUCKED : RAIN_UNDER);
+}
+
+function failStream(id) {
+  const stream = streams.get(id);
+  stream?.stop();
+  streams.delete(id);
+  say("error", "Could not play the transmission.");
 }
 
 // --- the channel ----------------------------------------------------------
@@ -392,19 +433,42 @@ function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws${resume ? `?resume=${resume}` : ""}`);
 
+  ws.binaryType = "arraybuffer";
   ws.onmessage = (event) => {
+    if (event.data instanceof ArrayBuffer) {
+      // Every audio packet starts with its uint32 stream ID (network order).
+      if (event.data.byteLength < 4) return;
+      const id = new DataView(event.data).getUint32(0, false);
+      try { streams.get(id)?.push(new Uint8Array(event.data, 4)); }
+      catch { failStream(id); }
+      return;
+    }
     const msg = JSON.parse(event.data);
     if (msg.type === "session") {
       sessionId = msg.session_id;
       sessionLabel.textContent = `session ${sessionId}`;
-      if (!msg.voice) say("note", "No ElevenLabs key on the server — text only.");
+      if (!msg.voice) say("note", "Voice is unavailable — text only.");
       $("talk").disabled = false;
       setStatus("");
     } else if (msg.type === "assistant") {
       say("assistant", msg.text || "[static]");
-      // Replies play in the order they arrived, never on top of each other.
-      if (msg.audio) queue = queue.then(() => play(msg.audio)).catch(() => {});
-      else if (!msg.text) queue = queue.then(() => playStatic()).catch(() => {});
+      if (!msg.text) enqueuePlayback();
+    } else if (msg.type === "audio_start") {
+      if (keyed) return;
+      try {
+        if (streams.size >= 8 || streams.has(msg.stream_id)) throw new Error("Audio queue is full");
+        const stream = new PCMPlayer(audioCtx, msg);
+        streams.set(msg.stream_id, stream);
+        enqueuePlayback(stream).finally(() => {
+          if (streams.get(msg.stream_id) === stream) streams.delete(msg.stream_id);
+        });
+      } catch { failStream(msg.stream_id); }
+    } else if (msg.type === "audio_end") {
+      try {
+        const stream = streams.get(msg.stream_id);
+        if (msg.status === "complete") stream?.end();
+        else stream?.stop();
+      } catch { failStream(msg.stream_id); }
     } else if (msg.type === "user") {
       say("user", msg.text);
     } else if (msg.type === "error") {
@@ -412,11 +476,16 @@ function connect() {
     }
   };
 
-  ws.onclose = () => { setStatus("disconnected"); $("talk").disabled = true; };
+  ws.onclose = () => {
+    clearInterval(keepAlive);
+    cutPlayback();
+    setStatus("disconnected");
+    $("talk").disabled = true;
+  };
   ws.onerror = () => setStatus("connection error");
 
   // Keep the socket from idling out; the page has nothing else to send.
-  setInterval(() => ws?.readyState === 1 && ws.send("."), 20000);
+  const keepAlive = setInterval(() => ws?.readyState === 1 && ws.send("."), 20000);
 }
 
 // --- push to talk ---------------------------------------------------------

@@ -143,6 +143,7 @@ source = { editable = "packages/cabin-fever-x86-core" }
 dependencies = [
     { name = "elevenlabs" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jericho" },
     { name = "numpy" },
     { name = "openai" },
@@ -163,6 +164,7 @@ requires-dist = [
     { name = "azure-identity", marker = "extra == 'azure'" },
     { name = "elevenlabs" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jericho" },
     { name = "numpy" },
     { name = "openai" },
