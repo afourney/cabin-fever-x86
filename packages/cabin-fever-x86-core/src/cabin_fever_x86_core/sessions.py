@@ -1,13 +1,14 @@
 """Where each side of a session keeps its data.
 
-The server and the clients may be on different machines, so each keeps its own
-tree under ``data/sessions/<session_id>/<component>/``. They share only the
-session id, which is enough to line the logs up afterwards.
+The server stores sessions under ``data/users/<user_id>/sessions/<session_id>/server/``.
+Clients still use ``data/sessions/<session_id>/<component>/``. They may live on
+different machines; the session id lines their logs up afterwards.
 """
 
 from __future__ import annotations
 
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -15,6 +16,8 @@ from uuid import UUID
 from cabin_fever_x86_core.messages import SessionInfo
 
 DEFAULT_DATA_ROOT = Path("data")
+GUEST_USER_ID = "guest"
+_USER_ID = re.compile(r"[a-z0-9_-]{1,64}")
 
 # The component directory each program writes under.
 SERVER_COMPONENT = "server"
@@ -33,14 +36,30 @@ MESSAGES_FILE = "messages.jsonl"
 USAGE_FILE = "usage.jsonl"
 
 
+def validate_user_id(user_id: str) -> str:
+    """Require a short, stable identifier safe to use as a directory name."""
+    if not _USER_ID.fullmatch(user_id):
+        raise ValueError("user ID must be 1-64 lowercase letters, digits, underscores, or hyphens")
+    return user_id
+
+
+def _sessions_root(component: str, root: str | os.PathLike[str] | None, user_id: str) -> Path:
+    base = Path(root or DEFAULT_DATA_ROOT)
+    if component == SERVER_COMPONENT:
+        base = base / "users" / validate_user_id(user_id)
+    return base / "sessions"
+
+
 def session_dir(
     session_id: UUID | str,
     component: str,
     root: str | os.PathLike[str] | None = None,
     create: bool = True,
+    *,
+    user_id: str = GUEST_USER_ID,
 ) -> Path:
-    """Return ``<root>/sessions/<session_id>/<component>``, creating it by default."""
-    path = Path(root or DEFAULT_DATA_ROOT) / "sessions" / str(session_id) / component
+    """Return a component's session directory, scoped to a user on the server."""
+    path = _sessions_root(component, root, user_id) / str(session_id) / component
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
@@ -50,21 +69,25 @@ def session_exists(
     session_id: UUID | str,
     component: str,
     root: str | os.PathLike[str] | None = None,
+    *,
+    user_id: str = GUEST_USER_ID,
 ) -> bool:
     """Whether *component* already has a directory for this session."""
-    return session_dir(session_id, component, root, create=False).is_dir()
+    return session_dir(session_id, component, root, create=False, user_id=user_id).is_dir()
 
 
 def find_sessions(
     component: str,
     root: str | os.PathLike[str] | None = None,
+    *,
+    user_id: str = GUEST_USER_ID,
 ) -> list[SessionInfo]:
     """List the sessions that have a *component* directory, most recent first.
 
     Directories whose names are not session ids are ignored, so unrelated
-    clutter under ``data/sessions/`` cannot break a listing.
+    clutter cannot break a listing. Server listings include only *user_id*.
     """
-    sessions_root = Path(root or DEFAULT_DATA_ROOT) / "sessions"
+    sessions_root = _sessions_root(component, root, user_id)
     if not sessions_root.is_dir():
         return []
 

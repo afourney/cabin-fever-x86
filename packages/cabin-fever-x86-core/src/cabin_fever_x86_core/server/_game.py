@@ -60,10 +60,12 @@ from cabin_fever_x86_core.server._usage import (
     UsageLog,
 )
 from cabin_fever_x86_core.sessions import (
+    GUEST_USER_ID,
     MESSAGES_FILE,
     SERVER_COMPONENT,
     USAGE_FILE,
     session_dir,
+    validate_user_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -252,7 +254,7 @@ class Game:
     A game belongs to a session: pass *session_id* to pick an existing one back
     up, or leave it out to mint a new one. The game creates the AI client
     described by *config* and keeps its data under
-    ``data/sessions/<session_id>/server/``. Callers should hand the id to the
+    ``data/users/<user_id>/sessions/<session_id>/server/``. Callers should hand the id to the
     client so both ends' logs can be correlated.
 
     The conversation is carried in ``_messages`` and mirrored to
@@ -277,8 +279,11 @@ class Game:
         config: ServerConfig,
         send: SendCallback,
         session_id: UUID | None = None,
+        *,
+        user_id: str = GUEST_USER_ID,
     ) -> None:
         self._config = config
+        self._user_id = validate_user_id(user_id)
         self._send = send
         self._session_id = session_id or uuid4()
         self._client: AsyncOpenAI | None = None
@@ -298,7 +303,9 @@ class Game:
         # Saves belong to the session, and the folder is left to the store to
         # create on its first write rather than made here for a game that may
         # never be played.
-        server_dir = session_dir(self._session_id, SERVER_COMPONENT, create=False)
+        server_dir = session_dir(
+            self._session_id, SERVER_COMPONENT, create=False, user_id=self._user_id
+        )
         saves = SaveStore(server_dir / SAVES_DIR)
         game_memories = GameMemoryStore(server_dir / GAME_MEMORIES_DIR)
         self._machine = Machine(saves=saves, game_memories=game_memories)
@@ -325,7 +332,7 @@ class Game:
         return self._session_id
 
     async def __aenter__(self) -> Self:
-        self._data_dir = session_dir(self._session_id, SERVER_COMPONENT)
+        self._data_dir = session_dir(self._session_id, SERVER_COMPONENT, user_id=self._user_id)
         self._journal = self._data_dir / MESSAGES_FILE
         self._usage = UsageLog(self._data_dir / USAGE_FILE, self._session_id)
 
