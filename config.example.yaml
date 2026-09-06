@@ -23,25 +23,66 @@ client:
   port: 5000
   elevenlabs_api_key: ${ELEVENLABS_API_KEY}
 
+# Stable users and their browser/Telegram/Zello identities. Multiple accounts can
+# share one user. Unlisted senders cannot contribute, even for guest.
+# A sole user_id: guest with type: guest keeps the original radio prompt.
+# With multiple users, guest access requires explicitly choosing Login as Guest.
+# Removing the guest identity disables anonymous browser access; a user merely
+# named guest is not enough. users: [] disables all browser access.
+users:
+  - user_id: guest
+    identities:
+      - type: guest
+      # - type: telegram
+      #   account_id: "123456789"
+      # - type: zello
+      #   channel: "Cabin Fever x86"
+      #   account_id: "your-zello-username"
+  # - user_id: operator
+  #   identities:
+  #     - type: login
+  #       username: Night Owl  # Callsign, not user_id; case-insensitively unique.
+  #       password_hash: "paste an Argon2id hash here, never the password"
+#
+# Generate a hash (the password is prompted for, not put in shell history):
+# uv run python -c "from getpass import getpass; from argon2 import PasswordHasher; print(PasswordHasher().hash(getpass('Password: ')))"
+
+web_gateway:
+  # Default HTTP access is loopback-only (localhost / 127.0.0.1), including
+  # the launcher's local forwarded port. Public/LAN access requires HTTPS.
+  # Terminate TLS at a reverse proxy, preserve Host, and forward the scheme
+  # only from trusted proxy IPs (Uvicorn FORWARDED_ALLOW_IPS; never '*').
+  # public_origin: https://radio.example.com
+  # HTTPS cookies are Secure; loopback HTTP cookies are not. Both are
+  # HttpOnly, SameSite=Strict, host-only. No wildcard origins are accepted.
+  data_dir: data/web_gateway
+  # A persistent random signing.key and revocable sessions.sqlite3 live here.
+  # Keep this directory private, persistent, and shared by gateway workers.
+  # Optional signing_secret (32+ random characters) overrides signing.key;
+  # supply it through an environment reference rather than committing it.
+  session_idle_seconds: 3600
+  session_max_seconds: 604800
+  # The page renews via HTTP at most every five minutes; activity cannot
+  # extend the absolute seven-day limit. Expired/revoked sockets close.
+
 # Optional Telegram gateway with text and voice-note input. Install the core
 # package's `telegram` extra and run cf86-telegram. Voice notes use the
-# client.elevenlabs_api_key above. Telegram rejects every sender not listed
-# here; rejected attempts are logged with their numeric user ID so you can
-# discover and then allow your own account.
+# client.elevenlabs_api_key above. Add allowed accounts to users above;
+# rejected attempts are logged with their numeric Telegram account ID.
 telegram_gateway:
   bot_token: ${TELEGRAM_BOT_TOKEN}
   api_id: ${TELEGRAM_API_ID}
   api_hash: ${TELEGRAM_API_HASH}
-  allowed_accounts: []
-  # allowed_accounts: [123456789]
 
 # Optional voice-only Zello gateway. Install the core package's `zello`
 # extra and run cf86-zello. The credentials file uses zelpy's zello.yaml
-# format. Text messages and voice from users absent from this list are ignored.
+# format. Configure channel/sender pairs in users above; all contributors to
+# a channel must share one internal user. Others can listen, but their voice
+# is ignored by the game. No configured contributors means startup fails.
+# All identity channels run concurrently, each with its own automatically
+# resumed game. Associations live in data/users/<user_id>/zello_gateway/sessions.json.
 zello:
   credentials_file: ~/.apikeys/zello.yaml
-  channel: Cabin Fever x86
-  authorized_users: []
 
 server:
   interface: 127.0.0.1

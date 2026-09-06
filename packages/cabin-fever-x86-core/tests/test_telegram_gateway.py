@@ -6,20 +6,28 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
 
+from cabin_fever_x86_core.config import Config
 from cabin_fever_x86_core.messages import AssistantMessage, CompactionCompleted
 from cabin_fever_x86_core.sessions import GUEST_USER_ID
+from cabin_fever_x86_core.telegram_gateway import _main
 from cabin_fever_x86_core.telegram_gateway._main import (
-    STATE_PATH,
     TelegramGateway,
     _load_state,
     _save_state,
+    _state_path,
     is_stale,
     split_message,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolated_data(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
 
 
 def test_short_message_is_unchanged() -> None:
@@ -58,7 +66,9 @@ async def test_rejected_account_is_logged_with_discoverable_id(caplog) -> None:
             self.responses.append(text)
 
     event = Event()
-    gateway = TelegramGateway(SimpleNamespace(), "ws://localhost:5000", set())
+    gateway = TelegramGateway(
+        SimpleNamespace(), "ws://localhost:5000", Config().telegram_accounts()
+    )
 
     with caplog.at_level(logging.WARNING):
         await gateway.handle(event)
@@ -76,12 +86,13 @@ async def test_continue_resumes_the_most_recent_server_session(monkeypatch) -> N
         sent.append((chat_id, text))
 
     gateway = TelegramGateway(
-        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
+        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309: "guest"}
     )
     latest = uuid4()
     opened = []
 
-    async def find_latest():
+    async def find_latest(account_id):
+        assert account_id == 8675309
         return latest
 
     async def open_session(account_id, chat_id, resume):
@@ -123,7 +134,7 @@ async def test_compact_requests_compaction_and_waits_for_completion() -> None:
     )
     holder["session"] = session
     gateway = TelegramGateway(
-        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
+        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309: "guest"}
     )
     gateway.sessions[8675309] = session
 
@@ -142,7 +153,7 @@ async def test_compact_requires_an_open_game() -> None:
         sent.append((chat_id, text))
 
     gateway = TelegramGateway(
-        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
+        SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309: "guest"}
     )
 
     await gateway._handle_text(8675309, 8675309, "/compact")
@@ -187,7 +198,7 @@ async def test_voice_note_is_transcribed_and_forwarded_without_an_echo(monkeypat
     connection = Connection()
     transcript = Transcript()
     session = SimpleNamespace(lock=asyncio.Lock(), connection=connection, transcript=transcript)
-    gateway = TelegramGateway(bot, "ws://localhost:5000", {8675309}, voice=object())
+    gateway = TelegramGateway(bot, "ws://localhost:5000", {8675309: "guest"}, voice=object())
     gateway.sessions[8675309] = session
     monkeypatch.setattr(
         "cabin_fever_x86_core.telegram_gateway._main.transcribe",
@@ -241,7 +252,7 @@ async def test_first_reply_is_captioned_voice_then_text_follows_text(monkeypatch
     gateway = TelegramGateway(
         bot,
         "ws://localhost:5000",
-        {8675309},
+        {8675309: "guest"},
         voice=object(),
     )
     generated = []
@@ -321,7 +332,7 @@ async def test_an_empty_assistant_transmission_is_static_without_voice(monkeypat
     gateway = TelegramGateway(
         SimpleNamespace(send_message=send_message),
         "ws://localhost:5000",
-        {8675309},
+        {8675309: "guest"},
         voice=object(),
     )
     monkeypatch.setattr(
@@ -336,11 +347,12 @@ async def test_an_empty_assistant_transmission_is_static_without_voice(monkeypat
     assert records == [("assistant", message.id, "", None)]
 
 
-def test_session_state_lives_under_the_guest_user() -> None:
-    assert Path(STATE_PATH).parts == (
+@pytest.mark.parametrize("user_id", ["guest", "alice"])
+def test_session_state_lives_under_its_user(user_id) -> None:
+    assert Path(_state_path(user_id)).parts == (
         "data",
         "users",
-        GUEST_USER_ID,
+        user_id,
         "telegram_gateway",
         "sessions.json",
     )
@@ -353,3 +365,67 @@ def test_session_state_survives_a_round_trip(tmp_path) -> None:
     _save_state(state, path)
 
     assert _load_state(path) == state
+
+
+def test_reassigning_an_account_does_not_load_the_old_users_state() -> None:
+    session_id = uuid4()
+    _save_state({123: session_id}, _state_path("guest"))
+
+    guest = TelegramGateway(SimpleNamespace(), "ws://localhost:5000", {123: "guest"})
+    reassigned = TelegramGateway(SimpleNamespace(), "ws://localhost:5000", {123: "alice"})
+
+    assert guest.last_sessions == {"guest": {123: session_id}}
+    assert reassigned.last_sessions == {"alice": {}}
+
+
+def test_unlisted_account_cannot_open_an_upstream_connection(monkeypatch) -> None:
+    monkeypatch.setattr(_main, "connect", lambda *_args, **_kwargs: pytest.fail("must not connect"))
+    gateway = TelegramGateway(SimpleNamespace(), "ws://localhost:5000", {123: "guest"})
+
+    with pytest.raises(ValueError, match="not authorized"):
+        gateway._connect(456)
+
+
+def test_startup_passes_configured_identity_mapping_to_bot(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "telegram_gateway: {api_id: 123, api_hash: hash, bot_token: token}\n"
+        "users:\n"
+        "  - user_id: alice\n"
+        "    identities: [{type: telegram, account_id: '111'}]\n"
+        "  - user_id: guest\n"
+        "    identities: [{type: guest}, {type: telegram, account_id: '222'}]\n"
+    )
+    monkeypatch.setattr(_main, "_telegram_api", lambda: (object(), object()))
+    monkeypatch.setattr(
+        _main, "_parse_args", lambda: SimpleNamespace(config=str(path), host=None, port=None)
+    )
+    run_bot = AsyncMock()
+    monkeypatch.setattr(_main, "run_bot", run_bot)
+
+    _main.main()
+
+    run_bot.assert_awaited_once_with(
+        123, "hash", "token", "ws://127.0.0.1:5000", {111: "alice", 222: "guest"}, None
+    )
+
+
+async def test_unlisted_voice_is_rejected_before_download_or_paid_calls(monkeypatch) -> None:
+    event = SimpleNamespace(
+        sender_id=456,
+        chat_id=456,
+        is_private=True,
+        get_sender=AsyncMock(return_value=SimpleNamespace(username="unlisted")),
+        respond=AsyncMock(),
+        message=SimpleNamespace(voice=object(), download_media=AsyncMock()),
+    )
+    monkeypatch.setattr(
+        _main, "transcribe", lambda *_args, **_kwargs: pytest.fail("must not transcribe")
+    )
+    gateway = TelegramGateway(SimpleNamespace(), "ws://localhost:5000", {123: "guest"})
+
+    await gateway.handle(event)
+
+    event.respond.assert_awaited_once_with("Not authorized.")
+    event.message.download_media.assert_not_awaited()
+    assert not gateway.sessions

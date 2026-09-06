@@ -130,6 +130,7 @@ function page() {
   const element = () => ({ textContent: "", classList: { add() {}, remove() {} },
     addEventListener() {}, append() {}, disabled: false });
   const scope = vm.createContext({ PCMPlayer, Uint8Array, ArrayBuffer, DataView,
+    BrowserAuthController: class { authenticated = true; initialize() {} },
     Float32Array, URLSearchParams, console, setTimeout, clearTimeout,
     setInterval: () => 1, clearInterval() {}, addEventListener() {},
     document: { getElementById(id) {
@@ -141,14 +142,14 @@ function page() {
   });
   const html = readFileSync(new URL("../src/cabin_fever_x86_core/web_gateway/static/index.html", import.meta.url), "utf8");
   const source = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-    .replace(/import .*?;\n/, "")
+    .replace(/import .*?;\n/g, "")
     .replace("\nopenWeather();", "");
   vm.runInContext(source, scope);
   scope.context = new Context();
   vm.runInContext(`audioCtx = context; recorder = { state: "inactive", start() {} }; connect();
     globalThis.handlers = {
       message: data => ws.onmessage({ data }), keyDown, cutPlayback,
-      close: () => ws.onclose(),
+      close: () => ws.onclose({ code: 1000 }),
       streams: () => streams, playing: () => playing,
     };`, scope);
   const json = msg => scope.handlers.message(JSON.stringify(msg));

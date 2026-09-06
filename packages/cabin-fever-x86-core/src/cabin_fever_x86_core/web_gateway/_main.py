@@ -35,7 +35,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
 from cabin_fever_x86_core import __version__
-from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
+from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
     AssistantMessage,
@@ -50,6 +50,7 @@ from cabin_fever_x86_core.session_client import (
 from cabin_fever_x86_core.sessions import WEB_GATEWAY_COMPONENT, session_dir
 from cabin_fever_x86_core.transcripts import AUDIO_DIR, Transcript
 from cabin_fever_x86_core.voice import PCM_SAMPLE_RATE, VoiceError, stream_speech, transcribe
+from cabin_fever_x86_core.web_gateway.auth import BrowserAuth
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,8 @@ class Radio:
     transcript: Transcript
     browser: WebSocket
     stream_id: int = 0
+    user_id: str = "guest"
+    auth_session_id: str | None = None
 
 
 async def _stream_reply(
@@ -196,14 +199,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
+def create_app(upstream_uri: str, api_key: str | None, config: Config | None = None) -> FastAPI:
     """Build the web app. *upstream_uri* is the game server's websocket."""
     voice: ElevenLabs | None = None
     streaming_voice: AsyncElevenLabs | None = None
     if not api_key:
         logger.warning("No ElevenLabs key: the radio will be text-only in both directions.")
 
-    live: dict[UUID, Radio] = {}
+    auth = BrowserAuth(config if config is not None else Config())
+    live: dict[tuple[str, UUID], Radio] = {}
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -221,6 +225,8 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
                         await radio.upstream.close()
 
     app = FastAPI(title="Cabin Fever x86", lifespan=lifespan)
+    app.state.browser_auth = auth
+    auth.install(app)
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
@@ -230,6 +236,11 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
     async def pcm_player() -> FileResponse:
         """Serve the provider-independent streaming audio player."""
         return FileResponse(STATIC_DIR / "pcm-player.js", media_type="text/javascript")
+
+    @app.get("/browser-auth.js")
+    async def browser_auth_script() -> FileResponse:
+        """Serve the browser's sign-in controller."""
+        return FileResponse(STATIC_DIR / "browser-auth.js", media_type="text/javascript")
 
     @app.get("/splash")
     async def splash() -> FileResponse:
@@ -264,10 +275,13 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
         raise HTTPException(status_code=404, detail="no ambience; synthesise it")
 
     @app.get("/sessions")
-    async def sessions() -> dict:
+    async def sessions(request: Request) -> dict:
         """List what the game server has on file, for the resume list."""
+        principal = auth.require(request)
         try:
-            async with connect(upstream_uri) as connection:
+            async with connect(
+                upstream_uri, additional_headers={"X-CF86-User-ID": principal.user_id}
+            ) as connection:
                 found = await list_sessions(connection)
         except (OSError, SessionCommandError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -279,13 +293,17 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
         }
 
     @app.get("/audio/{session_id}/{name}")
-    async def audio(session_id: UUID, name: str) -> FileResponse:
+    async def audio(session_id: UUID, name: str, request: Request) -> FileResponse:
         """Serve one clip out of a session's audio folder.
 
         Read straight from disk rather than from the live sessions, so a clip
         keeps playing after a reload and old sessions stay listenable.
         """
-        base = (session_dir(session_id, WEB_GATEWAY_COMPONENT, create=False) / AUDIO_DIR).resolve()
+        principal = auth.require(request)
+        base = (
+            session_dir(session_id, WEB_GATEWAY_COMPONENT, create=False, user_id=principal.user_id)
+            / AUDIO_DIR
+        ).resolve()
         path = (base / name).resolve()
         if base not in path.parents or not path.is_file():
             raise HTTPException(status_code=404, detail="no such clip")
@@ -294,11 +312,14 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
     @app.post("/takes/{session_id}")
     async def take(session_id: UUID, request: Request) -> dict:
         """Accept one recorded transmission, transcribe it, and send it on."""
-        radio = live.get(session_id)
-        if radio is None:
+        principal = auth.require(request)
+        radio = live.get((principal.user_id, session_id))
+        if radio is None or radio.auth_session_id != principal.sid:
             raise HTTPException(status_code=404, detail="no such session")
 
         recording = await request.body()
+        if not auth.valid(principal):
+            raise HTTPException(status_code=401, detail="Sign in to use the radio")
         if not recording:
             raise HTTPException(status_code=400, detail="empty recording")
 
@@ -324,6 +345,8 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
                 status_code=502, detail="could not transcribe the recording"
             ) from exc
 
+        if not auth.valid(principal):
+            raise HTTPException(status_code=401, detail="Sign in to use the radio")
         if not text:
             return {"id": str(message_id), "text": "", "audio": clip}
 
@@ -338,11 +361,19 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
     @app.websocket("/ws")
     async def channel(browser: WebSocket) -> None:
         """Hold one game open for one page, for as long as the tab is there."""
+        try:
+            auth.check_origin(browser)
+            principal = auth.require(browser)
+        except HTTPException:
+            await browser.close(code=4401)
+            return
         await browser.accept()
         resume = browser.query_params.get("resume")
 
         try:
-            upstream = await connect(upstream_uri)
+            upstream = await connect(
+                upstream_uri, additional_headers={"X-CF86-User-ID": principal.user_id}
+            )
         except OSError as exc:
             await browser.send_json({"type": "error", "text": f"cannot reach the game: {exc}"})
             await browser.close()
@@ -356,13 +387,21 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
             await browser.close()
             return
 
+        if not auth.valid(principal):
+            await upstream.close()
+            await browser.close(code=4401, reason="Sign in to use the radio")
+            return
+
         radio = Radio(
             session_id=session_id,
             upstream=upstream,
-            transcript=Transcript(session_id, WEB_GATEWAY_COMPONENT),
+            transcript=Transcript(session_id, WEB_GATEWAY_COMPONENT, user_id=principal.user_id),
             browser=browser,
+            user_id=principal.user_id,
+            auth_session_id=principal.sid,
         )
-        live[session_id] = radio
+        key = (principal.user_id, session_id)
+        live[key] = radio
         radio.transcript.log("session", None, f"opened on {upstream_uri}")
         logger.info("Session %s open for a browser", session_id)
 
@@ -372,9 +411,21 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
 
         pump = asyncio.create_task(_pump(radio, streaming_voice))
         receiver = asyncio.create_task(browser.receive_text())
+
+        async def watch_authorization() -> None:
+            while auth.valid(principal):
+                await asyncio.sleep(5)
+            await browser.close(code=4401, reason="Sign in to use the radio")
+
+        guard = asyncio.create_task(watch_authorization())
         try:
             while True:  # The page sends keep-alives; microphone takes use HTTP.
-                done, _ = await asyncio.wait({pump, receiver}, return_when=asyncio.FIRST_COMPLETED)
+                done, _ = await asyncio.wait(
+                    {pump, receiver, guard}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if guard in done:
+                    await guard
+                    break
                 if pump in done:
                     await pump  # Surface relay errors and close when the game ends.
                     break
@@ -385,9 +436,10 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
         finally:
             pump.cancel()
             receiver.cancel()
-            await asyncio.gather(pump, receiver, return_exceptions=True)
-            if live.get(session_id) is radio:
-                live.pop(session_id, None)
+            guard.cancel()
+            await asyncio.gather(pump, receiver, guard, return_exceptions=True)
+            if live.get(key) is radio:
+                live.pop(key, None)
             with contextlib.suppress(ConnectionClosed):
                 await upstream.close()
             with contextlib.suppress(WebSocketDisconnect, RuntimeError):
@@ -410,8 +462,9 @@ def main() -> None:
     host = args.host if args.host is not None else config.client.host
     port = args.port if args.port is not None else config.client.port
 
-    app = create_app(f"ws://{host}:{port}", config.client.elevenlabs_api_key)
-    print(f"Cabin Fever x86 (core version {__version__}) on http://{args.web_host}:{args.web_port}")
+    app = create_app(f"ws://{host}:{port}", config.client.elevenlabs_api_key, config)
+    url = config.web_gateway.public_origin or f"http://{args.web_host}:{args.web_port}"
+    print(f"Cabin Fever x86 (core version {__version__}) on {url}")
     uvicorn.run(app, host=args.web_host, port=args.web_port, log_level="warning")
 
 

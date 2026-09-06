@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
+import os
 import sys
-from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ import yaml
 from elevenlabs.client import ElevenLabs
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import ConnectionClosed, WebSocketException
+from websockets.exceptions import WebSocketException
 
 from cabin_fever_x86_core import __version__
 from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
@@ -26,18 +27,15 @@ from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
     AssistantMessage,
     ErrorResult,
-    SessionInfo,
     UserMessage,
 )
 from cabin_fever_x86_core.session_client import SessionCommandError, open_session
-from cabin_fever_x86_core.session_client import list_sessions as fetch_sessions
-from cabin_fever_x86_core.sessions import ZELLO_GATEWAY_COMPONENT
+from cabin_fever_x86_core.sessions import ZELLO_GATEWAY_COMPONENT, user_dir
 from cabin_fever_x86_core.transcripts import Transcript
 from cabin_fever_x86_core.voice import VoiceError, synthesize, transcribe
 
 logger = logging.getLogger(__name__)
 
-LATEST = "latest"
 ZELLO_TTS_FORMAT = "opus_48000_64"
 STATIC_SECONDS = 0.22
 STATIC_SAMPLE_RATE = 48_000
@@ -69,14 +67,62 @@ class ZelloGatewayError(RuntimeError):
     """The Zello gateway could not load its configuration or carry voice traffic."""
 
 
-def _resume_argument(value: str) -> UUID | str:
-    """Read ``--resume`` as a session ID or the word ``latest``."""
-    if value.lower() == LATEST:
-        return LATEST
-    try:
-        return UUID(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"not a session id: {value}") from exc
+def _unique_channels(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    channels: dict[str, Any] = {}
+    for channel, value in pairs:
+        if channel in channels:
+            raise ValueError(f"duplicate channel {channel!r}")
+        channels[channel] = value
+    return channels
+
+
+class ChannelSessions:
+    """One shared state writer per owner; updates never yield between read and save."""
+
+    def __init__(self, user_id: str) -> None:
+        """Load and validate the owner's associations without fallback on corrupt state."""
+        self.path = user_dir(user_id) / ZELLO_GATEWAY_COMPONENT / "sessions.json"
+        try:
+            if self.path.with_suffix(".tmp").exists():
+                raise ValueError("unfinished session state write; inspect sessions.tmp")
+            raw = json.loads(
+                self.path.read_text(encoding="utf-8"), object_pairs_hook=_unique_channels
+            )
+            if not isinstance(raw, dict):
+                raise ValueError("expected a channel-to-session mapping")
+            self.sessions: dict[str, UUID] = {}
+            for channel, session in raw.items():
+                if not channel or channel != channel.strip() or not isinstance(session, str):
+                    raise ValueError("expected channel names and session UUID strings")
+                self.sessions[channel] = UUID(session)
+            if len(set(self.sessions.values())) != len(self.sessions):
+                raise ValueError("channels must have independent sessions")
+        except FileNotFoundError:
+            self.sessions = {}
+        except (OSError, ValueError, TypeError) as exc:
+            raise ZelloGatewayError(
+                f"could not read Zello session state {self.path}: {exc}"
+            ) from exc
+
+    def remember(self, channel: str, session_id: UUID) -> None:
+        """Atomically save a complete snapshot before publishing the in-memory update."""
+        updated = {**self.sessions, channel: session_id}
+        if len(set(updated.values())) != len(updated):
+            raise ZelloGatewayError("the server returned a session already used by another channel")
+        temporary = self.path.with_suffix(".tmp")
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with temporary.open("w", encoding="utf-8") as handle:
+                json.dump({key: str(value) for key, value in updated.items()}, handle, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary.replace(self.path)
+        except OSError as exc:
+            raise ZelloGatewayError(
+                f"could not save Zello session state {self.path}: {exc}"
+            ) from exc
+        self.sessions = updated
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -97,42 +143,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Game server port; overrides client.port in the config.",
     )
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--resume",
-        metavar="SESSION_ID",
-        nargs="?",
-        const=LATEST,
-        type=_resume_argument,
-        default=None,
-        help="Resume a session instead of starting one. Bare, it takes the most recent.",
-    )
-    group.add_argument(
-        "--list-sessions",
-        action="store_true",
-        help="List the sessions the game server holds and exit.",
-    )
     return parser.parse_args(argv)
-
-
-def _session_rows(sessions: Sequence[SessionInfo], where: str) -> list[str]:
-    """Format a server session list for the command line."""
-    rows = [f"{len(sessions)} session(s) on {where}, most recent first:", ""]
-    rows.extend(
-        f"  {info.session_id}  {info.modified.isoformat(timespec='seconds')}" for info in sessions
-    )
-    return rows
-
-
-async def list_sessions(host: str, port: int) -> None:
-    """Print the sessions held by the game server."""
-    uri = f"ws://{host}:{port}"
-    async with connect(uri) as connection:
-        found = await fetch_sessions(connection)
-    if not found:
-        print("No sessions on the server yet.")
-        return
-    print("\n".join(_session_rows(found, uri)))
 
 
 def load_credentials(path: str, credentials_type: Any) -> Any:
@@ -173,21 +184,18 @@ class ZelloGateway:
 
     async def run(self) -> None:
         """Pump both channels until either Zello or the game server closes."""
-        tasks = [
-            asyncio.create_task(coro, name=name)
-            for name, coro in (
-                ("receive-server", self._receive_server()),
-                ("receive-zello", self._receive_zello()),
-            )
-        ]
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
-        for task in done:
-            error = task.exception()
-            if error is not None and not isinstance(error, ConnectionClosed):
-                raise error
+
+        async def receive_server() -> None:
+            await self._receive_server()
+            raise ZelloGatewayError("game server connection closed")
+
+        async def receive_zello() -> None:
+            await self._receive_zello()
+            raise ZelloGatewayError("Zello connection closed")
+
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(receive_server(), name="receive-server")
+            tasks.create_task(receive_zello(), name="receive-zello")
 
     async def _receive_server(self) -> None:
         """Synthesize every companion transmission and send it over Zello."""
@@ -298,24 +306,24 @@ async def run_gateway(
     channel: str,
     authorized_users: set[str],
     elevenlabs_api_key: str,
-    resume: UUID | str | None = None,
+    *,
+    user_id: str,
+    sessions: ChannelSessions,
 ) -> None:
-    """Connect one Zello channel to one new or resumed game session."""
+    """Connect one channel, resuming only its saved session under its owner."""
     VoiceMessage, Zello, ZelloCredentials = _zello_api()
 
     credentials = load_credentials(credentials_path, ZelloCredentials)
     uri = f"ws://{host}:{port}"
-    async with connect(uri) as upstream:
-        if resume == LATEST:
-            found = await fetch_sessions(upstream)
-            if not found:
-                raise SessionCommandError("no sessions on the server to resume")
-            resume = found[0].session_id
-        if resume is not None and not isinstance(resume, UUID):
-            raise SessionCommandError(f"not a session id: {resume}")
-
+    async with connect(uri, additional_headers={"X-CF86-User-ID": user_id}) as upstream:
+        resume = sessions.sessions.get(channel)
         session_id = await open_session(upstream, resume)
-        transcript = Transcript(session_id, ZELLO_GATEWAY_COMPONENT)
+        if resume is not None and session_id != resume:
+            raise ZelloGatewayError(
+                f"server resumed {session_id} instead of saved session {resume}"
+            )
+        sessions.remember(channel, session_id)
+        transcript = Transcript(session_id, ZELLO_GATEWAY_COMPONENT, user_id=user_id)
         verb = "resumed" if resume else "started"
         transcript.log("session", None, f"{verb} on {uri}, Zello channel {channel!r}")
 
@@ -323,7 +331,8 @@ async def run_gateway(
         async with Zello(credentials, channel) as zello:
             print(
                 f"Cabin Fever x86 (core version {__version__}) session {session_id}\n"
-                f"Listening on Zello channel {channel!r}; press Ctrl-C to stop."
+                f"Listening on Zello channel {channel!r} as user {user_id!r}; "
+                "press Ctrl-C to stop."
             )
             await ZelloGateway(
                 zello,
@@ -335,13 +344,53 @@ async def run_gateway(
             ).run()
 
 
+def _error_message(exc: BaseException) -> str:
+    if isinstance(exc, BaseExceptionGroup):
+        return "; ".join(_error_message(error) for error in exc.exceptions)
+    return str(exc)
+
+
+async def run_channels(
+    host: str,
+    port: int,
+    credentials_path: str,
+    channels: dict[str, tuple[str, set[str]]],
+    elevenlabs_api_key: str,
+) -> None:
+    """Supervise all channels together; any failure closes every connection."""
+    if not channels:
+        raise ZelloGatewayError("No Zello identities in users; no channels configured")
+    # Validate every owner's state before any channel can start a new game.
+    states = {owner: ChannelSessions(owner) for owner in {value[0] for value in channels.values()}}
+
+    async def run_channel(channel: str, owner: str, contributors: set[str]) -> None:
+        try:
+            await run_gateway(
+                host,
+                port,
+                credentials_path,
+                channel,
+                contributors,
+                elevenlabs_api_key,
+                user_id=owner,
+                sessions=states[owner],
+            )
+            raise ZelloGatewayError("channel relay stopped")
+        except Exception as exc:
+            raise ZelloGatewayError(
+                f"Zello channel {channel!r} (user {owner!r}): {_error_message(exc)}"
+            ) from exc
+
+    async with asyncio.TaskGroup() as tasks:
+        for channel, (owner, contributors) in channels.items():
+            tasks.create_task(run_channel(channel, owner, contributors), name=f"zello-{channel}")
+
+
 def main() -> None:
     """Load configuration and run the Zello gateway."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args()
     try:
-        if not args.list_sessions:
-            _zello_api()
         config = load_config(args.config)
     except (ConfigError, ZelloGatewayError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -350,28 +399,32 @@ def main() -> None:
     host = args.host if args.host is not None else config.client.host
     port = args.port if args.port is not None else config.client.port
     try:
-        if args.list_sessions:
-            asyncio.run(list_sessions(host, port))
-            return
         if config.zello is None:
             raise ZelloGatewayError("config is missing the required zello section")
+        channels = config.zello_channels()
+        if not channels:
+            raise ZelloGatewayError("No Zello identities in users; no channels configured")
+        _zello_api()
         if not config.client.elevenlabs_api_key:
             raise ZelloGatewayError("client.elevenlabs_api_key is required for the Zello gateway")
-        if not config.zello.authorized_users:
-            logger.warning("zello.authorized_users is empty; all incoming voice will be ignored")
         asyncio.run(
-            run_gateway(
+            run_channels(
                 host,
                 port,
                 config.zello.credentials_file,
-                config.zello.channel,
-                set(config.zello.authorized_users),
+                channels,
                 config.client.elevenlabs_api_key,
-                args.resume,
             )
         )
-    except (OSError, ValueError, RuntimeError, WebSocketException, SessionCommandError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        WebSocketException,
+        SessionCommandError,
+        ExceptionGroup,
+    ) as exc:
+        print(f"error: {_error_message(exc)}", file=sys.stderr)
         raise SystemExit(1) from exc
     except KeyboardInterrupt:
         logger.info("Shutting down.")

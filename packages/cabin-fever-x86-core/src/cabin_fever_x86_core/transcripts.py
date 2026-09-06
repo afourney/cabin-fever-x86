@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID
 
-from cabin_fever_x86_core.sessions import session_dir
+from cabin_fever_x86_core.sessions import GUEST_USER_ID, session_dir
 
 TRANSCRIPT_FILE = "transcript.jsonl"
 AUDIO_DIR = "audio"
@@ -25,9 +25,9 @@ class Transcript:
     Each record points at the clip the listener actually heard.
     """
 
-    def __init__(self, session_id: UUID, component: str) -> None:
+    def __init__(self, session_id: UUID, component: str, *, user_id: str = GUEST_USER_ID) -> None:
         """Open the record for one session, creating its folders."""
-        self.dir = session_dir(session_id, component)
+        self.dir = session_dir(session_id, component, user_id=user_id)
         self.path = self.dir / TRANSCRIPT_FILE
         self.audio_dir = self.dir / AUDIO_DIR
         self.audio_dir.mkdir(parents=True, exist_ok=True)

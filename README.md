@@ -115,7 +115,7 @@ The following command-line entry points are installed:
 | `cf86-web` | core | Web gateway — the radio in a browser tab. |
 | `cf86-text` | core | Text client — same session, typed instead of spoken. |
 | `cf86-telegram` | core | Optional Telegram bot gateway with text and voice-note input. |
-| `cf86-zello` | core | Optional voice-only Zello channel gateway. |
+| `cf86-zello` | core | Optional voice-only, multi-channel Zello gateway with automatic session resume. |
 | `cabin-fever-x86` | launcher | Boots the sandbox VM and runs the above inside it. |
 
 Run the server from the repository root:
@@ -135,3 +135,10 @@ uv run cf86-text
 ```
 
 If you use the web gateway, open the URL it prints in your browser (typically [http://127.0.0.1:8000](http://127.0.0.1:8000)).
+
+The default sole guest keeps the click-to-turn-on radio prompt. Configure
+`type: login` identities for Callsign/Password sign-in; with multiple users,
+“Login as Guest” is offered only when `user_id: guest` has a `type: guest`
+identity. Browser callsigns map to login usernames, not storage user IDs.
+See [browser authentication and HTTPS setup](packages/cabin-fever-x86-core/README.md#browser-callsigns-and-passwords)
+for Argon2id password hashes, persistent signed sessions, and secure remote access.

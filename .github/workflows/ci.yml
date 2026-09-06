@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --test packages/cabin-fever-x86-core/tests/pcm-player.test.mjs
+      - run: node --test packages/cabin-fever-x86-core/tests/pcm-player.test.mjs packages/cabin-fever-x86-core/tests/browser-auth.test.mjs
 
   build-core:
     runs-on: ubuntu-latest
@@ -77,6 +77,7 @@ jobs:
             cabin_fever_x86_core/server/stage_direction.txt \
             cabin_fever_x86_core/web_gateway/static/index.html \
             cabin_fever_x86_core/web_gateway/static/pcm-player.js \
+            cabin_fever_x86_core/web_gateway/static/browser-auth.js \
             cabin_fever_x86_core/web_gateway/static/splash.jpg
           do
             unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }

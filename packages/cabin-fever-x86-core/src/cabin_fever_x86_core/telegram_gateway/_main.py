@@ -43,9 +43,11 @@ MESSAGE_MAX_AGE = 180
 MAX_VOICE_BYTES = 10 * 1024 * 1024
 MAX_VOICE_SECONDS = 120
 TELEGRAM_TTS_FORMAT = "opus_48000_64"
-# Which server session each Telegram account was last in, kept beside that
-# user's session data rather than at the root of the data directory.
-STATE_PATH = user_dir() / TELEGRAM_GATEWAY_COMPONENT / "sessions.json"
+
+
+def _state_path(user_id: str) -> Path:
+    """Keep account-to-session associations inside their owner's namespace."""
+    return user_dir(user_id) / TELEGRAM_GATEWAY_COMPONENT / "sessions.json"
 
 
 def split_message(text: str, limit: int = MAX_MESSAGE_LENGTH) -> list[str]:
@@ -70,7 +72,7 @@ def is_stale(message_date: datetime, now: datetime | None = None) -> bool:
     return (current - message_date).total_seconds() > MESSAGE_MAX_AGE
 
 
-def _load_state(path: Path = STATE_PATH) -> dict[int, UUID]:
+def _load_state(path: Path) -> dict[int, UUID]:
     """Read the last server session used by each Telegram account."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -82,7 +84,7 @@ def _load_state(path: Path = STATE_PATH) -> dict[int, UUID]:
         return {}
 
 
-def _save_state(state: dict[int, UUID], path: Path = STATE_PATH) -> None:
+def _save_state(state: dict[int, UUID], path: Path) -> None:
     """Persist account-to-session associations atomically."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
@@ -120,15 +122,24 @@ class TelegramGateway:
         self,
         bot: Any,
         upstream_uri: str,
-        allowed_accounts: set[int],
+        accounts: dict[int, str],
         voice: ElevenLabs | None = None,
     ) -> None:
         self.bot = bot
         self.upstream_uri = upstream_uri
-        self.allowed_accounts = allowed_accounts
+        self.accounts = accounts
         self.voice = voice
         self.sessions: dict[int, TelegramSession] = {}
-        self.last_sessions = _load_state()
+        self.last_sessions = {
+            user_id: _load_state(_state_path(user_id)) for user_id in set(accounts.values())
+        }
+
+    def _connect(self, account_id: int) -> connect:
+        """Assert only the configured identity of an authorized Telegram account."""
+        user_id = self.accounts.get(account_id)
+        if user_id is None:
+            raise ValueError("Telegram account is not authorized")
+        return connect(self.upstream_uri, additional_headers={"X-CF86-User-ID": user_id})
 
     async def send(self, chat_id: int, text: str) -> None:
         """Send plain text, splitting messages Telegram would reject as too long."""
@@ -156,20 +167,21 @@ class TelegramGateway:
     async def open(self, account_id: int, chat_id: int, resume: UUID | None) -> TelegramSession:
         """Replace the account's channel with a new or resumed server game."""
         await self.close_session(account_id)
-        connection = await connect(self.upstream_uri)
+        connection = await self._connect(account_id)
         try:
             session_id = await open_session(connection, resume)
         except BaseException:
             await connection.close()
             raise
 
-        transcript = Transcript(session_id, TELEGRAM_GATEWAY_COMPONENT)
+        user_id = self.accounts[account_id]
+        transcript = Transcript(session_id, TELEGRAM_GATEWAY_COMPONENT, user_id=user_id)
         verb = "resumed" if resume else "started"
         transcript.log("session", None, f"{verb} for Telegram account {account_id}")
         session = TelegramSession(account_id, chat_id, session_id, connection, transcript)
         self.sessions[account_id] = session
-        self.last_sessions[account_id] = session_id
-        _save_state(self.last_sessions)
+        self.last_sessions[user_id][account_id] = session_id
+        _save_state(self.last_sessions[user_id], _state_path(user_id))
         session.pump = asyncio.create_task(self._pump(session), name=f"telegram-{account_id}")
         logger.info("Telegram account %d %s session %s", account_id, verb, session_id)
         return session
@@ -272,9 +284,9 @@ class TelegramGateway:
         await self.send(session.chat_id, display)
         session.transcript.log("assistant", message.id, message.content, clip)
 
-    async def _latest(self) -> UUID:
-        """Return the server's most recently modified session."""
-        async with connect(self.upstream_uri) as connection:
+    async def _latest(self, account_id: int) -> UUID:
+        """Return this account's user's most recently modified server session."""
+        async with self._connect(account_id) as connection:
             found = await list_sessions(connection)
         if not found:
             raise SessionCommandError("no sessions on the server to resume")
@@ -287,7 +299,7 @@ class TelegramGateway:
         sender = await event.get_sender()
         username = getattr(sender, "username", None)
 
-        if account_id not in self.allowed_accounts:
+        if account_id not in self.accounts:
             logger.warning(
                 "Rejected Telegram connection: user_id=%s username=@%s chat_id=%s",
                 account_id,
@@ -336,7 +348,7 @@ class TelegramGateway:
         if session is not None:
             return session
 
-        resume = self.last_sessions.get(account_id)
+        resume = self.last_sessions[self.accounts[account_id]].get(account_id)
         session = await self.open(account_id, chat_id, resume)
         await self.send(
             chat_id,
@@ -454,7 +466,7 @@ class TelegramGateway:
             await self.send(chat_id, "Compaction completed.")
             return
         if command == "/sessions":
-            async with connect(self.upstream_uri) as connection:
+            async with self._connect(account_id) as connection:
                 found = await list_sessions(connection)
             text = (
                 "No sessions on the server."
@@ -468,12 +480,12 @@ class TelegramGateway:
             await self.send(chat_id, text)
             return
         if command == "/resume":
-            resume = UUID(argument.strip()) if argument.strip() else await self._latest()
+            resume = UUID(argument.strip()) if argument.strip() else await self._latest(account_id)
             session = await self.open(account_id, chat_id, resume)
             await self.send(chat_id, f"Resumed session {session.session_id}.")
             return
         if command == "/continue":
-            resume = await self._latest()
+            resume = await self._latest(account_id)
             session = await self.open(account_id, chat_id, resume)
             await self.send(chat_id, f"Resumed session {session.session_id}.")
             return
@@ -522,7 +534,7 @@ async def run_bot(
     api_hash: str,
     token: str,
     uri: str,
-    allowed: set[int],
+    accounts: dict[int, str],
     elevenlabs_api_key: str | None,
 ) -> None:
     """Start Telethon and relay updates until it disconnects."""
@@ -533,11 +545,11 @@ async def run_bot(
     voice = ElevenLabs(api_key=elevenlabs_api_key) if elevenlabs_api_key else None
     if voice is None:
         logger.warning("No ElevenLabs key: Telegram voice messages will be rejected.")
-    gateway = TelegramGateway(bot, uri, allowed, voice)
+    gateway = TelegramGateway(bot, uri, accounts, voice)
     bot.add_event_handler(gateway.handle, events.NewMessage(incoming=True))
     identity = await bot.get_me()
     logger.info(
-        "Telegram bot @%s connected; allowed user IDs: %s", identity.username, sorted(allowed)
+        "Telegram bot @%s connected; allowed account IDs: %s", identity.username, sorted(accounts)
     )
     try:
         await bot.run_until_disconnected()
@@ -570,9 +582,10 @@ def main() -> None:
     if missing:
         print(f"error: telegram_gateway is missing: {', '.join(missing)}", file=sys.stderr)
         raise SystemExit(1)
-    if not telegram.allowed_accounts:
+    accounts = config.telegram_accounts()
+    if not accounts:
         logger.warning(
-            "telegram_gateway.allowed_accounts is empty; all users will be rejected. "
+            "No Telegram identities in users; all users will be rejected. "
             "Send the bot a message and read user_id from this log."
         )
 
@@ -586,7 +599,7 @@ def main() -> None:
                 telegram.api_hash,
                 telegram.bot_token,
                 f"ws://{host}:{port}",
-                set(telegram.allowed_accounts),
+                accounts,
                 config.client.elevenlabs_api_key,
             )
         )

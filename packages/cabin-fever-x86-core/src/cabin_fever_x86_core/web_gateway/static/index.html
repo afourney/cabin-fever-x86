@@ -6,6 +6,7 @@
 <title>Cabin Fever x86</title>
 <style>
   :root { color-scheme: dark; }
+  [hidden] { display: none !important; }
   body {
     margin: 0; min-height: 100vh; display: flex; flex-direction: column;
     align-items: center; gap: 1rem; padding: 2rem 1rem;
@@ -71,6 +72,20 @@
     text-transform: none; font-size: .8em; color: #b9a882; animation: none;
   }
   #splash:hover .call { color: #fff; }
+  #auth-panel {
+    position: relative; z-index: 1; margin: 2rem 1rem; padding: 1.5rem;
+    width: min(26rem, 100%); border: 1px solid #635a43; border-radius: .4rem;
+    background: rgba(6, 9, 8, .94); cursor: default; color: #f0e2c0;
+  }
+  #auth-panel h2 { margin-top: 0; font-size: 1.1rem; letter-spacing: .15em; }
+  #login-form { display: grid; gap: .6rem; }
+  #login-form input {
+    font: inherit; padding: .6rem; min-width: 0; border: 1px solid #635a43;
+    border-radius: .2rem; background: #0d0f0e; color: #f0e2c0;
+  }
+  #auth-panel button { margin-top: .7rem; width: 100%; }
+  #auth-error { color: #edb2a3; }
+  #logout { top: 3.5rem; z-index: 20; }
   @keyframes breathe { 0%, 100% { opacity: .72 } 50% { opacity: 1 } }
   @media (prefers-reduced-motion: reduce) {
     #splash .call { animation: none; }
@@ -79,11 +94,27 @@
 </style>
 </head>
 <body>
-  <div id="splash" role="button" tabindex="0" aria-label="Turn on your radio">
-    <div class="call">
+  <div id="splash" role="group" tabindex="-1" aria-label="Radio sign in">
+    <div class="call" id="radio-call" hidden>
       Click here to turn on your radio
       <small id="splash-note">feeding grues over vhf</small>
     </div>
+    <section id="auth-panel" aria-labelledby="auth-heading">
+      <h2 id="auth-heading">Station identification</h2>
+      <p id="auth-message">Contacting the station…</p>
+      <form id="login-form" hidden>
+        <label for="callsign">Callsign</label>
+        <input id="callsign" name="username" autocomplete="username" maxlength="64"
+          autocapitalize="none" spellcheck="false" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password"
+          maxlength="1024" required>
+        <button id="login-submit" type="submit">Open the channel</button>
+      </form>
+      <button id="guest-login" type="button" hidden>Login as Guest</button>
+      <p id="auth-error" role="alert" aria-live="polite"></p>
+      <button id="auth-retry" type="button" hidden>Try again</button>
+    </section>
   </div>
 
   <h1>Cabin Fever <span style="color:#7ac07a">x86</span></h1>
@@ -93,9 +124,11 @@
   <button id="talk" disabled>Hold to talk</button>
   <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
   <button id="weather" class="quiet" hidden title="Rain on the roof">rain: on</button>
+  <button id="logout" class="quiet" hidden>Sign out</button>
 
 <script type="module">
 import { PCMPlayer } from "/pcm-player.js";
+import { BrowserAuthController } from "/browser-auth.js";
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), status = $("status"), sessionLabel = $("session");
@@ -105,6 +138,18 @@ let playing = null, keyed = false, queue = Promise.resolve();
 let rain = null;
 const streams = new Map();
 let playbackGeneration = 0;
+const browserAuth = new BrowserAuthController({
+  document,
+  onSignedIn: () => turnOn(),
+  onExpired: () => {
+    sessionId = null;
+    ws?.close();
+    cutPlayback();
+    recorder?.stream?.getTracks().forEach(track => track.stop());
+    location.reload(); // Clear the previous user's transcript and microphone state.
+  },
+});
+browserAuth.initialize();
 
 const RAIN_LOUD = 0.30;    // on the splash, before anyone is talking
 const RAIN_UNDER = 0.10;    // once the channel is open
@@ -476,11 +521,12 @@ function connect() {
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     clearInterval(keepAlive);
     cutPlayback();
     setStatus("disconnected");
     $("talk").disabled = true;
+    if (event.code === 4401) browserAuth.onExpired();
   };
   ws.onerror = () => setStatus("connection error");
 
@@ -524,7 +570,7 @@ async function send() {
 }
 
 function keyDown() {
-  if (keyed || !recorder || recorder.state === "recording") return;
+  if ($("talk").disabled || keyed || !recorder || recorder.state === "recording") return;
   keyed = true;
   cutPlayback();          // half-duplex: keying the mic cuts them off
   chunks = [];
@@ -575,7 +621,7 @@ async function openWeather() {
 openWeather();
 
 async function turnOn() {
-  if (turningOn) return;
+  if (turningOn || !browserAuth.authenticated) return;
   turningOn = true;
   $("splash-note").textContent = "warming up…";
 
@@ -603,6 +649,7 @@ async function turnOn() {
 
 splash.addEventListener("click", turnOn);
 splash.addEventListener("keydown", (e) => {
+  if (!browserAuth.authenticated) return;
   if (e.key === "Enter" || e.code === "Space") { e.preventDefault(); turnOn(); }
 });
 

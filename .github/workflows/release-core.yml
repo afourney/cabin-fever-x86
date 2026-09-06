@@ -57,6 +57,7 @@ jobs:
             cabin_fever_x86_core/server/compaction_excuses.jsonl \
             cabin_fever_x86_core/web_gateway/static/index.html \
             cabin_fever_x86_core/web_gateway/static/pcm-player.js \
+            cabin_fever_x86_core/web_gateway/static/browser-auth.js \
             cabin_fever_x86_core/web_gateway/static/splash.jpg \
             cabin_fever_x86_core/web_gateway/static/rain.mp3
           do

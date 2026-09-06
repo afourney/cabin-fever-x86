@@ -1,9 +1,10 @@
 """Where each side of a session keeps its data.
 
 Each component stores data under
-``data/users/<user_id>/sessions/<session_id>/<component>/``. The text client and
-gateways currently use the fixed user ``guest``. Components may live on different
-machines; the session id lines their logs up afterwards.
+``data/users/<user_id>/sessions/<session_id>/<component>/``. The web, Telegram and
+Zello gateways resolve users through configured identities; the text client uses
+``guest``. Components may live on different machines; the session id lines
+their logs up afterwards.
 """
 
 from __future__ import annotations
