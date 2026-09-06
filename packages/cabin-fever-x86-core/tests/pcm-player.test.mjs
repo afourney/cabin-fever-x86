@@ -130,7 +130,8 @@ function page() {
   const element = () => ({ textContent: "", classList: { add() {}, remove() {} },
     addEventListener() {}, append() {}, disabled: false });
   const scope = vm.createContext({ PCMPlayer, Uint8Array, ArrayBuffer, DataView,
-    BrowserAuthController: class { authenticated = true; initialize() {} },
+    BrowserAuthController: class { authenticated = true; state = { implicit_guest: true }; async initialize() {} },
+    SessionPickerController: class {},
     Float32Array, URLSearchParams, console, setTimeout, clearTimeout,
     setInterval: () => 1, clearInterval() {}, addEventListener() {},
     document: { getElementById(id) {
@@ -153,6 +154,7 @@ function page() {
       streams: () => streams, playing: () => playing,
     };`, scope);
   const json = msg => scope.handlers.message(JSON.stringify(msg));
+  json({ type: "session", session_id: "test-session", voice: true });
   const chunk = (id, count = 4800) => {
     const bytes = new Uint8Array(4 + count * 2);
     new DataView(bytes.buffer).setUint32(0, id, false);

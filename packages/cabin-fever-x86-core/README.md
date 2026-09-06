@@ -72,6 +72,13 @@ default sole guest. Explicit empty or null values (including unset environment
 references) are configuration errors; use `users: []` to configure no users.
 The text client remains a trusted, anonymous guest adapter.
 
+After signing in (or clicking through as guest), the next screen introduces Sam
+and the cabin and lets you choose **New Session** or a saved session. Saved
+sessions show when you last played, newest first; only New Session appears if
+you have none. Microphone access and the game connection start after you confirm
+your choice. A `?resume=<session-id>` link preselects that session when it belongs
+to the signed-in user, while still showing the picker.
+
 Add browser identities alongside the platform identities for a user's shared games:
 
 ```yaml

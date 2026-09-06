@@ -145,7 +145,7 @@ test("guest selection and logout use explicit POST requests", async () => {
   assert.equal(page.signedIn(), 0);
 });
 
-test("explicit guest sign-in opens the radio immediately, but logout does not", async () => {
+test("explicit guest sign-in advances to session selection, but logout does not", async () => {
   const page = ui({ authenticated: true, guest_available: true, refresh_seconds: 20 });
   await page.controller.guest();
   assert.equal(page.signedIn(), 1);
@@ -174,5 +174,5 @@ test("the page labels callsign/password accessibly and preserves the original ra
   assert.match(html, /role="alert" aria-live="polite"/);
   assert.match(html, /Click here to turn on your radio/);
   assert.match(html, /if \(turningOn \|\| !browserAuth.authenticated\) return/);
-  assert.match(html, /onSignedIn: \(\) => turnOn\(\)/);
+  assert.match(html, /onSignedIn: \(\) => showSessionPicker\(\)/);
 });

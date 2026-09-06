@@ -242,6 +242,11 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
         """Serve the browser's sign-in controller."""
         return FileResponse(STATIC_DIR / "browser-auth.js", media_type="text/javascript")
 
+    @app.get("/session-picker.js")
+    async def session_picker_script() -> FileResponse:
+        """Serve the browser's new/resumed session picker."""
+        return FileResponse(STATIC_DIR / "session-picker.js", media_type="text/javascript")
+
     @app.get("/splash")
     async def splash() -> FileResponse:
         """Serve the cabin, for the page to open on.
