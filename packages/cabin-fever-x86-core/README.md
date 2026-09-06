@@ -74,8 +74,9 @@ data/users/<user_id>/sessions/<session_id>/server/
 
 Session listing and resuming operate only within the connection's user directory.
 A session belonging to another user is reported as nonexistent. Existing clients
-send no header and continue to use `guest`. Client transcripts and audio still
-live in `data/sessions/<session_id>/<client_component>/`, and downloaded games
+send no header and use the fixed user `guest`. Client transcripts and audio
+live in `data/users/guest/sessions/<session_id>/text_client/` or
+`data/users/guest/sessions/<session_id>/web_client/`, and downloaded games
 remain shared in `data/games/`.
 
 ## Z-machine games

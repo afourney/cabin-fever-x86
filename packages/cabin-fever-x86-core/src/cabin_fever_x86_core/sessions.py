@@ -1,8 +1,9 @@
 """Where each side of a session keeps its data.
 
-The server stores sessions under ``data/users/<user_id>/sessions/<session_id>/server/``.
-Clients still use ``data/sessions/<session_id>/<component>/``. They may live on
-different machines; the session id lines their logs up afterwards.
+Each component stores data under
+``data/users/<user_id>/sessions/<session_id>/<component>/``. Clients currently
+use the fixed user ``guest``. Components may live on different machines; the
+session id lines their logs up afterwards.
 """
 
 from __future__ import annotations
@@ -43,11 +44,9 @@ def validate_user_id(user_id: str) -> str:
     return user_id
 
 
-def _sessions_root(component: str, root: str | os.PathLike[str] | None, user_id: str) -> Path:
+def _sessions_root(root: str | os.PathLike[str] | None, user_id: str) -> Path:
     base = Path(root or DEFAULT_DATA_ROOT)
-    if component == SERVER_COMPONENT:
-        base = base / "users" / validate_user_id(user_id)
-    return base / "sessions"
+    return base / "users" / validate_user_id(user_id) / "sessions"
 
 
 def session_dir(
@@ -58,8 +57,8 @@ def session_dir(
     *,
     user_id: str = GUEST_USER_ID,
 ) -> Path:
-    """Return a component's session directory, scoped to a user on the server."""
-    path = _sessions_root(component, root, user_id) / str(session_id) / component
+    """Return a component's session directory, scoped to a user (guest by default)."""
+    path = _sessions_root(root, user_id) / str(session_id) / component
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
@@ -85,9 +84,9 @@ def find_sessions(
     """List the sessions that have a *component* directory, most recent first.
 
     Directories whose names are not session ids are ignored, so unrelated
-    clutter cannot break a listing. Server listings include only *user_id*.
+    clutter cannot break a listing. Listings include only *user_id*.
     """
-    sessions_root = _sessions_root(component, root, user_id)
+    sessions_root = _sessions_root(root, user_id)
     if not sessions_root.is_dir():
         return []
 

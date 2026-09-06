@@ -5,7 +5,7 @@ Reads ``usage.jsonl`` — the append-only record the server writes beside each
 session's conversation — and prices it.
 
     uv run usage_report.py <session-id> --raw-turn-costs
-    uv run usage_report.py data/sessions/<session-id>/server --raw-turn-costs
+    uv run usage_report.py data/users/guest/sessions/<session-id>/server --raw-turn-costs
     uv run usage_report.py path/to/usage.jsonl --raw-turn-costs
 
 ``--raw-turn-costs`` lists every request in the order it was made, grouped by

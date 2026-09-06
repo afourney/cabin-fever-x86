@@ -91,7 +91,7 @@ class SessionResult(BaseModel):
     """The session a ``new_game`` or ``resume_game`` command opened.
 
     The client and the server may be on different machines, each keeping its
-    own session directory (scoped to a user on the server). Sharing the session
+    own session directory scoped to a user. Sharing the session
     id is what makes the two sets of logs line up afterwards.
     """
 

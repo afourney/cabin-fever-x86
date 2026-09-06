@@ -49,10 +49,10 @@ def test_server_paths_and_discovery_are_scoped_to_users(tmp_path):
 
 
 @pytest.mark.parametrize("component", [TEXT_CLIENT_COMPONENT, WEB_CLIENT_COMPONENT])
-def test_client_storage_paths_are_unchanged(tmp_path, component):
+def test_client_storage_defaults_to_guest(tmp_path, component):
     session_id = uuid4()
     path = session_dir(session_id, component, tmp_path)
-    assert path == tmp_path / "sessions" / str(session_id) / component
+    assert path == tmp_path / "users/guest/sessions" / str(session_id) / component
     assert [s.session_id for s in find_sessions(component, tmp_path)] == [session_id]
 
 
