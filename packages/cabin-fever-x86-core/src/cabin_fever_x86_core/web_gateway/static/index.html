@@ -35,7 +35,8 @@
   button {
     font: inherit; padding: .9rem 2rem; border-radius: .4rem; cursor: pointer;
     border: 1px solid #2f4438; background: #16201a; color: #cfe3d4;
-    touch-action: none; user-select: none;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
   }
   button:disabled { opacity: .4; cursor: default; }
   #talk.hot { background: #7a2f26; border-color: #b4483a; color: #fff; }
@@ -193,7 +194,7 @@
   <button id="talk" disabled>Hold to talk</button>
   <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
   </main>
-  <button id="weather" class="quiet" hidden title="Rain on the roof">rain: on</button>
+  <button id="weather" class="quiet" hidden title="Rain on the roof">rain: off</button>
   <button id="logout" class="quiet" hidden>Sign out</button>
 
 <script type="module">
@@ -688,11 +689,12 @@ function keyUp() {
 
 // The splash always has weather, whatever was remembered from last time: the
 // rain is half of what it is for, and a page that comes up silent reads as
-// broken. The remembered choice is applied once you are through it.
+// broken. Once you are through it the radio is what matters, so the roof goes
+// quiet unless you have asked for it before.
 let muted = false;
 
 function rememberedMute() {
-  return localStorage.getItem("cf86-rain") === "off";
+  return localStorage.getItem("cf86-rain") !== "on";
 }
 
 $("weather").onclick = () => {
