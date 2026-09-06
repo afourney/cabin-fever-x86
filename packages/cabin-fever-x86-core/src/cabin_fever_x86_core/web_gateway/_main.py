@@ -1,4 +1,4 @@
-"""Entry point for the Cabin Fever x86 web client.
+"""Entry point for the Cabin Fever x86 web gateway.
 
 Serves a page that holds the radio, and relays between it and the game server.
 The browser captures and plays audio; this process keeps the ElevenLabs key,
@@ -47,7 +47,7 @@ from cabin_fever_x86_core.session_client import (
     list_sessions,
     open_session,
 )
-from cabin_fever_x86_core.sessions import WEB_CLIENT_COMPONENT, session_dir
+from cabin_fever_x86_core.sessions import WEB_GATEWAY_COMPONENT, session_dir
 from cabin_fever_x86_core.transcripts import AUDIO_DIR, Transcript
 from cabin_fever_x86_core.voice import PCM_SAMPLE_RATE, VoiceError, stream_speech, transcribe
 
@@ -174,7 +174,7 @@ async def _pump(radio: Radio, voice: AsyncElevenLabs | None) -> None:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Serve the Cabin Fever x86 web client.")
+    parser = argparse.ArgumentParser(description="Serve the Cabin Fever x86 web gateway.")
     parser.add_argument(
         "--config",
         default=None,
@@ -285,7 +285,7 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
         Read straight from disk rather than from the live sessions, so a clip
         keeps playing after a reload and old sessions stay listenable.
         """
-        base = (session_dir(session_id, WEB_CLIENT_COMPONENT, create=False) / AUDIO_DIR).resolve()
+        base = (session_dir(session_id, WEB_GATEWAY_COMPONENT, create=False) / AUDIO_DIR).resolve()
         path = (base / name).resolve()
         if base not in path.parents or not path.is_file():
             raise HTTPException(status_code=404, detail="no such clip")
@@ -359,7 +359,7 @@ def create_app(upstream_uri: str, api_key: str | None) -> FastAPI:
         radio = Radio(
             session_id=session_id,
             upstream=upstream,
-            transcript=Transcript(session_id, WEB_CLIENT_COMPONENT),
+            transcript=Transcript(session_id, WEB_GATEWAY_COMPONENT),
             browser=browser,
         )
         live[session_id] = radio

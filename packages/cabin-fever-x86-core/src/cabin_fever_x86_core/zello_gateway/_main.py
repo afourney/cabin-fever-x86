@@ -1,4 +1,4 @@
-"""Entry point for the voice-only Cabin Fever x86 Zello client."""
+"""Entry point for the voice-only Cabin Fever x86 Zello gateway."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from cabin_fever_x86_core.messages import (
 )
 from cabin_fever_x86_core.session_client import SessionCommandError, open_session
 from cabin_fever_x86_core.session_client import list_sessions as fetch_sessions
-from cabin_fever_x86_core.sessions import ZELLO_CLIENT_COMPONENT
+from cabin_fever_x86_core.sessions import ZELLO_GATEWAY_COMPONENT
 from cabin_fever_x86_core.transcripts import Transcript
 from cabin_fever_x86_core.voice import VoiceError, synthesize, transcribe
 
@@ -65,8 +65,8 @@ def _static_burst() -> bytes:
     return encoded.getvalue()
 
 
-class ZelloClientError(RuntimeError):
-    """The Zello client could not load its configuration or carry voice traffic."""
+class ZelloGatewayError(RuntimeError):
+    """The Zello gateway could not load its configuration or carry voice traffic."""
 
 
 def _resume_argument(value: str) -> UUID | str:
@@ -141,18 +141,18 @@ def load_credentials(path: str, credentials_type: Any) -> Any:
     try:
         values = yaml.safe_load(credentials_path.read_text(encoding="utf-8"))
     except OSError as exc:
-        raise ZelloClientError(f"could not read credentials {credentials_path}: {exc}") from exc
+        raise ZelloGatewayError(f"could not read credentials {credentials_path}: {exc}") from exc
     except yaml.YAMLError as exc:
-        raise ZelloClientError(f"could not parse credentials {credentials_path}: {exc}") from exc
+        raise ZelloGatewayError(f"could not parse credentials {credentials_path}: {exc}") from exc
     if not isinstance(values, dict):
-        raise ZelloClientError(f"expected a YAML mapping in {credentials_path}")
+        raise ZelloGatewayError(f"expected a YAML mapping in {credentials_path}")
     try:
         return credentials_type.from_mapping(values)
     except ValueError as exc:
-        raise ZelloClientError(f"invalid credentials in {credentials_path}: {exc}") from exc
+        raise ZelloGatewayError(f"invalid credentials in {credentials_path}: {exc}") from exc
 
 
-class ZelloBridge:
+class ZelloGateway:
     """Relay authorized Zello voice messages over one game-server session."""
 
     def __init__(
@@ -276,7 +276,22 @@ class ZelloBridge:
             await self.upstream.send(message.model_dump_json())
 
 
-async def run_client(
+def _zello_api() -> tuple[Any, Any, Any]:
+    """Load optional Zello support, with installation instructions on failure."""
+    try:
+        from zelpy import VoiceMessage, Zello, ZelloCredentials
+    except ImportError as exc:
+        raise ZelloGatewayError(
+            "Zello support is unavailable in this Python environment.\n\n"
+            "Install the optional dependencies:\n"
+            "  python -m pip install 'cabin-fever-x86-core[zello]'\n\n"
+            "Or, from a repository checkout, run:\n"
+            "  uv run --extra zello cf86-zello"
+        ) from exc
+    return VoiceMessage, Zello, ZelloCredentials
+
+
+async def run_gateway(
     host: str,
     port: int,
     credentials_path: str,
@@ -286,12 +301,7 @@ async def run_client(
     resume: UUID | str | None = None,
 ) -> None:
     """Connect one Zello channel to one new or resumed game session."""
-    try:
-        from zelpy import VoiceMessage, Zello, ZelloCredentials
-    except ImportError as exc:
-        raise ZelloClientError(
-            "Zello support is not installed; install cabin-fever-x86-core[zello]"
-        ) from exc
+    VoiceMessage, Zello, ZelloCredentials = _zello_api()
 
     credentials = load_credentials(credentials_path, ZelloCredentials)
     uri = f"ws://{host}:{port}"
@@ -305,7 +315,7 @@ async def run_client(
             raise SessionCommandError(f"not a session id: {resume}")
 
         session_id = await open_session(upstream, resume)
-        transcript = Transcript(session_id, ZELLO_CLIENT_COMPONENT)
+        transcript = Transcript(session_id, ZELLO_GATEWAY_COMPONENT)
         verb = "resumed" if resume else "started"
         transcript.log("session", None, f"{verb} on {uri}, Zello channel {channel!r}")
 
@@ -315,7 +325,7 @@ async def run_client(
                 f"Cabin Fever x86 (core version {__version__}) session {session_id}\n"
                 f"Listening on Zello channel {channel!r}; press Ctrl-C to stop."
             )
-            await ZelloBridge(
+            await ZelloGateway(
                 zello,
                 VoiceMessage,
                 upstream,
@@ -326,12 +336,14 @@ async def run_client(
 
 
 def main() -> None:
-    """Load configuration and run the Zello transport."""
+    """Load configuration and run the Zello gateway."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args()
     try:
+        if not args.list_sessions:
+            _zello_api()
         config = load_config(args.config)
-    except ConfigError as exc:
+    except (ConfigError, ZelloGatewayError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
@@ -342,13 +354,13 @@ def main() -> None:
             asyncio.run(list_sessions(host, port))
             return
         if config.zello is None:
-            raise ZelloClientError("config is missing the required zello section")
+            raise ZelloGatewayError("config is missing the required zello section")
         if not config.client.elevenlabs_api_key:
-            raise ZelloClientError("client.elevenlabs_api_key is required for the Zello client")
+            raise ZelloGatewayError("client.elevenlabs_api_key is required for the Zello gateway")
         if not config.zello.authorized_users:
             logger.warning("zello.authorized_users is empty; all incoming voice will be ignored")
         asyncio.run(
-            run_client(
+            run_gateway(
                 host,
                 port,
                 config.zello.credentials_file,

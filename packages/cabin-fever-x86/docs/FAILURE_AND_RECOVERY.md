@@ -51,7 +51,7 @@ operator SHOULD recover with `--rebuild`.
 ## Runtime failures
 
 A game server that exits during startup MUST abort launch and expose recent server diagnostics. A web
-client that exits after startup SHOULD end the session and report its exit status.
+gateway that exits after startup SHOULD end the session and report its exit status.
 
 A host-port conflict MUST fail without widening the bind address or selecting an unrequested port.
 The operator MAY retry with a different `--port`.
@@ -67,4 +67,3 @@ treated as a cache miss.
 When guest core updates are re-enabled, a failed update MUST NOT refresh its check timestamp, emit its
 completion signal, or trigger a guest save. The existing core SHOULD remain usable; otherwise the
 operator SHOULD rebuild.
-

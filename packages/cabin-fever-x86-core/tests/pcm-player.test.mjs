@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-import { PCMPlayer } from "../src/cabin_fever_x86_core/web_client/static/pcm-player.js";
+import { PCMPlayer } from "../src/cabin_fever_x86_core/web_gateway/static/pcm-player.js";
 
 const format = { format: "pcm_s16le", sample_rate: 24000, channels: 1 };
 
@@ -139,7 +139,7 @@ function page() {
     location: { search: "", protocol: "http:", host: "localhost" },
     WebSocket: class { send() {} },
   });
-  const html = readFileSync(new URL("../src/cabin_fever_x86_core/web_client/static/index.html", import.meta.url), "utf8");
+  const html = readFileSync(new URL("../src/cabin_fever_x86_core/web_gateway/static/index.html", import.meta.url), "utf8");
   const source = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
     .replace(/import .*?;\n/, "")
     .replace("\nopenWeather();", "");

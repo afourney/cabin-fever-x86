@@ -317,6 +317,9 @@ def test_references_in_comments_are_not_mistaken_for_settings():
 def test_the_shipped_template_refers_only_to_real_keys():
     assert referenced_variables(default_config_template()) == [
         "ELEVENLABS_API_KEY",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_API_ID",
+        "TELEGRAM_API_HASH",
         "OPENAI_API_KEY",
     ]
 
@@ -373,24 +376,24 @@ def test_the_server_is_put_into_the_background_and_survives_its_shell():
 
 
 def test_the_server_is_never_forwarded():
-    # Only the web client's port is given a route in from the host.
+    # Only the web gateway's port is given a route in from the host.
     assert f"--web-port {GUEST_WEB_PORT}" in web_command(GUEST_CONFIG)
     assert "--port" not in web_command(GUEST_CONFIG)
 
 
-def test_the_web_client_binds_where_the_forward_arrives():
+def test_the_web_gateway_binds_where_the_forward_arrives():
     # The forward lands on the guest's NIC, not its loopback, so 127.0.0.1
     # inside the guest would refuse it.
     assert "--web-host 0.0.0.0" in web_command(GUEST_CONFIG)
 
 
-def test_the_web_client_replaces_its_shell():
-    # exec, so signals and exit codes are the web client's own rather than a
+def test_the_web_gateway_replaces_its_shell():
+    # exec, so signals and exit codes are the web gateway's own rather than a
     # wrapper shell's.
     assert "exec cf86-web" in web_command(GUEST_CONFIG)
 
 
-async def test_serve_reports_the_web_clients_exit_code():
+async def test_serve_reports_the_web_gateways_exit_code():
     assert await serve(FakeSandbox(exit_code=3), GUEST_CONFIG) == 3
 
 

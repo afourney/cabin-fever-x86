@@ -84,7 +84,7 @@ GUEST_ROOT = "/cabin-fever-x86"
 GUEST_DATA = f"{GUEST_ROOT}/{DATA_DIR}"
 GUEST_CONFIG = f"{GUEST_ROOT}/config.yaml"
 
-#: The web client's port inside the guest. Fixed, because the only way to it is
+#: The web gateway's port inside the guest. Fixed, because the only way to it is
 #: a forward the launcher sets up; the host side of that forward is what the
 #: --port flag moves. The game server's own port is never forwarded, so it is
 #: reachable only from inside the guest.
@@ -94,11 +94,11 @@ GUEST_WEB_PORT = 8000
 #: the host while the game is running and after the guest is gone.
 SERVER_LOG = f"{GUEST_DATA}/server.log"
 
-#: How long the server is given to fall over before the web client is started.
+#: How long the server is given to fall over before the web gateway is started.
 SERVER_SETTLE_SECONDS = 3
 
 #: A game night, with room to spare. execute() insists on a number, and the
-#: web client is meant to run until someone closes it.
+#: web gateway is meant to run until someone closes it.
 SERVE_TIMEOUT = 24 * 60 * 60.0
 
 #: ``${ENV_VAR_NAME}`` references in the config. Deliberately the same pattern
@@ -336,7 +336,7 @@ fi
 
 
 def web_command(guest_config: str, exports: str = "") -> str:
-    """Build the command that runs the web client in the foreground.
+    """Build the command that runs the web gateway in the foreground.
 
     Bound to 0.0.0.0 *inside the guest* — the forward arrives on the guest's
     NIC rather than its loopback, so binding 127.0.0.1 there would refuse it.
@@ -364,7 +364,7 @@ async def start_server(sandbox: Sandbox, guest_config: str, exports: str = "") -
 
 
 async def serve(sandbox: Sandbox, guest_config: str, exports: str = "") -> int:
-    """Run the web client in the foreground until it stops. Returns its code."""
+    """Run the web gateway in the foreground until it stops. Returns its code."""
     result = await sandbox.execute(
         web_command(guest_config, exports),
         shell="/bin/bash",

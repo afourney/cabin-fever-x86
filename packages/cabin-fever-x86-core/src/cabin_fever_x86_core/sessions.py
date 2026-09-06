@@ -1,9 +1,9 @@
 """Where each side of a session keeps its data.
 
 Each component stores data under
-``data/users/<user_id>/sessions/<session_id>/<component>/``. Clients currently
-use the fixed user ``guest``. Components may live on different machines; the
-session id lines their logs up afterwards.
+``data/users/<user_id>/sessions/<session_id>/<component>/``. The text client and
+gateways currently use the fixed user ``guest``. Components may live on different
+machines; the session id lines their logs up afterwards.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ _USER_ID = re.compile(r"[a-z0-9_-]{1,64}")
 # The component directory each program writes under.
 SERVER_COMPONENT = "server"
 TEXT_CLIENT_COMPONENT = "text_client"
-WEB_CLIENT_COMPONENT = "web_client"
-TELEGRAM_CLIENT_COMPONENT = "telegram_client"
-ZELLO_CLIENT_COMPONENT = "zello_client"
+WEB_GATEWAY_COMPONENT = "web_gateway"
+TELEGRAM_GATEWAY_COMPONENT = "telegram_gateway"
+ZELLO_GATEWAY_COMPONENT = "zello_gateway"
 
 # The server's conversation journal is the authoritative indication of when a
 # session was last active.  Directory mtimes can also change for housekeeping

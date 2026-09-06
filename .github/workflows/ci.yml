@@ -75,9 +75,9 @@ jobs:
           for name in \
             cabin_fever_x86_core/server/cabin_events.txt \
             cabin_fever_x86_core/server/stage_direction.txt \
-            cabin_fever_x86_core/web_client/static/index.html \
-            cabin_fever_x86_core/web_client/static/pcm-player.js \
-            cabin_fever_x86_core/web_client/static/splash.jpg
+            cabin_fever_x86_core/web_gateway/static/index.html \
+            cabin_fever_x86_core/web_gateway/static/pcm-player.js \
+            cabin_fever_x86_core/web_gateway/static/splash.jpg
           do
             unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
           done

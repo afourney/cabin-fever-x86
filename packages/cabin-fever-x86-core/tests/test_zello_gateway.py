@@ -1,4 +1,4 @@
-"""Voice relay behavior of the optional Zello client."""
+"""Voice relay behavior of the optional Zello gateway."""
 
 import json
 from uuid import uuid4
@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from cabin_fever_x86_core.messages import AssistantMessage
-from cabin_fever_x86_core.zello_client._main import ZelloBridge, _static_burst
+from cabin_fever_x86_core.zello_gateway._main import ZelloGateway, _static_burst
 
 
 class Transcript:
@@ -70,12 +70,12 @@ async def test_only_authorized_voice_is_transcribed_and_forwarded(monkeypatch) -
     upstream = Upstream()
     transcript = Transcript()
     monkeypatch.setattr(
-        "cabin_fever_x86_core.zello_client._main.transcribe",
+        "cabin_fever_x86_core.zello_gateway._main.transcribe",
         lambda client, audio, filename, mimetype: "open the mailbox",
     )
-    bridge = ZelloBridge(zello, VoiceMessage, upstream, transcript, object(), {"alice"})
+    gateway = ZelloGateway(zello, VoiceMessage, upstream, transcript, object(), {"alice"})
 
-    await bridge._receive_zello()
+    await gateway._receive_zello()
 
     assert len(upstream.sent) == 1
     assert upstream.sent[0]["type"] == "user"
@@ -96,10 +96,10 @@ async def test_assistant_text_is_synthesized_sent_and_logged(monkeypatch) -> Non
         generated.append((text, output_format))
         return b"OggS-clean"
 
-    monkeypatch.setattr("cabin_fever_x86_core.zello_client._main.synthesize", fake_synthesize)
-    bridge = ZelloBridge(zello, VoiceMessage, upstream, transcript, object(), {"alice"})
+    monkeypatch.setattr("cabin_fever_x86_core.zello_gateway._main.synthesize", fake_synthesize)
+    gateway = ZelloGateway(zello, VoiceMessage, upstream, transcript, object(), {"alice"})
 
-    await bridge._receive_server()
+    await gateway._receive_server()
 
     assert generated == [("Try opening it.", "opus_48000_64")]
     assert zello.sent == [b"OggS-clean"]
@@ -125,16 +125,16 @@ async def test_empty_assistant_transmission_sends_static_without_synthesis(monke
     zello = Zello()
     transcript = Transcript()
     monkeypatch.setattr(
-        "cabin_fever_x86_core.zello_client._main.synthesize",
+        "cabin_fever_x86_core.zello_gateway._main.synthesize",
         lambda *_args, **_kwargs: pytest.fail("empty transmissions must not be synthesized"),
     )
     monkeypatch.setattr(
-        "cabin_fever_x86_core.zello_client._main._static_burst",
+        "cabin_fever_x86_core.zello_gateway._main._static_burst",
         lambda: b"OggS-static",
     )
-    bridge = ZelloBridge(zello, VoiceMessage, upstream, transcript, object(), {"alice"})
+    gateway = ZelloGateway(zello, VoiceMessage, upstream, transcript, object(), {"alice"})
 
-    await bridge._receive_server()
+    await gateway._receive_server()
 
     assert zello.sent == [b"OggS-static"]
     assert transcript.audio[0][0::2] == ("clean", b"OggS-static")

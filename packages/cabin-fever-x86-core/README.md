@@ -2,7 +2,7 @@
 
 The native, Linux-only runtime for [Cabin Fever x86](https://github.com/afourney/cabin-fever-x86): the game server, AI companion, Z-machine interpreter, web radio, and text client.
 
-This package is intended for Linux users who want to run the services directly, expose the web client to a LAN, customize the configuration, or develop Cabin Fever itself. It builds [jericho](https://github.com/microsoft/jericho) and its frotz fork from source, so a C toolchain is required and other operating systems are not supported.
+This package is intended for Linux users who want to run the services directly, expose the web gateway to a LAN, customize the configuration, or develop Cabin Fever itself. It builds [jericho](https://github.com/microsoft/jericho) and its frotz fork from source, so a C toolchain is required and other operating systems are not supported.
 
 For a self-contained installation on Linux, macOS, or Windows, use the sandboxed [`cabin-fever-x86`](https://pypi.org/project/cabin-fever-x86/) launcher instead. It runs this package inside a QEMU VM, keeping the memory-unsafe interpreter and downloaded game files off the host.
 
@@ -15,9 +15,9 @@ sudo apt-get install build-essential python3-dev
 python3 -m venv .venv
 source .venv/bin/activate
 pip install cabin-fever-x86-core
-# Include the optional Telegram client if wanted:
+# Include the optional Telegram gateway if wanted:
 # pip install 'cabin-fever-x86-core[telegram]'
-# Include the optional Zello client if wanted:
+# Include the optional Zello gateway if wanted:
 # pip install 'cabin-fever-x86-core[zello]'
 ```
 
@@ -38,7 +38,7 @@ Start the game server:
 cf86-server
 ```
 
-Then start one of the clients in another terminal:
+Then start a gateway or the text client in another terminal:
 
 ```bash
 cf86-web   # browser-based radio at http://127.0.0.1:8000
@@ -50,7 +50,7 @@ cf86-telegram
 cf86-zello
 ```
 
-Each command accepts `--help`. The server and clients can be run on different Linux machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. For example, to expose only the web frontend on the local network:
+Each command accepts `--help`. The server, gateways, and text client can be run on different Linux machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. For example, to expose the web gateway on the local network:
 
 ```bash
 cf86-web --web-host 0.0.0.0
@@ -58,7 +58,7 @@ cf86-web --web-host 0.0.0.0
 
 Review your firewall and network trust before binding a service beyond localhost.
 
-The Telegram client uses the `telegram_client` section of `config.yaml`. It
+The Telegram gateway uses the `telegram_gateway` section of `config.yaml`. It
 requires a bot token, Telegram API ID and API hash, plus an allowlist of numeric
 Telegram user IDs. Start it with an empty allowlist and send the bot a private
 message to have the rejected user ID written to its log; then add that ID to
@@ -70,7 +70,7 @@ voice answers voice, and text answers text. Replies too long for a Telegram
 caption, and replies whose synthesis fails, are sent as separate text so no
 content is lost.
 
-The Zello client is voice-only. It joins the configured `zello.channel`, ignores
+The Zello gateway is voice-only. It joins the configured `zello.channel`, ignores
 all text and unauthorized senders, transcribes authorized Ogg Opus messages,
 and returns synthesized Ogg Opus audio. Its `--resume` and `--list-sessions`
 options match the text client's command-line session management. Credentials
@@ -99,12 +99,12 @@ data/users/<user_id>/sessions/<session_id>/server/
 ```
 
 Session listing and resuming operate only within the connection's user directory.
-A session belonging to another user is reported as nonexistent. Existing clients
-send no header and use the fixed user `guest`. Client transcripts and audio
-live in `data/users/guest/sessions/<session_id>/<client>/`, where `<client>` is
-`text_client`, `web_client`, or `telegram_client`. The Telegram bridge also
+A session belonging to another user is reported as nonexistent. The gateways and
+text client send no header and use the fixed user `guest`. Their transcripts and audio
+live in `data/users/guest/sessions/<session_id>/<component>/`, where `<component>` is
+`text_client`, `web_gateway`, `telegram_gateway`, or `zello_gateway`. The Telegram gateway also
 remembers which session each account was last in, in
-`data/users/guest/telegram_client/sessions.json`. Downloaded games remain shared
+`data/users/guest/telegram_gateway/sessions.json`. Downloaded games remain shared
 in `data/games/`.
 
 ## Z-machine games

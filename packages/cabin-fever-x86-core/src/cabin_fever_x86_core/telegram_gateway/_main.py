@@ -1,4 +1,4 @@
-"""Entry point for the optional Cabin Fever x86 Telegram client."""
+"""Entry point for the optional Cabin Fever x86 Telegram gateway."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from cabin_fever_x86_core.messages import (
     UserMessage,
 )
 from cabin_fever_x86_core.session_client import SessionCommandError, list_sessions, open_session
-from cabin_fever_x86_core.sessions import TELEGRAM_CLIENT_COMPONENT, user_dir
+from cabin_fever_x86_core.sessions import TELEGRAM_GATEWAY_COMPONENT, user_dir
 from cabin_fever_x86_core.transcripts import Transcript
 from cabin_fever_x86_core.voice import VoiceError, synthesize, transcribe
 
@@ -45,7 +45,7 @@ MAX_VOICE_SECONDS = 120
 TELEGRAM_TTS_FORMAT = "opus_48000_64"
 # Which server session each Telegram account was last in, kept beside that
 # user's session data rather than at the root of the data directory.
-STATE_PATH = user_dir() / TELEGRAM_CLIENT_COMPONENT / "sessions.json"
+STATE_PATH = user_dir() / TELEGRAM_GATEWAY_COMPONENT / "sessions.json"
 
 
 def split_message(text: str, limit: int = MAX_MESSAGE_LENGTH) -> list[str]:
@@ -113,7 +113,7 @@ class TelegramSession:
     last_user_was_voice: bool = False
 
 
-class TelegramBridge:
+class TelegramGateway:
     """Translate Telegram updates and server wire messages in both directions."""
 
     def __init__(
@@ -163,7 +163,7 @@ class TelegramBridge:
             await connection.close()
             raise
 
-        transcript = Transcript(session_id, TELEGRAM_CLIENT_COMPONENT)
+        transcript = Transcript(session_id, TELEGRAM_GATEWAY_COMPONENT)
         verb = "resumed" if resume else "started"
         transcript.log("session", None, f"{verb} for Telegram account {account_id}")
         session = TelegramSession(account_id, chat_id, session_id, connection, transcript)
@@ -328,7 +328,7 @@ class TelegramBridge:
             await self.send(chat_id, f"Could not connect to the game: {exc}")
         except Exception as exc:
             logger.exception("Telegram handler failed for account %d", account_id)
-            await self.send(chat_id, f"Telegram client error: {type(exc).__name__}: {exc}")
+            await self.send(chat_id, f"Telegram gateway error: {type(exc).__name__}: {exc}")
 
     async def _ensure_session(self, account_id: int, chat_id: int) -> TelegramSession:
         """Return the account's channel, lazily starting or resuming it."""
@@ -502,6 +502,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _telegram_api() -> tuple[Any, Any]:
+    """Load optional Telegram support, with installation instructions on failure."""
+    try:
+        from telethon import TelegramClient, events
+    except ImportError as exc:
+        raise RuntimeError(
+            "Telegram support is unavailable in this Python environment.\n\n"
+            "Install the optional dependencies:\n"
+            "  python -m pip install 'cabin-fever-x86-core[telegram]'\n\n"
+            "Or, from a repository checkout, run:\n"
+            "  uv run --extra telegram cf86-telegram"
+        ) from exc
+    return TelegramClient, events
+
+
 async def run_bot(
     api_id: int,
     api_hash: str,
@@ -511,20 +526,15 @@ async def run_bot(
     elevenlabs_api_key: str | None,
 ) -> None:
     """Start Telethon and relay updates until it disconnects."""
-    try:
-        from telethon import TelegramClient, events
-    except ImportError as exc:
-        raise RuntimeError(
-            "Telegram support is not installed; install cabin-fever-x86-core[telegram]"
-        ) from exc
+    TelegramClient, events = _telegram_api()
 
     bot = TelegramClient("cf86-telegram", api_id, api_hash)
     await bot.start(bot_token=token)
     voice = ElevenLabs(api_key=elevenlabs_api_key) if elevenlabs_api_key else None
     if voice is None:
         logger.warning("No ElevenLabs key: Telegram voice messages will be rejected.")
-    bridge = TelegramBridge(bot, uri, allowed, voice)
-    bot.add_event_handler(bridge.handle, events.NewMessage(incoming=True))
+    gateway = TelegramGateway(bot, uri, allowed, voice)
+    bot.add_event_handler(gateway.handle, events.NewMessage(incoming=True))
     identity = await bot.get_me()
     logger.info(
         "Telegram bot @%s connected; allowed user IDs: %s", identity.username, sorted(allowed)
@@ -532,21 +542,22 @@ async def run_bot(
     try:
         await bot.run_until_disconnected()
     finally:
-        await bridge.close()
+        await gateway.close()
         await bot.disconnect()
 
 
 def main() -> None:
-    """Load configuration and run the Telegram transport."""
+    """Load configuration and run the Telegram gateway."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args()
     try:
+        _telegram_api()
         config = load_config(args.config)
-    except ConfigError as exc:
+    except (ConfigError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
-    telegram = config.telegram_client
+    telegram = config.telegram_gateway
     missing = [
         name
         for name, value in (
@@ -557,17 +568,17 @@ def main() -> None:
         if value is None
     ]
     if missing:
-        print(f"error: telegram_client is missing: {', '.join(missing)}", file=sys.stderr)
+        print(f"error: telegram_gateway is missing: {', '.join(missing)}", file=sys.stderr)
         raise SystemExit(1)
     if not telegram.allowed_accounts:
         logger.warning(
-            "telegram_client.allowed_accounts is empty; all users will be rejected. "
+            "telegram_gateway.allowed_accounts is empty; all users will be rejected. "
             "Send the bot a message and read user_id from this log."
         )
 
     host = args.host if args.host is not None else config.client.host
     port = args.port if args.port is not None else config.client.port
-    print(f"Cabin Fever x86 Telegram client (core version {__version__})")
+    print(f"Cabin Fever x86 Telegram gateway (core version {__version__})")
     try:
         asyncio.run(
             run_bot(
@@ -580,7 +591,7 @@ def main() -> None:
             )
         )
     except (OSError, RuntimeError) as exc:
-        logger.error("Could not start Telegram client: %s", exc)
+        logger.error("Could not start Telegram gateway: %s", exc)
         raise SystemExit(1) from exc
     except KeyboardInterrupt:
         logger.info("Shutting down.")

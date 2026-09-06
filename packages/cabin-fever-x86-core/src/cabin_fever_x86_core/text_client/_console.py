@@ -8,8 +8,8 @@ and a prompt — and everything else scrolls past above it. A line arriving
 while you type erases the block, prints itself, and puts the block back with
 your half-finished sentence and the cursor exactly where they were.
 
-The colours are the web client's stylesheet, read out of ``index.html``. The
-two clients are the same radio and should not be different colours.
+The colours come from the web gateway's stylesheet in ``index.html``. The
+browser and terminal show the same radio and should not use different colours.
 
 Where none of that is possible — a pipe, a recording, Windows without
 ``termios`` — :class:`Console` prints the same lines the plain way.

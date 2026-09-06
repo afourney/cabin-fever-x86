@@ -107,15 +107,15 @@ You will probably also want to copy `config.example.yaml` to `config.yaml` for d
 cp packages/cabin-fever-x86/src/cabin_fever_x86/config.example.yaml config.yaml
 ```
 
-At this point, four command-line entry points are installed:
+The following command-line entry points are installed:
 
 | Command | Package | Description |
 | --- | --- | --- |
 | `cf86-server` | core | Hosts the game session. |
-| `cf86-web` | core | Web client — the radio in a browser tab. |
+| `cf86-web` | core | Web gateway — the radio in a browser tab. |
 | `cf86-text` | core | Text client — same session, typed instead of spoken. |
-| `cf86-telegram` | core | Optional Telegram bot client with text and voice-note input. |
-| `cf86-zello` | core | Optional voice-only Zello channel client. |
+| `cf86-telegram` | core | Optional Telegram bot gateway with text and voice-note input. |
+| `cf86-zello` | core | Optional voice-only Zello channel gateway. |
 | `cabin-fever-x86` | launcher | Boots the sandbox VM and runs the above inside it. |
 
 Run the server from the repository root:
@@ -124,7 +124,7 @@ Run the server from the repository root:
 uv run cf86-server
 ```
 
-Then, in another terminal, run either the web client or the text client:
+Then, in another terminal, run a gateway or the text client:
 
 ```bash
 uv run cf86-web
@@ -134,4 +134,4 @@ uv run cf86-text
 # or, after syncing the optional dependency: uv run --extra zello cf86-zello
 ```
 
-If you use the web client, open the URL it prints in your browser (typically [http://127.0.0.1:8000](http://127.0.0.1:8000)).
+If you use the web gateway, open the URL it prints in your browser (typically [http://127.0.0.1:8000](http://127.0.0.1:8000)).

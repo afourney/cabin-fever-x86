@@ -1,4 +1,4 @@
-"""Shared configuration loading for the server and clients.
+"""Shared configuration loading for the server, gateways, and text client.
 
 Config files are YAML, with ``${ENV_VAR_NAME}`` references in any string value
 resolved against the process environment. A reference to an unset variable
@@ -40,15 +40,15 @@ class _Section(BaseModel):
 
 
 class ClientConfig(_Section):
-    """Where the clients connect, and the credentials they need."""
+    """Where the text client and gateways connect, and the credentials they need."""
 
     host: str = DEFAULT_HOST
     port: Port = DEFAULT_PORT
     elevenlabs_api_key: str | None = None
 
 
-class TelegramClientConfig(_Section):
-    """How the optional Telegram transport authenticates and who may use it."""
+class TelegramGatewayConfig(_Section):
+    """How the optional Telegram gateway authenticates and who may use it."""
 
     bot_token: str | None = None
     api_id: Annotated[int, Field(gt=0)] | None = None
@@ -56,8 +56,8 @@ class TelegramClientConfig(_Section):
     allowed_accounts: list[Annotated[int, Field(gt=0)]] = Field(default_factory=list)
 
 
-class ZelloConfig(_Section):
-    """How the optional Zello transport connects and who may speak to it."""
+class ZelloGatewayConfig(_Section):
+    """How the optional Zello gateway connects and who may speak to it."""
 
     credentials_file: str
     channel: str = "Cabin Fever x86"
@@ -128,8 +128,8 @@ class Config(_Section):
 
     launcher: LauncherConfig = LauncherConfig()
     client: ClientConfig = ClientConfig()
-    telegram_client: TelegramClientConfig = TelegramClientConfig()
-    zello: ZelloConfig | None = None
+    telegram_gateway: TelegramGatewayConfig = TelegramGatewayConfig()
+    zello: ZelloGatewayConfig | None = None
     server: ServerConfig = ServerConfig()
 
 

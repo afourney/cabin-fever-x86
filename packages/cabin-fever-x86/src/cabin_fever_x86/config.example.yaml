@@ -23,19 +23,19 @@ client:
   port: 5000
   elevenlabs_api_key: ${ELEVENLABS_API_KEY}
 
-# Optional Telegram transport with text and voice-note input. Install the core
+# Optional Telegram gateway with text and voice-note input. Install the core
 # package's `telegram` extra and run cf86-telegram. Voice notes use the
 # client.elevenlabs_api_key above. Telegram rejects every sender not listed
 # here; rejected attempts are logged with their numeric user ID so you can
 # discover and then allow your own account.
-telegram_client:
+telegram_gateway:
   bot_token: ${TELEGRAM_BOT_TOKEN}
   api_id: ${TELEGRAM_API_ID}
   api_hash: ${TELEGRAM_API_HASH}
   allowed_accounts: []
   # allowed_accounts: [123456789]
 
-# Optional voice-only Zello transport. Install the core package's `zello`
+# Optional voice-only Zello gateway. Install the core package's `zello`
 # extra and run cf86-zello. The credentials file uses zelpy's zello.yaml
 # format. Text messages and voice from users absent from this list are ignored.
 zello:

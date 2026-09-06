@@ -27,8 +27,8 @@ def test_defaults_when_the_file_says_nothing(tmp_path: Path) -> None:
     assert config.server.ai_client.provider == "openai"
     assert config.server.cabin_events.inactivity_timeout == 300
     assert config.launcher.package_locator is None
-    assert config.telegram_client.bot_token is None
-    assert config.telegram_client.allowed_accounts == []
+    assert config.telegram_gateway.bot_token is None
+    assert config.telegram_gateway.allowed_accounts == []
 
 
 def test_cabin_event_inactivity_timeout_is_configurable(tmp_path: Path) -> None:
@@ -52,7 +52,7 @@ def test_telegram_config_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     config = load_config(
         write(
             tmp_path,
-            """telegram_client:
+            """telegram_gateway:
   bot_token: ${CF86_TELEGRAM_TOKEN}
   api_id: 12345
   api_hash: hash
@@ -61,10 +61,10 @@ def test_telegram_config_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         )
     )
 
-    assert config.telegram_client.bot_token == "123:secret"
-    assert config.telegram_client.api_id == 12345
-    assert config.telegram_client.api_hash == "hash"
-    assert config.telegram_client.allowed_accounts == [111, 222]
+    assert config.telegram_gateway.bot_token == "123:secret"
+    assert config.telegram_gateway.api_id == 12345
+    assert config.telegram_gateway.api_hash == "hash"
+    assert config.telegram_gateway.allowed_accounts == [111, 222]
 
 
 def test_zello_config_is_loaded(tmp_path: Path) -> None:

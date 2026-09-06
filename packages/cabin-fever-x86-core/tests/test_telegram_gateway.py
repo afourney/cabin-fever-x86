@@ -1,4 +1,4 @@
-"""Pure behavior of the optional Telegram transport."""
+"""Pure behavior of the optional Telegram gateway."""
 
 import asyncio
 import json
@@ -12,9 +12,9 @@ import pytest
 
 from cabin_fever_x86_core.messages import AssistantMessage, CompactionCompleted
 from cabin_fever_x86_core.sessions import GUEST_USER_ID
-from cabin_fever_x86_core.telegram_client._main import (
+from cabin_fever_x86_core.telegram_gateway._main import (
     STATE_PATH,
-    TelegramBridge,
+    TelegramGateway,
     _load_state,
     _save_state,
     is_stale,
@@ -58,10 +58,10 @@ async def test_rejected_account_is_logged_with_discoverable_id(caplog) -> None:
             self.responses.append(text)
 
     event = Event()
-    bridge = TelegramBridge(SimpleNamespace(), "ws://localhost:5000", set())
+    gateway = TelegramGateway(SimpleNamespace(), "ws://localhost:5000", set())
 
     with caplog.at_level(logging.WARNING):
-        await bridge.handle(event)
+        await gateway.handle(event)
 
     assert event.responses == ["Not authorized."]
     assert "user_id=8675309" in caplog.text
@@ -75,7 +75,7 @@ async def test_continue_resumes_the_most_recent_server_session(monkeypatch) -> N
     async def send_message(chat_id, text):
         sent.append((chat_id, text))
 
-    bridge = TelegramBridge(
+    gateway = TelegramGateway(
         SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
     )
     latest = uuid4()
@@ -88,10 +88,10 @@ async def test_continue_resumes_the_most_recent_server_session(monkeypatch) -> N
         opened.append((account_id, chat_id, resume))
         return SimpleNamespace(session_id=resume)
 
-    monkeypatch.setattr(bridge, "_latest", find_latest)
-    monkeypatch.setattr(bridge, "open", open_session)
+    monkeypatch.setattr(gateway, "_latest", find_latest)
+    monkeypatch.setattr(gateway, "open", open_session)
 
-    await bridge._handle_text(8675309, 8675309, "/continue")
+    await gateway._handle_text(8675309, 8675309, "/continue")
 
     assert opened == [(8675309, 8675309, latest)]
     assert sent == [(8675309, f"Resumed session {latest}.")]
@@ -122,12 +122,12 @@ async def test_compact_requests_compaction_and_waits_for_completion() -> None:
         pending_compactions={},
     )
     holder["session"] = session
-    bridge = TelegramBridge(
+    gateway = TelegramGateway(
         SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
     )
-    bridge.sessions[8675309] = session
+    gateway.sessions[8675309] = session
 
-    await bridge._handle_text(8675309, 8675309, "/compact")
+    await gateway._handle_text(8675309, 8675309, "/compact")
 
     assert wire[0]["type"] == "compact_session"
     assert session.pending_compactions == {}
@@ -141,11 +141,11 @@ async def test_compact_requires_an_open_game() -> None:
     async def send_message(chat_id, text):
         sent.append((chat_id, text))
 
-    bridge = TelegramBridge(
+    gateway = TelegramGateway(
         SimpleNamespace(send_message=send_message), "ws://localhost:5000", {8675309}
     )
 
-    await bridge._handle_text(8675309, 8675309, "/compact")
+    await gateway._handle_text(8675309, 8675309, "/compact")
 
     assert sent == [(8675309, "No game is open.")]
 
@@ -187,14 +187,14 @@ async def test_voice_note_is_transcribed_and_forwarded_without_an_echo(monkeypat
     connection = Connection()
     transcript = Transcript()
     session = SimpleNamespace(lock=asyncio.Lock(), connection=connection, transcript=transcript)
-    bridge = TelegramBridge(bot, "ws://localhost:5000", {8675309}, voice=object())
-    bridge.sessions[8675309] = session
+    gateway = TelegramGateway(bot, "ws://localhost:5000", {8675309}, voice=object())
+    gateway.sessions[8675309] = session
     monkeypatch.setattr(
-        "cabin_fever_x86_core.telegram_client._main.transcribe",
+        "cabin_fever_x86_core.telegram_gateway._main.transcribe",
         lambda client, audio, filename, mimetype: "open the mailbox",
     )
 
-    await bridge._handle_voice(8675309, 8675309, Message())
+    await gateway._handle_voice(8675309, 8675309, Message())
 
     assert bot.sent == []
     assert connection.sent[0]["type"] == "user"
@@ -238,7 +238,7 @@ async def test_first_reply_is_captioned_voice_then_text_follows_text(monkeypatch
         has_replied=False,
         last_user_was_voice=False,
     )
-    bridge = TelegramBridge(
+    gateway = TelegramGateway(
         bot,
         "ws://localhost:5000",
         {8675309},
@@ -250,15 +250,15 @@ async def test_first_reply_is_captioned_voice_then_text_follows_text(monkeypatch
         generated.append((client, text, voice_id, output_format))
         return b"OggS-opus"
 
-    monkeypatch.setattr("cabin_fever_x86_core.telegram_client._main.synthesize", fake_synthesize)
+    monkeypatch.setattr("cabin_fever_x86_core.telegram_gateway._main.synthesize", fake_synthesize)
     message = AssistantMessage(content="There is a lamp here.")
 
-    await bridge._deliver_assistant(session, message)
+    await gateway._deliver_assistant(session, message)
     second = AssistantMessage(content="It is made of brass.")
-    await bridge._deliver_assistant(session, second)
+    await gateway._deliver_assistant(session, second)
     session.last_user_was_voice = True
     third = AssistantMessage(content="Yes, I heard you.")
-    await bridge._deliver_assistant(session, third)
+    await gateway._deliver_assistant(session, third)
 
     assert bot.actions == [
         (
@@ -318,19 +318,19 @@ async def test_an_empty_assistant_transmission_is_static_without_voice(monkeypat
         has_replied=False,
         last_user_was_voice=False,
     )
-    bridge = TelegramBridge(
+    gateway = TelegramGateway(
         SimpleNamespace(send_message=send_message),
         "ws://localhost:5000",
         {8675309},
         voice=object(),
     )
     monkeypatch.setattr(
-        "cabin_fever_x86_core.telegram_client._main.synthesize",
+        "cabin_fever_x86_core.telegram_gateway._main.synthesize",
         lambda *_args, **_kwargs: pytest.fail("empty transmissions must not be synthesized"),
     )
     message = AssistantMessage(content="")
 
-    await bridge._deliver_assistant(session, message)
+    await gateway._deliver_assistant(session, message)
 
     assert sent == [(8675309, "[static]")]
     assert records == [("assistant", message.id, "", None)]
@@ -341,13 +341,13 @@ def test_session_state_lives_under_the_guest_user() -> None:
         "data",
         "users",
         GUEST_USER_ID,
-        "telegram_client",
+        "telegram_gateway",
         "sessions.json",
     )
 
 
 def test_session_state_survives_a_round_trip(tmp_path) -> None:
-    path = tmp_path / "users" / GUEST_USER_ID / "telegram_client" / "sessions.json"
+    path = tmp_path / "users" / GUEST_USER_ID / "telegram_gateway" / "sessions.json"
     state = {8675309: uuid4()}
 
     _save_state(state, path)
