@@ -8,8 +8,8 @@
   :root { color-scheme: dark; }
   [hidden] { display: none !important; }
   body {
-    box-sizing: border-box; margin: 0; min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; gap: 1rem; padding: 2rem 1rem;
+    box-sizing: border-box; margin: 0; min-height: 100dvh; display: flex; flex-direction: column;
+    align-items: center; gap: 1rem; padding: clamp(.75rem, 3vh, 2rem) 1rem;
     background:
       linear-gradient(rgba(6, 9, 8, .28), rgba(6, 9, 8, .48)),
       #0d0f0e center/cover fixed no-repeat url("/background");
@@ -19,11 +19,11 @@
   h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; color: #8fb89b; margin: 0; }
   #session { font-size: .75rem; color: #5d7364; word-break: break-all; text-align: center; }
   #log {
-    width: min(70ch, 100%); flex: 1; overflow-y: auto; display: flex;
+    box-sizing: border-box; width: min(70ch, 100%); flex: 1; overflow-y: auto; display: flex;
     flex-direction: column; gap: .75rem; padding: 1rem;
     border: 1px solid #33443a; border-radius: .4rem; background: rgba(10, 12, 11, .88);
     box-shadow: 0 .5rem 2rem rgba(0, 0, 0, .35);
-    min-height: 40vh; max-height: 60vh;
+    min-height: 0; overflow-wrap: anywhere;
   }
   .line { white-space: pre-wrap; }
   .line.user { color: #7f9ec4; }
@@ -71,11 +71,11 @@
   }
   #splash:hover .call { color: #fff; }
   #auth-panel {
+    box-sizing: border-box; max-height: calc(100dvh - 4rem); overflow-y: auto;
     position: relative; z-index: 1; margin: 2rem 1rem; padding: 1.5rem;
     width: min(26rem, 100%); border: 1px solid #635a43; border-radius: .4rem;
     background: rgba(6, 9, 8, .94); cursor: default; color: #f0e2c0;
   }
-  #auth-panel h2 { margin-top: 0; font-size: 1.1rem; letter-spacing: .15em; }
   #login-form { display: grid; gap: .6rem; }
   #login-form input {
     font: inherit; padding: .6rem; min-width: 0; border: 1px solid #635a43;
@@ -84,18 +84,22 @@
   #auth-panel button { margin-top: .7rem; width: 100%; }
   #auth-error { color: #edb2a3; }
   #logout { top: 3.5rem; z-index: 20; }
-  #radio { display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
+  #radio {
+    display: flex; flex-direction: column; align-items: center;
+    gap: clamp(.5rem, 1.8vh, 1rem); width: 100%; min-height: 22rem;
+    height: calc(100dvh - clamp(1.5rem, 6vh, 4rem));
+  }
+  #radio > :not(#log) { flex-shrink: 0; }
   #session-screen {
     position: fixed; inset: 0; z-index: 11; overflow-y: auto; box-sizing: border-box;
-    display: grid; align-items: center; padding: 5rem 1.5rem 3rem;
-    background: linear-gradient(rgba(6, 9, 8, .78), rgba(6, 9, 8, .94)),
-      #0d0f0e center/cover no-repeat url("/background");
+    display: grid; align-items: center; padding: clamp(2rem, 6vh, 4rem) 1.5rem;
+    background: #0d0f0e center/cover no-repeat url("/background");
   }
   .session-layout {
-    width: min(62rem, 100%); margin: auto; display: grid;
-    grid-template-columns: 1.2fr 1fr; gap: clamp(2rem, 6vw, 5rem); align-items: center;
+    width: min(68rem, 100%); margin: auto; display: grid;
+    grid-template-columns: 1.3fr 1fr; gap: clamp(2rem, 4vw, 4rem); align-items: center;
   }
-  .backstory { color: #d9d2bc; }
+  .backstory { color: #d9d2bc; text-shadow: 0 1px 4px rgba(0, 0, 0, .8); }
   .backstory .eyebrow { color: #8fb89b; font-size: .75rem; letter-spacing: .18em; text-transform: uppercase; }
   .backstory h2 { font: normal clamp(2rem, 4vw, 3rem)/1.15 Georgia, serif; color: #f0e2c0; margin: 1rem 0 1.5rem; }
   .backstory p { line-height: 1.8; }
@@ -114,6 +118,14 @@
   #session-picker-form button { width: 100%; touch-action: manipulation; }
   #sessions-retry { margin-bottom: .8rem; }
   :focus-visible { outline: 2px solid #f0e2c0; outline-offset: 4px; }
+  /* Leave room for browser chrome on laptop displays; scroll on smaller screens. */
+  @media (min-width: 721px) and (max-height: 760px) {
+    #session-screen { padding-block: 2rem; }
+    .backstory { font-size: .9375rem; }
+    .backstory h2 { font-size: 2.25rem; margin: .75rem 0 1rem; }
+    .backstory p { line-height: 1.6; margin-block: .75rem; }
+    #session-picker-form { padding: 1.5rem; }
+  }
   @media (max-width: 720px) {
     .session-layout { grid-template-columns: 1fr; gap: 1.5rem; }
     #session-screen { padding: 5rem 1.2rem 2rem; }
@@ -130,8 +142,7 @@
       Click here to turn on your radio
       <small id="splash-note">feeding grues over vhf</small>
     </div>
-    <section id="auth-panel" aria-labelledby="auth-heading">
-      <h2 id="auth-heading">Station identification</h2>
+    <section id="auth-panel" aria-label="Sign in">
       <p id="auth-message">Contacting the station…</p>
       <form id="login-form" hidden>
         <label for="callsign">Callsign</label>

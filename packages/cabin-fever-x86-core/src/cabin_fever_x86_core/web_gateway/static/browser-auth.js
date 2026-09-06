@@ -35,10 +35,10 @@ export class BrowserAuthController {
     this.element("splash").setAttribute("role", signedIn ? "button" : "group");
     this.element("splash").setAttribute("tabindex", signedIn ? "0" : "-1");
     this.element("splash").setAttribute("aria-label", signedIn ? "Turn on your radio" : "Radio sign in");
-    this.element("auth-message").textContent =
-      !signedIn && !this.state?.login_available && !this.state?.guest_available
-        ? "No browser access is configured. Ask the station operator for a callsign."
-        : "Identify yourself to open the channel.";
+    const noAccess = !signedIn && !this.state?.login_available && !this.state?.guest_available;
+    this.element("auth-message").hidden = !noAccess;
+    this.element("auth-message").textContent = noAccess
+      ? "No browser access is configured. Ask the station operator for a callsign." : "";
   }
 
   async initialize() {
