@@ -31,7 +31,7 @@ from cabin_fever_x86_core.messages import (
     UserMessage,
 )
 from cabin_fever_x86_core.session_client import SessionCommandError, list_sessions, open_session
-from cabin_fever_x86_core.sessions import TELEGRAM_CLIENT_COMPONENT
+from cabin_fever_x86_core.sessions import TELEGRAM_CLIENT_COMPONENT, user_dir
 from cabin_fever_x86_core.transcripts import Transcript
 from cabin_fever_x86_core.voice import VoiceError, synthesize, transcribe
 
@@ -43,7 +43,9 @@ MESSAGE_MAX_AGE = 180
 MAX_VOICE_BYTES = 10 * 1024 * 1024
 MAX_VOICE_SECONDS = 120
 TELEGRAM_TTS_FORMAT = "opus_48000_64"
-STATE_PATH = Path("data") / TELEGRAM_CLIENT_COMPONENT / "sessions.json"
+# Which server session each Telegram account was last in, kept beside that
+# user's session data rather than at the root of the data directory.
+STATE_PATH = user_dir() / TELEGRAM_CLIENT_COMPONENT / "sessions.json"
 
 
 def split_message(text: str, limit: int = MAX_MESSAGE_LENGTH) -> list[str]:

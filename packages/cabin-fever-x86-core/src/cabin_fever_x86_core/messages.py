@@ -91,8 +91,8 @@ class SessionResult(BaseModel):
     """The session a ``new_game`` or ``resume_game`` command opened.
 
     The client and the server may be on different machines, each keeping its
-    own ``data/sessions/<session_id>/`` directory. Sharing the id is what makes
-    the two sets of logs line up afterwards.
+    own session directory scoped to a user. Sharing the session
+    id is what makes the two sets of logs line up afterwards.
     """
 
     type: Literal["session"] = "session"

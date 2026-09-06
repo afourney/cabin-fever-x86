@@ -147,9 +147,9 @@ async def test_receiving_a_message_marks_the_player_active() -> None:
     assert game._player_is_active()
 
 
-async def play_a_little(session_id: UUID | None = None) -> UUID:
+async def play_a_little(session_id: UUID | None = None, *, user_id: str = "guest") -> UUID:
     """Open a session, get four moves and five points into Zork, and close it."""
-    async with Game(ServerConfig(), sent_nowhere, session_id) as game:
+    async with Game(ServerConfig(), sent_nowhere, session_id, user_id=user_id) as game:
         machine = game._machine
         await machine.new_game("zork1")
         for command in ("north", "north", "up", "take egg"):
@@ -169,6 +169,16 @@ async def test_reopening_a_session_puts_the_game_back(disk: None) -> None:
         # The screen shows what was last printed, not a fresh look around: the
         # last thing typed was "take egg".
         assert "Taken." in screen
+
+
+async def test_named_user_autosaves_are_isolated_and_resumable(disk: None) -> None:
+    session_id = await play_a_little(user_id="alice")
+    async with Game(ServerConfig(), sent_nowhere, session_id, user_id="bob") as other:
+        assert other._machine.game is None
+        assert other._machine.list_saves() == []
+    async with Game(ServerConfig(), sent_nowhere, session_id, user_id="alice") as resumed:
+        assert "Score 5/350" in resumed._machine.screen()
+        assert "Moves 4" in resumed._machine.screen()
 
 
 async def test_a_resumed_game_carries_on_rather_than_restarting(disk: None) -> None:
@@ -202,6 +212,23 @@ async def test_reopening_a_session_brings_the_conversation_back() -> None:
 
     async with Game(ServerConfig(), sent_nowhere, session_id) as resumed:
         assert resumed._messages == said
+
+
+async def test_conversation_and_storage_belong_to_the_user() -> None:
+    session_id = uuid4()
+    for user_id in ("alice", "bob", "guest"):
+        async with Game(ServerConfig(), sent_nowhere, session_id, user_id=user_id) as game:
+            assert game._messages == []
+            game._append({"role": "user", "content": user_id})
+            base = Path("data/users") / user_id / "sessions" / str(session_id) / "server"
+            assert game._journal == base / "messages.jsonl"
+            assert game._usage.path == base / "usage.jsonl"
+            assert game._machine._saves.dir == base / "saves"
+            assert game._machine._game_memories.dir == base / "game-memories"
+
+    for user_id in ("alice", "bob", "guest"):
+        async with Game(ServerConfig(), sent_nowhere, session_id, user_id=user_id) as game:
+            assert game._messages == [{"role": "user", "content": user_id}]
 
 
 async def test_a_brand_new_session_starts_the_conversation_empty() -> None:
@@ -333,7 +360,7 @@ async def test_a_half_written_last_line_does_not_lose_the_night() -> None:
 async def test_the_autosave_lands_under_the_session(disk: None) -> None:
     session_id = await play_a_little()
 
-    saves = Path("data/sessions") / str(session_id) / "server" / "saves"
+    saves = Path("data/users/guest/sessions") / str(session_id) / "server" / "saves"
     assert (saves / "autosave.bin").is_file()
     assert not list(saves.glob("[0-9][0-9][0-9][0-9].bin"))  # nothing asked for a slot
 

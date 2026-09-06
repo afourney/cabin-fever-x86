@@ -26,6 +26,7 @@ dependencies = [
     "numpy",
     "elevenlabs",
     "fastapi",
+    "httpx",
     "openai",
     "pydantic",
     "pyyaml",
