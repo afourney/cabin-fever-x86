@@ -129,6 +129,10 @@ class TelegramGateway:
         self.upstream_uri = upstream_uri
         self.accounts = accounts
         self.voice = voice
+        # Locks outlive games so creation and session commands are serialized too.
+        # If waiting messages need backlog limits, use a bounded queue and worker
+        # per account; lock waiters currently have no backlog limit.
+        self._account_locks = {account_id: asyncio.Lock() for account_id in accounts}
         self.sessions: dict[int, TelegramSession] = {}
         self.last_sessions = {
             user_id: _load_state(_state_path(user_id)) for user_id in set(accounts.values())
@@ -329,18 +333,19 @@ class TelegramGateway:
             "Telegram message from user_id=%d username=@%s", account_id, username or "<none>"
         )
 
-        try:
-            async with self.bot.action(chat_id, "typing"):
-                if voice_note is not None:
-                    await self._handle_voice(account_id, chat_id, event.message)
-                else:
-                    await self._handle_text(account_id, chat_id, text)
-        except (OSError, WebSocketException, SessionCommandError, ValueError) as exc:
-            logger.exception("Could not connect Telegram account %d to the game", account_id)
-            await self.send(chat_id, f"Could not connect to the game: {exc}")
-        except Exception as exc:
-            logger.exception("Telegram handler failed for account %d", account_id)
-            await self.send(chat_id, f"Telegram gateway error: {type(exc).__name__}: {exc}")
+        async with self._account_locks[account_id]:
+            try:
+                async with self.bot.action(chat_id, "typing"):
+                    if voice_note is not None:
+                        await self._handle_voice(account_id, chat_id, event.message)
+                    else:
+                        await self._handle_text(account_id, chat_id, text)
+            except (OSError, WebSocketException, SessionCommandError, ValueError) as exc:
+                logger.exception("Could not connect Telegram account %d to the game", account_id)
+                await self.send(chat_id, f"Could not connect to the game: {exc}")
+            except Exception as exc:
+                logger.exception("Telegram handler failed for account %d", account_id)
+                await self.send(chat_id, f"Telegram gateway error: {type(exc).__name__}: {exc}")
 
     async def _ensure_session(self, account_id: int, chat_id: int) -> TelegramSession:
         """Return the account's channel, lazily starting or resuming it."""

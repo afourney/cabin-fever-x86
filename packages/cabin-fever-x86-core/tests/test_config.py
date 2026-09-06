@@ -38,6 +38,28 @@ def test_cabin_event_inactivity_timeout_is_configurable(tmp_path: Path) -> None:
     assert config.server.cabin_events.inactivity_timeout == 60
 
 
+def test_empty_users_list_does_not_restore_guest(tmp_path: Path) -> None:
+    assert load_config(write(tmp_path, "users: []\n")).users == []
+
+
+@pytest.mark.parametrize("value", ["", "null", '""'])
+def test_explicit_empty_users_is_rejected(tmp_path: Path, value: str) -> None:
+    with pytest.raises(ConfigError, match="users"):
+        load_config(write(tmp_path, f"users: {value}\n"))
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_empty_users_env_var_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    if value is None:
+        monkeypatch.delenv("CF86_TEST_USERS", raising=False)
+    else:
+        monkeypatch.setenv("CF86_TEST_USERS", value)
+    with pytest.raises(ConfigError, match="users"):
+        load_config(write(tmp_path, "users: ${CF86_TEST_USERS}\n"))
+
+
 def test_launcher_package_locator_is_optional(tmp_path: Path) -> None:
     config = load_config(write(tmp_path, "launcher:\n  package_locator: ./dist/core-package.whl\n"))
     assert config.launcher.package_locator == "./dist/core-package.whl"

@@ -4,7 +4,8 @@ Config files are YAML, with ``${ENV_VAR_NAME}`` references in any string value
 resolved against the process environment. A reference to an unset variable
 leaves nothing behind: the key is treated as absent and the built-in default
 applies, so ``api_key: ${OPENAI_API_KEY}`` is harmless when the variable is
-not exported.
+not exported. An explicitly supplied ``users`` value is never treated as absent;
+empty or null values are configuration errors rather than enabling guest access.
 """
 
 from __future__ import annotations
@@ -372,6 +373,11 @@ def load_config(path: str | os.PathLike[str] | None = None) -> Config:
         raise ConfigError(f"{config_path}: could not read file: {exc}") from exc
 
     try:
-        return Config.model_validate(_resolve(raw))
+        resolved = _resolve(raw)
+        # Only omission may select the guest default. Preserve explicit empty
+        # values so validation rejects them, including unset environment references.
+        if isinstance(raw, dict) and "users" in raw and "users" not in resolved:
+            resolved["users"] = _resolve(raw["users"])
+        return Config.model_validate(resolved)
     except ValidationError as exc:
         raise ConfigError(f"{config_path}: {exc}") from exc

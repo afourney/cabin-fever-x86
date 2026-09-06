@@ -233,3 +233,6 @@ ignored/
 
 # Ignore telegram sessions
 *telegram.session
+
+# Usage data in the project root
+/usage.jsonl

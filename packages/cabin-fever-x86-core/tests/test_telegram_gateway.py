@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,123 @@ from cabin_fever_x86_core.telegram_gateway._main import (
 @pytest.fixture(autouse=True)
 def isolated_data(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+
+
+def _event(account_id: int, text: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        sender_id=account_id,
+        chat_id=account_id,
+        is_private=True,
+        get_sender=AsyncMock(return_value=SimpleNamespace(username="player")),
+        message=SimpleNamespace(text=text, voice=None, date=datetime.now(timezone.utc)),
+    )
+
+
+@pytest.fixture
+def gateway():
+    bot = SimpleNamespace(action=lambda *_: nullcontext(), send_message=AsyncMock())
+    return TelegramGateway(bot, "ws://localhost:5000", {123: "guest", 456: "guest"})
+
+
+@pytest.mark.parametrize("following", ["second", "/quit"])
+async def test_overlapping_messages_share_one_game(gateway, monkeypatch, following) -> None:
+    opening = asyncio.Event()
+    release = asyncio.Event()
+    connections = []
+
+    async def connect(_account_id):
+        connection = SimpleNamespace(send=AsyncMock(), close=AsyncMock())
+        connections.append(connection)
+        return connection
+
+    async def open_session(_connection, _resume):
+        opening.set()
+        await release.wait()
+        return uuid4()
+
+    async def pump(_session):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(gateway, "_connect", connect)
+    monkeypatch.setattr(gateway, "_pump", pump)
+    monkeypatch.setattr(_main, "open_session", open_session)
+    tasks = [asyncio.create_task(gateway.handle(_event(123, "first")))]
+    try:
+        await asyncio.wait_for(opening.wait(), timeout=1)
+        tasks.append(asyncio.create_task(gateway.handle(_event(123, following))))
+        await asyncio.sleep(0)  # Let the second handler reach the pending game creation.
+        assert len(connections) == 1
+        assert not tasks[1].done()
+        release.set()
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=1)
+        sent = [json.loads(call.args[0])["content"] for call in connections[0].send.await_args_list]
+        assert sent == (["first", "second"] if following == "second" else ["first"])
+        assert (123 in gateway.sessions) is (following != "/quit")
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await gateway.close()
+    connections[0].close.assert_awaited_once()
+
+
+async def test_busy_account_does_not_block_another_account(gateway, monkeypatch) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    handled = []
+
+    async def handle_text(account_id, _chat_id, _text):
+        if account_id == 123:
+            started.set()
+            await release.wait()
+        handled.append(account_id)
+
+    monkeypatch.setattr(gateway, "_handle_text", handle_text)
+    first = asyncio.create_task(gateway.handle(_event(123, "first")))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        await asyncio.wait_for(gateway.handle(_event(456, "second")), timeout=1)
+        assert handled == [456]  # Independent even when both accounts map to guest.
+        release.set()
+        await asyncio.wait_for(first, timeout=1)
+        assert handled == [456, 123]
+    finally:
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_waiting_message_proceeds_after_failure_or_cancellation(
+    gateway, monkeypatch, cancel
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    handled = []
+
+    async def handle_text(_account_id, _chat_id, text):
+        if text == "first":
+            started.set()
+            await release.wait()
+            raise ValueError("could not open game")
+        handled.append(text)
+
+    monkeypatch.setattr(gateway, "_handle_text", handle_text)
+    tasks = [asyncio.create_task(gateway.handle(_event(123, "first")))]
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        tasks.append(asyncio.create_task(gateway.handle(_event(123, "second"))))
+        await asyncio.sleep(0)
+        assert handled == []
+        if cancel:
+            tasks[0].cancel()
+        else:
+            release.set()
+        await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=1)
+        assert handled == ["second"]
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def test_short_message_is_unchanged() -> None:

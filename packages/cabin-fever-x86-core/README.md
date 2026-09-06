@@ -68,7 +68,9 @@ Callsign and Password. “Login as Guest” appears only when that reserved gues
 user has a guest identity, and must be selected explicitly. A user merely named
 `guest` is not anonymous access. `users: []`, or only platform identities without
 a guest identity, shows a browser-access denial. Omitting `users` retains the
-default sole guest. The text client remains a trusted, anonymous guest adapter.
+default sole guest. Explicit empty or null values (including unset environment
+references) are configuration errors; use `users: []` to configure no users.
+The text client remains a trusted, anonymous guest adapter.
 
 Add browser identities alongside the platform identities for a user's shared games:
 
