@@ -3,7 +3,16 @@
 import os
 from uuid import uuid4
 
-from cabin_fever_x86_core.sessions import SERVER_COMPONENT, find_sessions, session_dir
+import pytest
+
+from cabin_fever_x86_core.sessions import (
+    SERVER_COMPONENT,
+    TEXT_CLIENT_COMPONENT,
+    WEB_CLIENT_COMPONENT,
+    find_sessions,
+    session_dir,
+    session_exists,
+)
 
 
 def test_server_sessions_are_ordered_by_the_messages_journal(tmp_path):
@@ -26,3 +35,29 @@ def test_server_sessions_are_ordered_by_the_messages_journal(tmp_path):
         newer,
         older,
     ]
+
+
+def test_server_paths_and_discovery_are_scoped_to_users(tmp_path):
+    session_id = uuid4()
+    path = session_dir(session_id, SERVER_COMPONENT, tmp_path, user_id="alice")
+    assert path == tmp_path / "users/alice/sessions" / str(session_id) / "server"
+    assert session_exists(session_id, SERVER_COMPONENT, tmp_path, user_id="alice")
+    for user_id in ("bob", "guest"):
+        assert not session_exists(session_id, SERVER_COMPONENT, tmp_path, user_id=user_id)
+        assert find_sessions(SERVER_COMPONENT, tmp_path, user_id=user_id) == []
+        assert not (tmp_path / "users" / user_id).exists()
+
+
+@pytest.mark.parametrize("component", [TEXT_CLIENT_COMPONENT, WEB_CLIENT_COMPONENT])
+def test_client_storage_defaults_to_guest(tmp_path, component):
+    session_id = uuid4()
+    path = session_dir(session_id, component, tmp_path)
+    assert path == tmp_path / "users/guest/sessions" / str(session_id) / component
+    assert [s.session_id for s in find_sessions(component, tmp_path)] == [session_id]
+
+
+@pytest.mark.parametrize("user_id", ["../alice", "/alice", "", "Alice", "a" * 65])
+def test_storage_helpers_reject_invalid_user_ids(tmp_path, user_id):
+    with pytest.raises(ValueError, match="user ID"):
+        session_dir(uuid4(), SERVER_COMPONENT, tmp_path, user_id=user_id)
+    assert list(tmp_path.iterdir()) == []

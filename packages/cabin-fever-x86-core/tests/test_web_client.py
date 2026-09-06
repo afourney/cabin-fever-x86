@@ -192,8 +192,7 @@ async def test_provider_adapter_uses_stream_endpoint_and_closes_http_response():
 
 
 def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
-    monkeypatch.setattr(transcripts, "session_dir", lambda *_: tmp_path)
-    monkeypatch.setattr(web, "session_dir", lambda *_, **__: tmp_path)
+    monkeypatch.chdir(tmp_path)
     message = AssistantMessage(content="Hello.")
     closed = []
 
@@ -230,4 +229,7 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
             clip = client.get(f"/audio/{session['session_id']}/clean_{message.id}.wav")
             assert clip.status_code == 200
             assert clip.content.startswith(b"RIFF")
+            saved = tmp_path / "data/users/guest/sessions" / session["session_id"] / "web_client"
+            assert (saved / "audio" / f"clean_{message.id}.wav").read_bytes() == clip.content
+            assert (saved / "transcript.jsonl").is_file()
     assert closed

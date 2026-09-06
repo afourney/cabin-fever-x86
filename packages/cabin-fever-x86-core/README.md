@@ -50,6 +50,35 @@ cf86-web --web-host 0.0.0.0
 
 Review your firewall and network trust before binding a service beyond localhost.
 
+## Server user identities and storage
+
+Trusted adapters can send `X-CF86-User-ID: <user-id>` in the WebSocket handshake.
+User IDs contain 1–64 lowercase ASCII letters, digits, underscores, or hyphens.
+A missing header selects `guest`; an empty, invalid, or repeated header returns
+HTTP 400 before the WebSocket opens. The identity remains fixed for that connection.
+
+This header asserts identity; it is not a password or access token. The server
+accepts any valid user ID, without a user registry. Keep access restricted to
+trusted local processes or trusted adapters through an SSH tunnel or authenticated
+transport. Public-facing adapters must authenticate users before setting it.
+
+Server data is stored relative to the working directory:
+
+```text
+data/users/<user_id>/sessions/<session_id>/server/
+  messages.jsonl
+  usage.jsonl
+  saves/
+  game-memories/
+```
+
+Session listing and resuming operate only within the connection's user directory.
+A session belonging to another user is reported as nonexistent. Existing clients
+send no header and use the fixed user `guest`. Client transcripts and audio
+live in `data/users/guest/sessions/<session_id>/text_client/` or
+`data/users/guest/sessions/<session_id>/web_client/`, and downloaded games
+remain shared in `data/games/`.
+
 ## Z-machine games
 
 When `cf86-server` runs directly, it looks for `.z3`–`.z8` game files in `data/games/` relative to its working directory. If that directory contains nothing playable, the server downloads the [z-machine-games](https://github.com/BYU-PCCL/z-machine-games) archive and unpacks only the 57 games in its `jericho-game-suite` folder.
