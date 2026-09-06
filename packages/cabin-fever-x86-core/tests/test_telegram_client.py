@@ -4,14 +4,19 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 
 from cabin_fever_x86_core.messages import AssistantMessage, CompactionCompleted
+from cabin_fever_x86_core.sessions import GUEST_USER_ID
 from cabin_fever_x86_core.telegram_client._main import (
+    STATE_PATH,
     TelegramBridge,
+    _load_state,
+    _save_state,
     is_stale,
     split_message,
 )
@@ -329,3 +334,22 @@ async def test_an_empty_assistant_transmission_is_static_without_voice(monkeypat
 
     assert sent == [(8675309, "[static]")]
     assert records == [("assistant", message.id, "", None)]
+
+
+def test_session_state_lives_under_the_guest_user() -> None:
+    assert Path(STATE_PATH).parts == (
+        "data",
+        "users",
+        GUEST_USER_ID,
+        "telegram_client",
+        "sessions.json",
+    )
+
+
+def test_session_state_survives_a_round_trip(tmp_path) -> None:
+    path = tmp_path / "users" / GUEST_USER_ID / "telegram_client" / "sessions.json"
+    state = {8675309: uuid4()}
+
+    _save_state(state, path)
+
+    assert _load_state(path) == state

@@ -8,10 +8,12 @@ import logging
 import sys
 from contextlib import AsyncExitStack
 from functools import partial
+from http import HTTPStatus
 
 from pydantic import ValidationError
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
+from websockets.http11 import Request, Response
 
 from cabin_fever_x86_core.config import (
     DEFAULT_CONFIG_PATH,
@@ -35,9 +37,34 @@ from cabin_fever_x86_core.messages import (
 from cabin_fever_x86_core.server._download import DownloadError, ensure_games
 from cabin_fever_x86_core.server._game import Game, SendCallback
 from cabin_fever_x86_core.server._machine import GAMES_DIR
-from cabin_fever_x86_core.sessions import SERVER_COMPONENT, find_sessions, session_exists
+from cabin_fever_x86_core.sessions import (
+    GUEST_USER_ID,
+    SERVER_COMPONENT,
+    find_sessions,
+    session_exists,
+    validate_user_id,
+)
 
 logger = logging.getLogger(__name__)
+USER_ID_HEADER = "X-CF86-User-ID"
+
+
+class UserConnection(ServerConnection):
+    """A connection carrying the user identity asserted by a trusted adapter."""
+
+    user_id: str = GUEST_USER_ID
+
+
+def identify_user(connection: UserConnection, request: Request) -> Response | None:
+    """Bind one valid user ID to the connection, rejecting invalid handshakes."""
+    values = request.headers.get_all(USER_ID_HEADER)
+    if len(values) > 1:
+        return connection.respond(HTTPStatus.BAD_REQUEST, f"duplicate {USER_ID_HEADER}\n")
+    try:
+        connection.user_id = validate_user_id(values[0] if values else GUEST_USER_ID)
+    except ValueError as exc:
+        return connection.respond(HTTPStatus.BAD_REQUEST, f"invalid {USER_ID_HEADER}: {exc}\n")
+    return None
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -71,11 +98,13 @@ async def _run_command(
     config: ServerConfig,
     send: SendCallback,
     games: AsyncExitStack,
+    *,
+    user_id: str = GUEST_USER_ID,
 ) -> tuple[Game | None, SessionResult | SessionListResult | CompactionCompleted]:
     """Carry out a session command, returning the game it left in place."""
     if isinstance(command, ListSessionsCommand):
-        sessions = find_sessions(SERVER_COMPONENT)
-        logger.info("Listed %d session(s)", len(sessions))
+        sessions = find_sessions(SERVER_COMPONENT, user_id=user_id)
+        logger.info("Listed %d session(s) for user %s", len(sessions), user_id)
         return game, SessionListResult(request_id=command.id, sessions=sessions)
 
     if isinstance(command, CompactSessionCommand):
@@ -89,11 +118,11 @@ async def _run_command(
         raise CommandRefused(f"a game is already running for session {game.session_id}")
 
     session_id = command.session_id if isinstance(command, ResumeGameCommand) else None
-    if session_id is not None and not session_exists(session_id, SERVER_COMPONENT):
+    if session_id is not None and not session_exists(session_id, SERVER_COMPONENT, user_id=user_id):
         raise CommandRefused(f"no such session: {session_id}")
 
     try:
-        game = await games.enter_async_context(Game(config, send, session_id))
+        game = await games.enter_async_context(Game(config, send, session_id, user_id=user_id))
     except Exception as exc:
         logger.exception("Could not start a game")
         raise CommandRefused(f"could not start: {exc}") from exc
@@ -102,10 +131,10 @@ async def _run_command(
     return game, SessionResult(request_id=command.id, session_id=game.session_id)
 
 
-async def handle_connection(connection: ServerConnection, config: ServerConfig) -> None:
+async def handle_connection(connection: UserConnection, config: ServerConfig) -> None:
     """Serve one client connection: session commands first, then the game."""
     peer = connection.remote_address
-    logger.info("Client connected: %s", peer)
+    logger.info("Client connected: %s, user %s", peer, connection.user_id)
 
     async def send(message: ServerMessage) -> None:
         await connection.send(message.model_dump_json())
@@ -132,7 +161,9 @@ async def handle_connection(connection: ServerConnection, config: ServerConfig) 
                         logger.info("Received from %s: %r", peer, message.content)
                         await game.receive(message)
                     else:
-                        game, result = await _run_command(message, game, config, send, games)
+                        game, result = await _run_command(
+                            message, game, config, send, games, user_id=connection.user_id
+                        )
                         await send(result)
                         if isinstance(result, SessionResult) and game is not None:
                             # Only now that the client knows the session id is
@@ -152,7 +183,9 @@ async def handle_connection(connection: ServerConnection, config: ServerConfig) 
 async def run_server(interface: str, port: int, config: ServerConfig) -> None:
     """Serve until interrupted."""
     handler = partial(handle_connection, config=config)
-    async with serve(handler, interface, port):
+    async with serve(
+        handler, interface, port, create_connection=UserConnection, process_request=identify_user
+    ):
         logger.info("Listening on ws://%s:%d", interface, port)
         await asyncio.get_running_loop().create_future()
 

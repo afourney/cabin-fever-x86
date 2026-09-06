@@ -4,8 +4,11 @@
 Reads ``usage.jsonl`` — the append-only record the server writes beside each
 session's conversation — and prices it.
 
-    uv run usage_report.py <session-id> --raw-turn-costs
-    uv run usage_report.py data/sessions/<session-id>/server --raw-turn-costs
+A bare UUID resolves under the default guest user; for other users, pass the
+session directory explicitly:
+
+    uv run usage_report.py data/users/guest/sessions/<session-id>/server --raw-turn-costs
+    uv run usage_report.py data/users/<user-id>/sessions/<session-id>/server --raw-turn-costs
     uv run usage_report.py path/to/usage.jsonl --raw-turn-costs
 
 ``--raw-turn-costs`` lists every request in the order it was made, grouped by
@@ -302,7 +305,11 @@ def load_rates(path: Path) -> dict[str, dict[str, float]]:
 
 
 def resolve(target: str) -> Path:
-    """Find the ledger behind a session id, a session directory, or a file."""
+    """Find the ledger behind a session id, a session directory, or a file.
+
+    A bare UUID is resolved under the default guest user; other users must be
+    selected by directory, e.g. ``data/users/<user-id>/sessions/<session-id>/server``.
+    """
     path = Path(target)
     if path.is_file():
         return path
