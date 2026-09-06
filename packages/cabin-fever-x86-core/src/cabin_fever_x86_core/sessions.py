@@ -24,6 +24,8 @@ _USER_ID = re.compile(r"[a-z0-9_-]{1,64}")
 SERVER_COMPONENT = "server"
 TEXT_CLIENT_COMPONENT = "text_client"
 WEB_CLIENT_COMPONENT = "web_client"
+TELEGRAM_CLIENT_COMPONENT = "telegram_client"
+ZELLO_CLIENT_COMPONENT = "zello_client"
 
 # The server's conversation journal is the authoritative indication of when a
 # session was last active.  Directory mtimes can also change for housekeeping
@@ -44,9 +46,16 @@ def validate_user_id(user_id: str) -> str:
     return user_id
 
 
+def user_dir(
+    user_id: str = GUEST_USER_ID,
+    root: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Return the directory holding everything that belongs to one user."""
+    return Path(root or DEFAULT_DATA_ROOT) / "users" / validate_user_id(user_id)
+
+
 def _sessions_root(root: str | os.PathLike[str] | None, user_id: str) -> Path:
-    base = Path(root or DEFAULT_DATA_ROOT)
-    return base / "users" / validate_user_id(user_id) / "sessions"
+    return user_dir(user_id, root) / "sessions"
 
 
 def session_dir(

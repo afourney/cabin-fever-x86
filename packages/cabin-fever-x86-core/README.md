@@ -15,6 +15,10 @@ sudo apt-get install build-essential python3-dev
 python3 -m venv .venv
 source .venv/bin/activate
 pip install cabin-fever-x86-core
+# Include the optional Telegram client if wanted:
+# pip install 'cabin-fever-x86-core[telegram]'
+# Include the optional Zello client if wanted:
+# pip install 'cabin-fever-x86-core[zello]'
 ```
 
 Set the API keys used by the default configuration:
@@ -40,6 +44,10 @@ Then start one of the clients in another terminal:
 cf86-web   # browser-based radio at http://127.0.0.1:8000
 # or
 cf86-text  # terminal-based text client
+# or, when installed with the telegram extra
+cf86-telegram
+# or, when installed with the zello extra
+cf86-zello
 ```
 
 Each command accepts `--help`. The server and clients can be run on different Linux machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. For example, to expose only the web frontend on the local network:
@@ -49,6 +57,24 @@ cf86-web --web-host 0.0.0.0
 ```
 
 Review your firewall and network trust before binding a service beyond localhost.
+
+The Telegram client uses the `telegram_client` section of `config.yaml`. It
+requires a bot token, Telegram API ID and API hash, plus an allowlist of numeric
+Telegram user IDs. Start it with an empty allowlist and send the bot a private
+message to have the rejected user ID written to its log; then add that ID to
+`allowed_accounts` and restart it. Private text messages and voice notes are
+accepted. Voice notes are transcribed with the configured ElevenLabs key and
+forwarded silently. When that key is available, the first companion transmission
+is a captioned voice note; later replies match the player's most recent input —
+voice answers voice, and text answers text. Replies too long for a Telegram
+caption, and replies whose synthesis fails, are sent as separate text so no
+content is lost.
+
+The Zello client is voice-only. It joins the configured `zello.channel`, ignores
+all text and unauthorized senders, transcribes authorized Ogg Opus messages,
+and returns synthesized Ogg Opus audio. Its `--resume` and `--list-sessions`
+options match the text client's command-line session management. Credentials
+are read from the YAML file named by `zello.credentials_file`.
 
 ## Server user identities and storage
 
@@ -75,9 +101,11 @@ data/users/<user_id>/sessions/<session_id>/server/
 Session listing and resuming operate only within the connection's user directory.
 A session belonging to another user is reported as nonexistent. Existing clients
 send no header and use the fixed user `guest`. Client transcripts and audio
-live in `data/users/guest/sessions/<session_id>/text_client/` or
-`data/users/guest/sessions/<session_id>/web_client/`, and downloaded games
-remain shared in `data/games/`.
+live in `data/users/guest/sessions/<session_id>/<client>/`, where `<client>` is
+`text_client`, `web_client`, or `telegram_client`. The Telegram bridge also
+remembers which session each account was last in, in
+`data/users/guest/telegram_client/sessions.json`. Downloaded games remain shared
+in `data/games/`.
 
 ## Z-machine games
 

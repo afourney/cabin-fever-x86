@@ -27,6 +27,8 @@ def test_defaults_when_the_file_says_nothing(tmp_path: Path) -> None:
     assert config.server.ai_client.provider == "openai"
     assert config.server.cabin_events.inactivity_timeout == 300
     assert config.launcher.package_locator is None
+    assert config.telegram_client.bot_token is None
+    assert config.telegram_client.allowed_accounts == []
 
 
 def test_cabin_event_inactivity_timeout_is_configurable(tmp_path: Path) -> None:
@@ -43,6 +45,51 @@ def test_env_vars_are_expanded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("CF86_TEST_KEY", "sk-from-the-environment")
     config = load_config(write(tmp_path, "client:\n  elevenlabs_api_key: ${CF86_TEST_KEY}\n"))
     assert config.client.elevenlabs_api_key == "sk-from-the-environment"
+
+
+def test_telegram_config_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CF86_TELEGRAM_TOKEN", "123:secret")
+    config = load_config(
+        write(
+            tmp_path,
+            """telegram_client:
+  bot_token: ${CF86_TELEGRAM_TOKEN}
+  api_id: 12345
+  api_hash: hash
+  allowed_accounts: [111, 222]
+""",
+        )
+    )
+
+    assert config.telegram_client.bot_token == "123:secret"
+    assert config.telegram_client.api_id == 12345
+    assert config.telegram_client.api_hash == "hash"
+    assert config.telegram_client.allowed_accounts == [111, 222]
+
+
+def test_zello_config_is_loaded(tmp_path: Path) -> None:
+    config = load_config(
+        write(
+            tmp_path,
+            """zello:
+  credentials_file: ~/.apikeys/zello.yaml
+  authorized_users: [alice]
+""",
+        )
+    )
+
+    assert config.zello is not None
+    assert config.zello.credentials_file == "~/.apikeys/zello.yaml"
+    assert config.zello.channel == "Cabin Fever x86"
+    assert config.zello.authorized_users == ["alice"]
+
+
+@pytest.mark.parametrize(
+    "body", ["zello: {authorized_users: []}\n", "zello: {credentials_file: keys.yaml}\n"]
+)
+def test_zello_section_requires_credentials_and_authorized_users(tmp_path: Path, body: str) -> None:
+    with pytest.raises(ConfigError):
+        load_config(write(tmp_path, body))
 
 
 def test_an_unset_env_var_falls_back_to_the_default(
