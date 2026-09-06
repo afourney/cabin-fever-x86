@@ -1,4 +1,4 @@
-"""Wire types exchanged between the clients and the server.
+"""Wire types exchanged by the text client, gateways, and server.
 
 Every message carries a ``type`` discriminator so the receiving side can tell
 them apart, and an ``id`` so a single transmission can be traced through both

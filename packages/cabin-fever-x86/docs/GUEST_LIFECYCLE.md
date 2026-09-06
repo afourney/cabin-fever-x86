@@ -28,7 +28,7 @@ initialization on top of the existing prepared guest.
 ## Preparation
 
 Preparation MUST create an isolated core environment, install the selected core package, and prove
-that both the game server and web client entry points are usable. Preparation succeeds only after
+that both the game server and web gateway entry points are usable. Preparation succeeds only after
 all validation completes and the guest emits `GUEST INIT COMPLETE`.
 
 A failed, timed-out, or incomplete preparation MUST NOT replace a working prepared guest. A clean
@@ -42,13 +42,13 @@ night's data, configuration, or credentials.
 
 After preparation or boot, the launcher MUST attach the persistent data directory, transfer the
 current configuration, and provide only the environment variables referenced by that configuration.
-It MUST start and verify the game server before starting the web client.
+It MUST start and verify the game server before starting the web gateway.
 
-The server MUST remain private to the guest. The web client MUST be the only forwarded guest port.
+The server MUST remain private to the guest. The web gateway MUST be the only forwarded guest port.
 
 ## Termination
 
-The launcher SHOULD run until the web client exits, the user sends an interrupt, or interactive
+The launcher SHOULD run until the web gateway exits, the user sends an interrupt, or interactive
 standard input reaches end-of-file. End-of-file on non-interactive input MUST NOT terminate a run.
 
 On termination, outstanding launcher tasks MUST be cancelled and the guest context MUST be allowed

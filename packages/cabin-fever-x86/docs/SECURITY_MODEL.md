@@ -8,7 +8,7 @@ NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are normative.
 
 ## Trust boundary
 
-The game server, web client, core dependencies, downloaded game files, and custom package sources run
+The game server, web gateway, core dependencies, downloaded game files, and custom package sources run
 inside a sandbox VM. The launcher and host filesystem remain outside that VM.
 
 The guest MUST be treated as network-capable and credential-bearing. The sandbox reduces direct host

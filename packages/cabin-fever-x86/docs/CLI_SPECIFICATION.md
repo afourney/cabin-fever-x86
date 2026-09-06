@@ -23,7 +23,7 @@ The selected home MUST be created when absent.
 `--config PATH` selects the configuration file. It does not change the home directory. The supplied
 path MUST exist; otherwise launch MUST fail rather than creating or selecting another file.
 
-`--port PORT` selects the host loopback port forwarded to the guest web client. Its default is
+`--port PORT` selects the host loopback port forwarded to the guest web gateway. Its default is
 `8000`. The value MUST be an integer. It MUST NOT change the guest's internal service ports or bind
 the host service beyond loopback.
 

@@ -23,7 +23,7 @@ The configuration MUST be YAML with a top-level mapping. The optional `launcher`
 mapping when present. `launcher.package_locator` MUST be a string when present.
 
 The launcher interprets only launcher-owned settings. It MUST transfer the complete configuration to
-the guest so the core can validate and interpret client and server settings.
+the guest so the core can validate and interpret client, gateway, and server settings.
 
 ## Environment references
 
@@ -60,4 +60,3 @@ NOT expose the configuration's containing host directory merely to transfer one 
 Environment references SHOULD be preferred over literal credentials. Configuration and referenced
 credentials are visible to software running inside the guest and MUST be treated according to
 `SECURITY_MODEL.md`.
-

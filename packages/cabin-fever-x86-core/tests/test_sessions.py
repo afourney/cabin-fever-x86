@@ -8,7 +8,7 @@ import pytest
 from cabin_fever_x86_core.sessions import (
     SERVER_COMPONENT,
     TEXT_CLIENT_COMPONENT,
-    WEB_CLIENT_COMPONENT,
+    WEB_GATEWAY_COMPONENT,
     find_sessions,
     session_dir,
     session_exists,
@@ -48,7 +48,7 @@ def test_server_paths_and_discovery_are_scoped_to_users(tmp_path):
         assert not (tmp_path / "users" / user_id).exists()
 
 
-@pytest.mark.parametrize("component", [TEXT_CLIENT_COMPONENT, WEB_CLIENT_COMPONENT])
+@pytest.mark.parametrize("component", [TEXT_CLIENT_COMPONENT, WEB_GATEWAY_COMPONENT])
 def test_client_storage_defaults_to_guest(tmp_path, component):
     session_id = uuid4()
     path = session_dir(session_id, component, tmp_path)

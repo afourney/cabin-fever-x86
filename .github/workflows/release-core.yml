@@ -55,10 +55,12 @@ jobs:
             cabin_fever_x86_core/server/cabin_events.txt \
             cabin_fever_x86_core/server/stage_direction.txt \
             cabin_fever_x86_core/server/compaction_excuses.jsonl \
-            cabin_fever_x86_core/web_client/static/index.html \
-            cabin_fever_x86_core/web_client/static/pcm-player.js \
-            cabin_fever_x86_core/web_client/static/splash.jpg \
-            cabin_fever_x86_core/web_client/static/rain.mp3
+            cabin_fever_x86_core/web_gateway/static/index.html \
+            cabin_fever_x86_core/web_gateway/static/pcm-player.js \
+            cabin_fever_x86_core/web_gateway/static/browser-auth.js \
+            cabin_fever_x86_core/web_gateway/static/session-picker.js \
+            cabin_fever_x86_core/web_gateway/static/splash.jpg \
+            cabin_fever_x86_core/web_gateway/static/rain.mp3
           do
             unzip -l "$wheel" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
           done

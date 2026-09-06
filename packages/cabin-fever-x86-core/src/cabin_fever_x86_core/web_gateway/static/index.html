@@ -6,9 +6,10 @@
 <title>Cabin Fever x86</title>
 <style>
   :root { color-scheme: dark; }
+  [hidden] { display: none !important; }
   body {
-    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; gap: 1rem; padding: 2rem 1rem;
+    box-sizing: border-box; margin: 0; min-height: 100dvh; display: flex; flex-direction: column;
+    align-items: center; gap: 1rem; padding: clamp(.75rem, 3vh, 2rem) 1rem;
     background:
       linear-gradient(rgba(6, 9, 8, .28), rgba(6, 9, 8, .48)),
       #0d0f0e center/cover fixed no-repeat url("/background");
@@ -18,11 +19,11 @@
   h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; color: #8fb89b; margin: 0; }
   #session { font-size: .75rem; color: #5d7364; word-break: break-all; text-align: center; }
   #log {
-    width: min(70ch, 100%); flex: 1; overflow-y: auto; display: flex;
+    box-sizing: border-box; width: min(70ch, 100%); flex: 1; overflow-y: auto; display: flex;
     flex-direction: column; gap: .75rem; padding: 1rem;
     border: 1px solid #33443a; border-radius: .4rem; background: rgba(10, 12, 11, .88);
     box-shadow: 0 .5rem 2rem rgba(0, 0, 0, .35);
-    min-height: 40vh; max-height: 60vh;
+    min-height: 0; overflow-wrap: anywhere;
   }
   .line { white-space: pre-wrap; }
   .line.user { color: #7f9ec4; }
@@ -50,14 +51,12 @@
     position: fixed; inset: 0; z-index: 10; cursor: pointer;
     background: #060807 center/cover no-repeat url("/splash");
     display: flex; align-items: flex-end; justify-content: center;
-    transition: opacity 1.1s ease;
   }
   #splash::after {           /* keeps the words legible over the art */
     content: ""; position: absolute; inset: auto 0 0 0; height: 45%;
     background: linear-gradient(to top, rgba(4,6,5,.92), transparent);
     pointer-events: none;
   }
-  #splash.gone { opacity: 0; pointer-events: none; }
   #splash .call {
     position: relative; z-index: 1; margin-bottom: min(9vh, 5rem);
     padding: .8rem 1.6rem; text-align: center;
@@ -71,31 +70,136 @@
     text-transform: none; font-size: .8em; color: #b9a882; animation: none;
   }
   #splash:hover .call { color: #fff; }
+  #auth-panel {
+    box-sizing: border-box; max-height: calc(100dvh - 4rem); overflow-y: auto;
+    position: relative; z-index: 1; margin: 2rem 1rem; padding: 1.5rem;
+    width: min(26rem, 100%); border: 1px solid #635a43; border-radius: .4rem;
+    background: rgba(6, 9, 8, .94); cursor: default; color: #f0e2c0;
+  }
+  #login-form { display: grid; gap: .6rem; }
+  #login-form input {
+    font: inherit; padding: .6rem; min-width: 0; border: 1px solid #635a43;
+    border-radius: .2rem; background: #0d0f0e; color: #f0e2c0;
+  }
+  #auth-panel button { margin-top: .7rem; width: 100%; }
+  #auth-error { color: #edb2a3; }
+  #logout { top: 3.5rem; z-index: 20; }
+  #radio {
+    display: flex; flex-direction: column; align-items: center;
+    gap: clamp(.5rem, 1.8vh, 1rem); width: 100%; min-height: 22rem;
+    height: calc(100dvh - clamp(1.5rem, 6vh, 4rem));
+  }
+  #radio > :not(#log) { flex-shrink: 0; }
+  #session-screen {
+    position: fixed; inset: 0; z-index: 11; overflow-y: auto; box-sizing: border-box;
+    display: grid; align-items: center; padding: clamp(2rem, 6vh, 4rem) 1.5rem;
+    background: #0d0f0e center/cover no-repeat url("/background");
+  }
+  .session-layout {
+    width: min(68rem, 100%); margin: auto; display: grid;
+    grid-template-columns: 1.3fr 1fr; gap: clamp(2rem, 4vw, 4rem); align-items: center;
+  }
+  .backstory { color: #d9d2bc; text-shadow: 0 1px 4px rgba(0, 0, 0, .8); }
+  .backstory .eyebrow { color: #8fb89b; font-size: .75rem; letter-spacing: .18em; text-transform: uppercase; }
+  .backstory h2 { font: normal clamp(2rem, 4vw, 3rem)/1.15 Georgia, serif; color: #f0e2c0; margin: 1rem 0 1.5rem; }
+  .backstory p { line-height: 1.8; }
+  #session-picker-form {
+    padding: clamp(1.2rem, 3vw, 2rem); border: 1px solid #635a43;
+    border-radius: .4rem; background: rgba(6, 9, 8, .88); min-width: 0;
+  }
+  #session-picker-form h3 { margin-top: 0; color: #f0e2c0; font-weight: normal; font-size: 1.15rem; }
+  #session-picker-form label { display: block; margin-bottom: .5rem; }
+  #session-choice {
+    box-sizing: border-box; width: 100%; font: inherit; padding: .85rem .6rem;
+    border: 1px solid #635a43; border-radius: .2rem; background: #0d0f0e; color: #f0e2c0;
+  }
+  #sessions-status { color: #a9b4a6; font-size: .8rem; }
+  #sessions-error { color: #edb2a3; }
+  #session-picker-form button { width: 100%; touch-action: manipulation; }
+  #sessions-retry { margin-bottom: .8rem; }
+  :focus-visible { outline: 2px solid #f0e2c0; outline-offset: 4px; }
+  /* Leave room for browser chrome on laptop displays; scroll on smaller screens. */
+  @media (min-width: 721px) and (max-height: 760px) {
+    #session-screen { padding-block: 2rem; }
+    .backstory { font-size: .9375rem; }
+    .backstory h2 { font-size: 2.25rem; margin: .75rem 0 1rem; }
+    .backstory p { line-height: 1.6; margin-block: .75rem; }
+    #session-picker-form { padding: 1.5rem; }
+  }
+  @media (max-width: 720px) {
+    .session-layout { grid-template-columns: 1fr; gap: 1.5rem; }
+    #session-screen { padding: 5rem 1.2rem 2rem; }
+  }
   @keyframes breathe { 0%, 100% { opacity: .72 } 50% { opacity: 1 } }
   @media (prefers-reduced-motion: reduce) {
     #splash .call { animation: none; }
-    #splash { transition: none; }
   }
 </style>
 </head>
 <body>
-  <div id="splash" role="button" tabindex="0" aria-label="Turn on your radio">
-    <div class="call">
+  <div id="splash" role="group" tabindex="-1" aria-label="Radio sign in">
+    <div class="call" id="radio-call" hidden>
       Click here to turn on your radio
       <small id="splash-note">feeding grues over vhf</small>
     </div>
+    <section id="auth-panel" aria-label="Sign in">
+      <p id="auth-message">Contacting the station…</p>
+      <form id="login-form" hidden>
+        <label for="callsign">Callsign</label>
+        <input id="callsign" name="username" autocomplete="username" maxlength="64"
+          autocapitalize="none" spellcheck="false" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password"
+          maxlength="1024" required>
+        <button id="login-submit" type="submit">Sign in</button>
+      </form>
+      <button id="guest-login" type="button" hidden>Login as Guest</button>
+      <p id="auth-error" role="alert" aria-live="polite"></p>
+      <button id="auth-retry" type="button" hidden>Try again</button>
+    </section>
   </div>
 
+  <section id="session-screen" aria-labelledby="story-heading" hidden>
+    <div class="session-layout">
+      <div class="backstory">
+        <p class="eyebrow">Somewhere in the Olympic Peninsula</p>
+        <h2 id="story-heading" tabindex="-1">The books are finished.<br>The rain isn’t.</h2>
+        <p>Somewhere deep in the Olympic Peninsula, Sam is holed up in a remote cabin
+          with no internet, no cell service, and no particular hope of going outside anytime soon.
+          Every book on the shelves has been read—some of them several times.</p>
+        <p>All that remains is a beige 1990s PC, a pile of ancient text adventures,
+          and a VHF radio that can just reach one other voice through a repeater on a distant peak: yours.</p>
+        <p>And old games are always more fun with a friend.</p>
+      </div>
+      <form id="session-picker-form" aria-labelledby="picker-heading">
+        <h3 id="picker-heading">Pick up the conversation</h3>
+        <label for="session-choice">Session</label>
+        <select id="session-choice" aria-describedby="sessions-status" disabled>
+          <option value="">New Session</option>
+        </select>
+        <p id="sessions-status" role="status">Looking for saved sessions…</p>
+        <p id="sessions-error" role="alert"></p>
+        <button id="sessions-retry" type="button" hidden>Try again</button>
+        <button id="session-start" type="submit" disabled>Start new session</button>
+      </form>
+    </div>
+  </section>
+
+  <main id="radio" hidden>
   <h1>Cabin Fever <span style="color:#7ac07a">x86</span></h1>
   <div id="session">not connected</div>
   <div id="log"></div>
   <div id="status">&nbsp;</div>
   <button id="talk" disabled>Hold to talk</button>
   <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
+  </main>
   <button id="weather" class="quiet" hidden title="Rain on the roof">rain: on</button>
+  <button id="logout" class="quiet" hidden>Sign out</button>
 
 <script type="module">
 import { PCMPlayer } from "/pcm-player.js";
+import { BrowserAuthController } from "/browser-auth.js";
+import { SessionPickerController } from "/session-picker.js";
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), status = $("status"), sessionLabel = $("session");
@@ -105,6 +209,26 @@ let playing = null, keyed = false, queue = Promise.resolve();
 let rain = null;
 const streams = new Map();
 let playbackGeneration = 0;
+const browserAuth = new BrowserAuthController({
+  document,
+  onSignedIn: () => showSessionPicker(),
+  onExpired: () => {
+    sessionId = null;
+    ws?.close();
+    cutPlayback();
+    recorder?.stream?.getTracks().forEach(track => track.stop());
+    location.reload(); // Clear the previous user's transcript and microphone state.
+  },
+});
+const sessionPicker = new SessionPickerController({
+  document,
+  onStart: resume => turnOn(resume),
+  onExpired: () => browserAuth.onExpired(),
+  preferredSession: new URLSearchParams(location.search).get("resume"),
+});
+browserAuth.initialize().then(() => {
+  if (browserAuth.authenticated && !browserAuth.state.implicit_guest) showSessionPicker();
+});
 
 const RAIN_LOUD = 0.30;    // on the splash, before anyone is talking
 const RAIN_UNDER = 0.10;    // once the channel is open
@@ -428,13 +552,19 @@ function failStream(id) {
 
 // --- the channel ----------------------------------------------------------
 
-function connect() {
-  const resume = new URLSearchParams(location.search).get("resume");
+function connect(resume) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws${resume ? `?resume=${resume}` : ""}`);
+  const socket = new WebSocket(`${proto}://${location.host}/ws${resume ? `?resume=${encodeURIComponent(resume)}` : ""}`);
+  ws = socket;
+  let opened = false, resolveSession, rejectSession;
+  const ready = new Promise((resolve, reject) => { resolveSession = resolve; rejectSession = reject; });
+  const timeout = setTimeout(() => {
+    rejectSession(new Error("The game is taking too long to connect. Please try again."));
+    socket.close();
+  }, 30000);
 
-  ws.binaryType = "arraybuffer";
-  ws.onmessage = (event) => {
+  socket.binaryType = "arraybuffer";
+  socket.onmessage = (event) => {
     if (event.data instanceof ArrayBuffer) {
       // Every audio packet starts with its uint32 stream ID (network order).
       if (event.data.byteLength < 4) return;
@@ -445,11 +575,14 @@ function connect() {
     }
     const msg = JSON.parse(event.data);
     if (msg.type === "session") {
+      opened = true;
+      clearTimeout(timeout);
       sessionId = msg.session_id;
       sessionLabel.textContent = `session ${sessionId}`;
       if (!msg.voice) say("note", "Voice is unavailable — text only.");
       $("talk").disabled = false;
       setStatus("");
+      resolveSession();
     } else if (msg.type === "assistant") {
       say("assistant", msg.text || "[static]");
       if (!msg.text) enqueuePlayback();
@@ -472,20 +605,31 @@ function connect() {
     } else if (msg.type === "user") {
       say("user", msg.text);
     } else if (msg.type === "error") {
+      if (!opened) {
+        clearTimeout(timeout);
+        rejectSession(new Error(msg.text));
+        socket.close();
+        return;
+      }
       say("error", msg.text);
     }
   };
 
-  ws.onclose = () => {
+  socket.onclose = (event) => {
+    clearTimeout(timeout);
     clearInterval(keepAlive);
+    if (!opened) rejectSession(new Error("Could not open the game. Please try again."));
+    if (ws !== socket) return;
     cutPlayback();
     setStatus("disconnected");
     $("talk").disabled = true;
+    if (event.code === 4401) browserAuth.onExpired();
   };
-  ws.onerror = () => setStatus("connection error");
+  socket.onerror = () => setStatus("connection error");
 
   // Keep the socket from idling out; the page has nothing else to send.
-  const keepAlive = setInterval(() => ws?.readyState === 1 && ws.send("."), 20000);
+  const keepAlive = setInterval(() => socket.readyState === 1 && socket.send("."), 20000);
+  return ready;
 }
 
 // --- push to talk ---------------------------------------------------------
@@ -524,7 +668,7 @@ async function send() {
 }
 
 function keyDown() {
-  if (keyed || !recorder || recorder.state === "recording") return;
+  if ($("talk").disabled || keyed || !recorder || recorder.state === "recording") return;
   keyed = true;
   cutPlayback();          // half-duplex: keying the mic cuts them off
   chunks = [];
@@ -574,36 +718,51 @@ async function openWeather() {
 }
 openWeather();
 
-async function turnOn() {
-  if (turningOn) return;
+function showSessionPicker() {
+  if (!browserAuth.authenticated || !$("session-screen").hidden) return;
+  splash.hidden = true;
+  $("session-screen").hidden = false;
+  $("story-heading").focus();
+  openWeather();
+  sessionPicker.load();
+}
+
+async function turnOn(resume) {
+  if (turningOn || !browserAuth.authenticated) return;
   turningOn = true;
-  $("splash-note").textContent = "warming up…";
 
   try {
     await openWeather();              // the gesture that unlocks playback
-    await startMic();
-  } catch (err) {
-    // Stay on the splash: without a microphone there is nothing to reveal.
-    $("splash-note").textContent = `no microphone (${err.name || err}) — click to try again`;
+    try {
+      await startMic();
+    } catch {
+      throw new Error("Microphone access is needed to use the radio. Allow access, then try again.");
+    }
+    await connect(resume);
+    const url = new URL(location.href);
+    url.searchParams.set("resume", sessionId);
+    history.replaceState(null, "", url);
+    $("session-screen").hidden = true;
+    $("radio").hidden = false;
+    $("talk").focus();
+
+    muted = rememberedMute();
+    $("weather").textContent = `rain: ${muted ? "off" : "on"}`;
+    rainLevel(RAIN_UNDER);
+    $("weather").hidden = false;
+  } catch (error) {
+    recorder?.stream?.getTracks().forEach(track => track.stop());
+    recorder = null;
+    throw error;
+  } finally {
     turningOn = false;
-    return;
   }
-
-  splash.classList.add("gone");
-  splash.addEventListener("transitionend", () => { splash.hidden = true; }, { once: true });
-  setTimeout(() => { splash.hidden = true; }, 1400);   // in case the fade is skipped
-
-  muted = rememberedMute();   // now the choice from last time counts
-  $("weather").textContent = `rain: ${muted ? "off" : "on"}`;
-  rainLevel(RAIN_UNDER);      // still there, just further away now
-  $("weather").hidden = false;
-  setStatus("connecting");
-  connect();
 }
 
-splash.addEventListener("click", turnOn);
+splash.addEventListener("click", showSessionPicker);
 splash.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.code === "Space") { e.preventDefault(); turnOn(); }
+  if (!browserAuth.authenticated) return;
+  if (e.key === "Enter" || e.code === "Space") { e.preventDefault(); showSessionPicker(); }
 });
 
 const talk = $("talk");

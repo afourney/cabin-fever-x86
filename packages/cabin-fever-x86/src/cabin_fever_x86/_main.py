@@ -210,7 +210,7 @@ async def run(home: Path, config: Path, port: int, rebuild: bool = False) -> Non
     # Quicksand's default is MOUNTS_ONLY, so this is a deliberate widening —
     # and it means anything that escapes the interpreter has a way out.
     #
-    # One forward, and only one: the web client. The game server listens inside
+    # One forward, and only one: the web gateway. The game server listens inside
     # the guest and stays there. Quicksand pins the host end to 127.0.0.1 and
     # offers no way to widen it, so this is a loopback port by construction.
     async with Sandbox(
@@ -248,7 +248,7 @@ async def run(home: Path, config: Path, port: int, rebuild: bool = False) -> Non
 
         if web in done:
             code = web.result()
-            print(f"\nThe radio went quiet (web client exited {code}).")
+            print(f"\nThe radio went quiet (web gateway exited {code}).")
         else:
             print("\nHanging up.")
 

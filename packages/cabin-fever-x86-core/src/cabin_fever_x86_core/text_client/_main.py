@@ -1,6 +1,6 @@
 """Entry point for the Cabin Fever x86 text client.
 
-Same session protocol as the other two clients; the difference is that the
+Same session protocol as the gateways; the difference is that the
 words are typed. There is no voice on this one, so the terminal does the work
 the radio does elsewhere: who is speaking, whether the channel is busy, and
 how long the cabin has been sitting on the reply.

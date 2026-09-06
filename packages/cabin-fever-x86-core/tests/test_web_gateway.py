@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from cabin_fever_x86_core import transcripts
 from cabin_fever_x86_core.messages import AssistantMessage
 from cabin_fever_x86_core.voice import PCM_SAMPLE_RATE, VoiceError, stream_speech
-from cabin_fever_x86_core.web_client import _main as web
+from cabin_fever_x86_core.web_gateway import _main as web
 
 
 class Browser:
@@ -44,7 +44,11 @@ class Upstream:
 
 @pytest.fixture
 def radio(tmp_path, monkeypatch):
-    monkeypatch.setattr(transcripts, "session_dir", lambda *_: tmp_path)
+    def guest_session_dir(*_args, user_id):
+        assert user_id == "guest"
+        return tmp_path
+
+    monkeypatch.setattr(transcripts, "session_dir", guest_session_dir)
     session_id = uuid4()
     return web.Radio(session_id, Upstream(), transcripts.Transcript(session_id, "web"), Browser())
 
@@ -204,7 +208,8 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
         async def close(self):
             closed.append(True)
 
-    async def connect(_):
+    async def connect(_, *, additional_headers):
+        assert additional_headers == {"X-CF86-User-ID": "guest"}
         return Connection()
 
     async def open_session(*_):
@@ -216,10 +221,12 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "connect", connect)
     monkeypatch.setattr(web, "open_session", open_session)
     monkeypatch.setattr(web, "stream_speech", audio)
-    with TestClient(web.create_app("ws://game", "test")) as client:
+    with TestClient(web.create_app("ws://game", "test"), base_url="http://localhost") as client:
         assert client.get("/pcm-player.js").status_code == 200
         assert "ElevenLabs" not in client.get("/").text
-        with client.websocket_connect("/ws") as browser:
+        with client.websocket_connect(
+            "ws://localhost/ws", headers={"origin": "http://localhost"}
+        ) as browser:
             session = browser.receive_json()
             assert session["voice"] is True
             assert browser.receive_json()["type"] == "assistant"
@@ -229,7 +236,9 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
             clip = client.get(f"/audio/{session['session_id']}/clean_{message.id}.wav")
             assert clip.status_code == 200
             assert clip.content.startswith(b"RIFF")
-            saved = tmp_path / "data/users/guest/sessions" / session["session_id"] / "web_client"
+            saved = tmp_path / "data/users/guest/sessions" / session["session_id"] / "web_gateway"
             assert (saved / "audio" / f"clean_{message.id}.wav").read_bytes() == clip.content
             assert (saved / "transcript.jsonl").is_file()
+            browser.close()
+            assert browser.receive()["type"] == "websocket.close"
     assert closed
