@@ -147,7 +147,10 @@ function page() {
     .replace("\nopenWeather();", "");
   vm.runInContext(source, scope);
   scope.context = new Context();
-  vm.runInContext(`audioCtx = context; recorder = { state: "inactive", start() {} }; connect();
+  vm.runInContext(`audioCtx = context; recorder = {
+      state: "inactive", start() {},
+      stream: { getAudioTracks: () => [{ readyState: "live" }] },
+    }; connect();
     globalThis.handlers = {
       message: data => ws.onmessage({ data }), keyDown, cutPlayback,
       close: () => ws.onclose({ code: 1000 }),
@@ -178,7 +181,7 @@ test("page queues streams, and microphone interruption discards current, queued 
   await settle();
   const second = p.handlers.streams().get(2);
   assert.equal(second.started, false);
-  p.handlers.keyDown();
+  await p.handlers.keyDown();
   p.chunk(1); p.end(1); p.start(3); p.chunk(3);
   await settle();
   assert.equal(first.cancelled, true);
@@ -223,7 +226,7 @@ test("empty replies play static and can be interrupted", async t => {
   await settle();
   assert.equal(p.elements.get("status").textContent, "RECEIVING");
   assert.ok(p.context.sources.length > 0);
-  p.handlers.keyDown();
+  await p.handlers.keyDown();
   await settle();
   assert.equal(p.handlers.playing(), null);
   assert.equal(p.elements.get("status").textContent, "TRANSMITTING");

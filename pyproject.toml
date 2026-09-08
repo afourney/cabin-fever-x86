@@ -75,7 +75,7 @@ test-core = { cmd = "pytest", cwd = "packages/cabin-fever-x86-core" }
 test-app = { cmd = "pytest", cwd = "packages/cabin-fever-x86" }
 test = ["test-core", "test-app"]
 # Node 22.8+; no npm dependencies are needed for the browser playback tests.
-test-web = "node --test packages/cabin-fever-x86-core/tests/pcm-player.test.mjs packages/cabin-fever-x86-core/tests/browser-auth.test.mjs packages/cabin-fever-x86-core/tests/session-picker.test.mjs"
+test-web = "node --test packages/cabin-fever-x86-core/tests/pcm-player.test.mjs packages/cabin-fever-x86-core/tests/browser-auth.test.mjs packages/cabin-fever-x86-core/tests/session-picker.test.mjs packages/cabin-fever-x86-core/tests/microphone.test.mjs"
 
 # Separate out-dirs: `uv build --package` writes to the root dist/, so two
 # builds on one machine would otherwise pile into the same folder and the
