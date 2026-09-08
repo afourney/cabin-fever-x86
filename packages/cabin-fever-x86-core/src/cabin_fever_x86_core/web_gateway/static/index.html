@@ -624,7 +624,9 @@ function connect(resume) {
     clearInterval(keepAlive);
     if (!opened) rejectSession(new Error("Could not open the game. Please try again."));
     if (ws !== socket) return;
+if (recorder?.state === "recording") recorder.onstop = null;
     keyUp();
+    recorder?.stream.getTracks().forEach(track => track.stop());
     cutPlayback();
     setStatus("disconnected");
     $("talk").disabled = true;
