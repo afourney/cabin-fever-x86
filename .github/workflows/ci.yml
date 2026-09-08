@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --test packages/cabin-fever-x86-core/tests/pcm-player.test.mjs packages/cabin-fever-x86-core/tests/browser-auth.test.mjs packages/cabin-fever-x86-core/tests/session-picker.test.mjs
+      - run: node --test packages/cabin-fever-x86-core/tests/pcm-player.test.mjs packages/cabin-fever-x86-core/tests/browser-auth.test.mjs packages/cabin-fever-x86-core/tests/session-picker.test.mjs packages/cabin-fever-x86-core/tests/microphone.test.mjs
 
   build-core:
     runs-on: ubuntu-latest
