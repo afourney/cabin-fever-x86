@@ -149,7 +149,10 @@ function page() {
   scope.context = new Context();
   vm.runInContext(`audioCtx = context; recorder = {
       state: "inactive", start() {},
-      stream: { getAudioTracks: () => [{ readyState: "live" }] },
+      stream: {
+        getAudioTracks: () => [{ readyState: "live" }],
+        getTracks: () => [{ stop() {} }],
+      },
     }; connect();
     globalThis.handlers = {
       message: data => ws.onmessage({ data }), keyDown, cutPlayback,
