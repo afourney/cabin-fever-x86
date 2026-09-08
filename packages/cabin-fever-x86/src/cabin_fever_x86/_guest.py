@@ -245,6 +245,12 @@ async def attach(sandbox: Sandbox, home: Path, config: Path) -> str:
     """
     await sandbox.mount(str((home / DATA_DIR).resolve()), GUEST_DATA)
 
+    # Quicksand's SMB server rejects byte-range locks. Keep flock (signing key)
+    # and SQLite locking local to this guest instead of forwarding them to SMB.
+    result = await sandbox.execute(f"sudo mount -o remount,nobrl {shlex.quote(GUEST_DATA)}")
+    if result.exit_code != 0:
+        raise GuestInitError(f"could not enable guest-local locking for {GUEST_DATA}")
+
     text = config.read_text(encoding="utf-8")
     result = await sandbox.execute(write_command(text, GUEST_CONFIG, CONFIG_MARKER))
     if result.exit_code != 0:

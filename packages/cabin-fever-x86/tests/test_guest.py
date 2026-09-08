@@ -279,6 +279,7 @@ async def test_attach_mounts_data_and_copies_the_config_in(tmp_path):
 
     # Data is mounted; the config is not — nothing beside it is exposed.
     assert sandbox.mounts == [(str(tmp_path / "data"), GUEST_DATA, False)]
+    assert sandbox.commands[0] == f"sudo mount -o remount,nobrl {GUEST_DATA}"
     assert guest_config == GUEST_CONFIG
     assert f"> {GUEST_CONFIG}" in sandbox.commands[-1]
     assert "client: {port: 5000}" in sandbox.commands[-1]
@@ -403,10 +404,27 @@ async def test_a_server_that_dies_on_startup_is_reported():
 
 
 async def test_a_config_that_cannot_be_written_is_reported(tmp_path):
-    sandbox = FakeSandbox(exit_code=1)
+    class ConfigWriteFailure(FakeSandbox):
+        async def execute(self, command, **kwargs):
+            self.exit_code = int(CONFIG_MARKER in command)
+            return await super().execute(command, **kwargs)
+
+    sandbox = ConfigWriteFailure()
     config = tmp_path / "config.yaml"
     config.write_text("client: {}\n")
     (tmp_path / "data").mkdir()
 
     with pytest.raises(GuestInitError, match=re.escape(GUEST_CONFIG)):
         await attach(sandbox, tmp_path, config)
+
+
+async def test_attach_stops_if_guest_local_locking_cannot_be_enabled(tmp_path):
+    sandbox = FakeSandbox(exit_code=1)
+    config = tmp_path / "config.yaml"
+    config.write_text("client: {}\n")
+    (tmp_path / "data").mkdir()
+
+    with pytest.raises(GuestInitError, match="guest-local locking"):
+        await attach(sandbox, tmp_path, config)
+    assert len(sandbox.commands) == 1
+    assert CONFIG_MARKER not in sandbox.commands[0]
