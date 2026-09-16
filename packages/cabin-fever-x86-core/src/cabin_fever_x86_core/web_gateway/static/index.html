@@ -825,13 +825,16 @@ talk.addEventListener("pointerup", keyUp);
 talk.addEventListener("pointercancel", keyUp);
 talk.addEventListener("pointerleave", keyUp);
 
+// Space is the primary push-to-talk key; F13 is an alias (e.g. a foot pedal or macro key).
+const isTalkKey = (e) => e.code === "Space" || e.code === "F13" || e.key === "F13";
+
 addEventListener("keydown", (e) => {
-  if (e.code !== "Space" || e.repeat || $("talk").disabled) return;
+  if (!isTalkKey(e) || e.repeat || $("talk").disabled) return;
   e.preventDefault();
   keyDown();
 });
 addEventListener("keyup", (e) => {
-  if (e.code !== "Space") return;
+  if (!isTalkKey(e)) return;
   e.preventDefault();
   keyUp();
 });
