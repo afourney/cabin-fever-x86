@@ -76,6 +76,14 @@ To add new games, copy the `.z3`–`.z8` files into `<cabin-fever-home>/data/gam
 
 When running `cf86-server` directly during development, the server instead uses `data/games/` relative to the directory from which it was started.
 
+## K1 Speaker Mic Hardware
+
+For an even more immersive experience, you can use a [K1 Speaker Mic](https://github.com/afourney/usb-k1-speakermic-adapter) to chat over the radio. K1 speaker mics originated with Kenwood radios, but the simple connector has become a de facto standard for radios from many other brands, including the ubiquitous Baofeng UV-5R. Visit our sister project [usb-k1-speakermic-adapter](https://github.com/afourney/usb-k1-speakermic-adapter) for instructions on how to build a USB adapter for your K1 speaker mic to play Cabin Fever x86.
+
+[![Play Cabin Fever x86 with a real radio speaker mic!](https://raw.githubusercontent.com/afourney/usb-k1-speakermic-adapter/main/docs/images/video_thumbnail_k1.png)](https://www.youtube.com/watch?v=ixthcVkOpio)
+
+![The finished adapter and BTECH speaker mic running Cabin Fever x86](https://raw.githubusercontent.com/afourney/usb-k1-speakermic-adapter/main/docs/images/cabin-fever-demo.jpg)
+
 ## Development
 Development requires a Linux or WSL environment, and uses [uv](https://docs.astral.sh/uv) to manage the workspace and packages. To get started:
 
