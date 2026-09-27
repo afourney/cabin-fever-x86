@@ -211,6 +211,7 @@ const log = $("log"), status = $("status"), sessionLabel = $("session");
 let ws = null, audioCtx = null, recorder = null, chunks = [], sessionId = null;
 let playing = null, keyed = false, queue = Promise.resolve();
 let rain = null;
+let reconnectTimer = null, reconnectDelay = 1000, pingChannel = null;
 const streams = new Map();
 let playbackGeneration = 0;
 const browserAuth = new BrowserAuthController({
@@ -218,7 +219,11 @@ const browserAuth = new BrowserAuthController({
   onSignedIn: () => showSessionPicker(),
   onExpired: () => {
     sessionId = null;
-    ws?.close();
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    const socket = ws;
+    ws = null;
+    socket?.close();
     cutPlayback();
     recorder?.stream?.getTracks().forEach(track => track.stop());
     location.reload(); // Clear the previous user's transcript and microphone state.
@@ -556,19 +561,79 @@ function failStream(id) {
 
 // --- the channel ----------------------------------------------------------
 
+function scheduleReconnect(delay = reconnectDelay) {
+  if (!sessionId || !browserAuth.authenticated || ws || reconnectTimer !== null) return;
+  setStatus("reconnecting…");
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (!sessionId || !browserAuth.authenticated || ws) return;
+    // Only resume a confirmed session: retrying a new game could create duplicates.
+    void connect(sessionId).catch(() => {});
+  }, delay);
+  reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+}
+
+function wakeChannel() {
+  if (!sessionId || !browserAuth.authenticated) return;
+  if (ws) { pingChannel?.(); return; }
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  scheduleReconnect(0);
+}
+
+addEventListener("online", wakeChannel);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") wakeChannel();
+});
+
 function connect(resume) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${proto}://${location.host}/ws${resume ? `?resume=${encodeURIComponent(resume)}` : ""}`);
   ws = socket;
   let opened = false, resolveSession, rejectSession;
+  let keepAlive = null, heartbeatTimeout = null;
   const ready = new Promise((resolve, reject) => { resolveSession = resolve; rejectSession = reject; });
   const timeout = setTimeout(() => {
-    rejectSession(new Error("The game is taking too long to connect. Please try again."));
+    disconnected(new Error("The game is taking too long to connect. Please try again."));
     socket.close();
   }, 30000);
 
+  function disconnected(error = new Error("Could not open the game. Please try again."), code) {
+    clearTimeout(timeout);
+    clearInterval(keepAlive);
+    clearTimeout(heartbeatTimeout);
+    if (!opened) rejectSession(error);
+    if (ws !== socket) return;
+    ws = null;
+    pingChannel = null;
+    // Discard a take interrupted by the outage, including queued recorder events.
+    if (recorder) { recorder.onstop = null; recorder.ondataavailable = null; }
+    keyUp();
+    recorder?.stream.getTracks().forEach(track => track.stop());
+    recorder = null;
+    chunks = [];
+    cutPlayback();
+    $("talk").disabled = true;
+    setStatus("disconnected");
+    if (code === 4401) { browserAuth.onExpired(); return; }
+    scheduleReconnect();
+  }
+
+  function ping() {
+    if (ws !== socket || !opened || heartbeatTimeout !== null) return;
+    // A sleeping laptop can leave readyState OPEN even after the connection dies.
+    heartbeatTimeout = setTimeout(() => {
+      disconnected();
+      socket.close();
+    }, 10000);
+    try { socket.send("."); }
+    catch { disconnected(); socket.close(); }
+  }
+  pingChannel = ping;
+
   socket.binaryType = "arraybuffer";
   socket.onmessage = (event) => {
+    if (ws !== socket) return;
     if (event.data instanceof ArrayBuffer) {
       // Every audio packet starts with its uint32 stream ID (network order).
       if (event.data.byteLength < 4) return;
@@ -578,9 +643,13 @@ function connect(resume) {
       return;
     }
     const msg = JSON.parse(event.data);
-    if (msg.type === "session") {
+    if (msg.type === "pong") {
+      clearTimeout(heartbeatTimeout);
+      heartbeatTimeout = null;
+    } else if (msg.type === "session") {
       opened = true;
       clearTimeout(timeout);
+      reconnectDelay = 1000;
       sessionId = msg.session_id;
       sessionLabel.textContent = `session ${sessionId}`;
       if (!msg.voice) say("note", "Voice is unavailable — text only.");
@@ -610,8 +679,7 @@ function connect(resume) {
       say("user", msg.text);
     } else if (msg.type === "error") {
       if (!opened) {
-        clearTimeout(timeout);
-        rejectSession(new Error(msg.text));
+        disconnected(new Error(msg.text));
         socket.close();
         return;
       }
@@ -619,23 +687,12 @@ function connect(resume) {
     }
   };
 
-  socket.onclose = (event) => {
-    clearTimeout(timeout);
-    clearInterval(keepAlive);
-    if (!opened) rejectSession(new Error("Could not open the game. Please try again."));
-    if (ws !== socket) return;
-if (recorder?.state === "recording") recorder.onstop = null;
-    keyUp();
-    recorder?.stream.getTracks().forEach(track => track.stop());
-    cutPlayback();
-    setStatus("disconnected");
-    $("talk").disabled = true;
-    if (event.code === 4401) browserAuth.onExpired();
+  socket.onclose = (event) => disconnected(undefined, event.code);
+  socket.onerror = () => {
+    if (ws === socket) setStatus(sessionId ? "reconnecting…" : "connection error");
   };
-  socket.onerror = () => setStatus("connection error");
 
-  // Keep the socket from idling out; the page has nothing else to send.
-  const keepAlive = setInterval(() => socket.readyState === 1 && socket.send("."), 20000);
+  keepAlive = setInterval(ping, 20000);
   return ready;
 }
 
@@ -690,6 +747,7 @@ async function startMic() {
 }
 
 async function send() {
+  const socket = ws;
   const blob = new Blob(chunks, { type: recorder.mimeType });
   chunks = [];
   if (!blob.size || !sessionId) return;
@@ -709,7 +767,7 @@ async function send() {
   } catch (err) {
     say("error", `transmission failed: ${err}`);
   } finally {
-    setStatus(playing ? "RECEIVING" : "");
+    if (ws === socket && socket) setStatus(playing ? "RECEIVING" : "");
   }
 }
 

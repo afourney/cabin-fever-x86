@@ -434,7 +434,9 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
                 if pump in done:
                     await pump  # Surface relay errors and close when the game ends.
                     break
-                await receiver
+                if await receiver == ".":
+                    # Let the page detect a dead connection after sleep.
+                    await browser.send_json({"type": "pong"})
                 receiver = asyncio.create_task(browser.receive_text())
         except (WebSocketDisconnect, ConnectionClosed, RuntimeError):
             pass

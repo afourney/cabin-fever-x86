@@ -239,6 +239,8 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
             saved = tmp_path / "data/users/guest/sessions" / session["session_id"] / "web_gateway"
             assert (saved / "audio" / f"clean_{message.id}.wav").read_bytes() == clip.content
             assert (saved / "transcript.jsonl").is_file()
+            browser.send_text(".")
+            assert browser.receive_json() == {"type": "pong"}
             browser.close()
             assert browser.receive()["type"] == "websocket.close"
     assert closed
