@@ -12,6 +12,7 @@ import pytest
 
 from cabin_fever_x86_core.config import Config
 from cabin_fever_x86_core.messages import AssistantMessage, ErrorResult, SessionResult
+from cabin_fever_x86_core.session_client import SessionTakenOver
 from cabin_fever_x86_core.zello_gateway import _main
 from cabin_fever_x86_core.zello_gateway._main import ZelloGateway, _static_burst
 
@@ -345,6 +346,9 @@ class LiveStream:
 
     async def __aenter__(self):
         return self
+
+    async def wait_closed(self):
+        await asyncio.Event().wait()
 
     async def __aexit__(self, *args):
         self.closed = True
@@ -760,3 +764,20 @@ async def test_zero_channels_fails(service) -> None:
     with pytest.raises(_main.ZelloGatewayError, match="no channels configured"):
         await _main.run_channels("localhost", 5001, "keys.yaml", {}, "key")
     assert not service.connections
+
+
+async def test_takeover_retires_only_the_displaced_channel(service):
+    task = start_service()
+    try:
+        await wait_ready(service, 3)
+        first = service.connections[0]
+        first.queue.put_nowait(SessionTakenOver("Session moved elsewhere"))
+        async with asyncio.timeout(3):
+            await first.finished.wait()
+            while not first.closed:
+                await asyncio.sleep(0)
+        assert not task.done()
+        assert all(not connection.closed for connection in service.connections[1:])
+        assert len(service.opens) == 3
+    finally:
+        await cancel_service(task)

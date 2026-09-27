@@ -132,12 +132,12 @@ function page() {
   const scope = vm.createContext({ PCMPlayer, Uint8Array, ArrayBuffer, DataView,
     BrowserAuthController: class { authenticated = true; state = { implicit_guest: true }; async initialize() {} },
     SessionPickerController: class {},
-    Float32Array, URLSearchParams, console, setTimeout, clearTimeout,
+    Float32Array, URLSearchParams, console, setTimeout: () => 1, clearTimeout() {},
     setInterval: () => 1, clearInterval() {}, addEventListener() {},
     document: { getElementById(id) {
       if (!elements.has(id)) elements.set(id, element());
       return elements.get(id);
-    }, createElement: element },
+    }, createElement: element, addEventListener() {} },
     location: { search: "", protocol: "http:", host: "localhost" },
     WebSocket: class { send() {} },
   });
@@ -210,7 +210,7 @@ test("page advances to the next reply after audio and squelch drain", async t =>
   assert.equal(second.started, true);
 });
 
-test("disconnect cuts audio and retains disconnected status after cleanup", async t => {
+test("disconnect cuts audio and retains reconnecting status after cleanup", async t => {
   const p = page();
   t.after(() => p.handlers.cutPlayback());
   p.start(1); p.chunk(1);
@@ -219,7 +219,7 @@ test("disconnect cuts audio and retains disconnected status after cleanup", asyn
   await settle();
   assert.equal(p.handlers.playing(), null);
   assert.equal(p.handlers.streams().size, 0);
-  assert.equal(p.elements.get("status").textContent, "disconnected");
+  assert.equal(p.elements.get("status").textContent, "reconnecting…");
 });
 
 test("empty replies play static and can be interrupted", async t => {

@@ -24,13 +24,18 @@ from cabin_fever_x86_core import __version__
 from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
+    SESSION_REPLACED,
     AssistantMessage,
     CompactionCompleted,
     CompactSessionCommand,
     ErrorResult,
     UserMessage,
 )
-from cabin_fever_x86_core.session_client import SessionCommandError, list_sessions, open_session
+from cabin_fever_x86_core.session_client import (
+    SessionCommandError,
+    list_sessions,
+    open_owned_session,
+)
 from cabin_fever_x86_core.sessions import TELEGRAM_GATEWAY_COMPONENT, user_dir
 from cabin_fever_x86_core.transcripts import Transcript
 from cabin_fever_x86_core.voice import VoiceError, synthesize, transcribe
@@ -134,6 +139,8 @@ class TelegramGateway:
         # per account; lock waiters currently have no backlog limit.
         self._account_locks = {account_id: asyncio.Lock() for account_id in accounts}
         self.sessions: dict[int, TelegramSession] = {}
+        self.owner_tokens: dict[int, str] = {}
+        self.displaced: set[int] = set()
         self.last_sessions = {
             user_id: _load_state(_state_path(user_id)) for user_id in set(accounts.values())
         }
@@ -168,12 +175,20 @@ class TelegramGateway:
             return_exceptions=True,
         )
 
-    async def open(self, account_id: int, chat_id: int, resume: UUID | None) -> TelegramSession:
+    async def open(
+        self, account_id: int, chat_id: int, resume: UUID | None, *, recover: bool = False
+    ) -> TelegramSession:
         """Replace the account's channel with a new or resumed server game."""
         await self.close_session(account_id)
         connection = await self._connect(account_id)
         try:
-            session_id = await open_session(connection, resume)
+            result = await open_owned_session(
+                connection,
+                resume,
+                mode="recover" if recover else "takeover",
+                owner_token=self.owner_tokens.get(account_id) if recover else None,
+            )
+            session_id = result.session_id
         except BaseException:
             await connection.close()
             raise
@@ -184,6 +199,9 @@ class TelegramGateway:
         transcript.log("session", None, f"{verb} for Telegram account {account_id}")
         session = TelegramSession(account_id, chat_id, session_id, connection, transcript)
         self.sessions[account_id] = session
+        self.displaced.discard(account_id)
+        if result.owner_token is not None:
+            self.owner_tokens[account_id] = result.owner_token
         self.last_sessions[user_id][account_id] = session_id
         _save_state(self.last_sessions[user_id], _state_path(user_id))
         session.pump = asyncio.create_task(self._pump(session), name=f"telegram-{account_id}")
@@ -191,8 +209,9 @@ class TelegramGateway:
         return session
 
     async def _pump(self, session: TelegramSession) -> None:
-        """Forward unsolicited and solicited server transmissions to Telegram."""
-        try:
+        """Retire a displaced relay even while it is waiting for voice synthesis."""
+
+        async def relay() -> None:
             async for raw in session.connection:
                 try:
                     message = SERVER_MESSAGE_ADAPTER.validate_json(raw)
@@ -216,22 +235,37 @@ class TelegramGateway:
                     else:
                         session.transcript.log("error", message.request_id, message.message)
                         await self.send(session.chat_id, f"Error: {message.message}")
-        except ConnectionClosed as exc:
-            logger.warning(
-                "Server connection closed for Telegram account %d: %s", session.account_id, exc
-            )
-            await self.send(session.chat_id, "The game server connection closed.")
+
+        receiving = asyncio.create_task(relay())
+        closed = asyncio.create_task(session.connection.wait_closed())
+        try:
+            done, _ = await asyncio.wait({receiving, closed}, return_when=asyncio.FIRST_COMPLETED)
+            if receiving in done:
+                await receiving
+        except ConnectionClosed:
+            pass
         except Exception:
             logger.exception("Telegram relay failed for account %d", session.account_id)
             with suppress(Exception):
                 await self.send(session.chat_id, "The connection to the game failed.")
         finally:
+            receiving.cancel()
+            closed.cancel()
+            await asyncio.gather(receiving, closed, return_exceptions=True)
             for pending in session.pending_compactions.values():
                 if not pending.done():
                     pending.set_exception(SessionCommandError("game server connection closed"))
             session.pending_compactions.clear()
             if self.sessions.get(session.account_id) is session:
                 self.sessions.pop(session.account_id, None)
+                if session.connection.close_code == SESSION_REPLACED:
+                    self.displaced.add(session.account_id)
+                    await self.send(
+                        session.chat_id,
+                        "Session moved to another connection. Use /resume or /continue to take control again.",
+                    )
+                else:
+                    await self.send(session.chat_id, "The game server connection closed.")
 
     async def _deliver_assistant(self, session: TelegramSession, message: AssistantMessage) -> None:
         """Answer in kind after the first, which is voiced when possible."""
@@ -354,7 +388,13 @@ class TelegramGateway:
             return session
 
         resume = self.last_sessions[self.accounts[account_id]].get(account_id)
-        session = await self.open(account_id, chat_id, resume)
+        if resume is not None and (
+            account_id in self.displaced or account_id not in self.owner_tokens
+        ):
+            raise SessionCommandError(
+                "Use /resume or /continue to take control of your saved session.", "resume_required"
+            )
+        session = await self.open(account_id, chat_id, resume, recover=resume is not None)
         await self.send(
             chat_id,
             f"{'Resumed' if resume else 'Started'} session {session.session_id}.",

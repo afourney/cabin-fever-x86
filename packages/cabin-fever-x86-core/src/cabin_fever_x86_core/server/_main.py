@@ -9,6 +9,7 @@ import sys
 from contextlib import AsyncExitStack
 from functools import partial
 from http import HTTPStatus
+from uuid import uuid4
 
 from pydantic import ValidationError
 from websockets.asyncio.server import ServerConnection, serve
@@ -37,6 +38,7 @@ from cabin_fever_x86_core.messages import (
 from cabin_fever_x86_core.server._download import DownloadError, ensure_games
 from cabin_fever_x86_core.server._game import Game, SendCallback
 from cabin_fever_x86_core.server._machine import GAMES_DIR
+from cabin_fever_x86_core.server._ownership import Owner, OwnershipError, SessionRegistry
 from cabin_fever_x86_core.sessions import (
     GUEST_USER_ID,
     SERVER_COMPONENT,
@@ -53,6 +55,7 @@ class UserConnection(ServerConnection):
     """A connection carrying the user identity asserted by a trusted adapter."""
 
     user_id: str = GUEST_USER_ID
+    owner: Owner | None = None
 
 
 def identify_user(connection: UserConnection, request: Request) -> Response | None:
@@ -100,6 +103,8 @@ async def _run_command(
     games: AsyncExitStack,
     *,
     user_id: str = GUEST_USER_ID,
+    registry: SessionRegistry | None = None,
+    connection: UserConnection | None = None,
 ) -> tuple[Game | None, SessionResult | SessionListResult | CompactionCompleted]:
     """Carry out a session command, returning the game it left in place."""
     if isinstance(command, ListSessionsCommand):
@@ -121,17 +126,35 @@ async def _run_command(
     if session_id is not None and not session_exists(session_id, SERVER_COMPONENT, user_id=user_id):
         raise CommandRefused(f"no such session: {session_id}")
 
+    assert registry is not None and connection is not None
     try:
-        game = await games.enter_async_context(Game(config, send, session_id, user_id=user_id))
+        owner = await registry.acquire(
+            user_id,
+            session_id or uuid4(),
+            connection,
+            config,
+            send,
+            mode=command.mode if isinstance(command, ResumeGameCommand) else "takeover",
+            token=command.owner_token if isinstance(command, ResumeGameCommand) else None,
+        )
+        connection.owner = owner
+        games.push_async_callback(registry.release, user_id, owner)
+        game = owner.game
+    except OwnershipError:
+        raise
     except Exception as exc:
         logger.exception("Could not start a game")
         raise CommandRefused(f"could not start: {exc}") from exc
 
     logger.info("%s session %s", "Resumed" if session_id else "Started", game.session_id)
-    return game, SessionResult(request_id=command.id, session_id=game.session_id)
+    return game, SessionResult(
+        request_id=command.id, session_id=game.session_id, owner_token=owner.token
+    )
 
 
-async def handle_connection(connection: UserConnection, config: ServerConfig) -> None:
+async def handle_connection(
+    connection: UserConnection, config: ServerConfig, registry: SessionRegistry
+) -> None:
     """Serve one client connection: session commands first, then the game."""
     peer = connection.remote_address
     logger.info("Client connected: %s, user %s", peer, connection.user_id)
@@ -145,11 +168,15 @@ async def handle_connection(connection: UserConnection, config: ServerConfig) ->
     try:
         async with AsyncExitStack() as games:
             async for raw in connection:
+                # The iterator has already awaited receipt of this frame. Reject buffered
+                # commands if ownership changed while it was waiting; parsing cannot yield.
+                if connection.owner is not None and not connection.owner.active:
+                    break
                 try:
                     message = CLIENT_MESSAGE_ADAPTER.validate_json(raw)
-                except ValidationError as exc:
-                    logger.warning("Discarding malformed message from %s: %s", peer, exc)
-                    await send(ErrorResult(message=f"malformed message: {exc}"))
+                except ValidationError:
+                    logger.warning("Discarding malformed message from %s", peer)
+                    await send(ErrorResult(message="malformed message"))
                     continue
 
                 try:
@@ -162,15 +189,28 @@ async def handle_connection(connection: UserConnection, config: ServerConfig) ->
                         await game.receive(message)
                     else:
                         game, result = await _run_command(
-                            message, game, config, send, games, user_id=connection.user_id
+                            message,
+                            game,
+                            config,
+                            send,
+                            games,
+                            user_id=connection.user_id,
+                            registry=registry,
+                            connection=connection,
                         )
+                        if connection.owner is not None and not connection.owner.active:
+                            break
                         await send(result)
+                        if connection.owner is not None and not connection.owner.active:
+                            break
                         if isinstance(result, SessionResult) and game is not None:
                             # Only now that the client knows the session id is
                             # it safe for the cabin to speak first.
                             await game.open_channel()
                 except CommandRefused as exc:
                     await send(ErrorResult(request_id=message.id, message=str(exc)))
+                except OwnershipError as exc:
+                    await send(ErrorResult(request_id=message.id, message=str(exc), code=exc.code))
     except ConnectionClosed:
         pass
     except Exception:
@@ -182,12 +222,20 @@ async def handle_connection(connection: UserConnection, config: ServerConfig) ->
 
 async def run_server(interface: str, port: int, config: ServerConfig) -> None:
     """Serve until interrupted."""
-    handler = partial(handle_connection, config=config)
-    async with serve(
-        handler, interface, port, create_connection=UserConnection, process_request=identify_user
-    ):
-        logger.info("Listening on ws://%s:%d", interface, port)
-        await asyncio.get_running_loop().create_future()
+    registry = SessionRegistry()
+    handler = partial(handle_connection, config=config, registry=registry)
+    try:
+        async with serve(
+            handler,
+            interface,
+            port,
+            create_connection=UserConnection,
+            process_request=identify_user,
+        ):
+            logger.info("Listening on ws://%s:%d", interface, port)
+            await asyncio.get_running_loop().create_future()
+    finally:
+        await registry.close()
 
 
 def main() -> None:

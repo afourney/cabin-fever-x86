@@ -21,8 +21,9 @@ import sys
 import tempfile
 import wave
 from contextlib import aclosing, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 from uuid import UUID, uuid4
 
 import httpx
@@ -30,14 +31,17 @@ import uvicorn
 from elevenlabs.client import AsyncElevenLabs, ElevenLabs
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
+from websockets.protocol import State
 
 from cabin_fever_x86_core import __version__
 from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from cabin_fever_x86_core.messages import (
+    RESUME_REQUIRED,
     SERVER_MESSAGE_ADAPTER,
+    SESSION_REPLACED,
     AssistantMessage,
     ErrorResult,
     UserMessage,
@@ -45,7 +49,7 @@ from cabin_fever_x86_core.messages import (
 from cabin_fever_x86_core.session_client import (
     SessionCommandError,
     list_sessions,
-    open_session,
+    open_owned_session,
 )
 from cabin_fever_x86_core.sessions import WEB_GATEWAY_COMPONENT, session_dir
 from cabin_fever_x86_core.transcripts import AUDIO_DIR, Transcript
@@ -84,6 +88,20 @@ class Radio:
     stream_id: int = 0
     user_id: str = "guest"
     auth_session_id: str | None = None
+    owner_token: str | None = field(default=None, repr=False)
+    connection_id: str = field(default_factory=lambda: str(uuid4()))
+    active: bool = True
+    retire: asyncio.Event = field(default_factory=asyncio.Event)
+    finished: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+class BrowserOpen(BaseModel):
+    """Session request sent in the socket body, keeping recovery tokens out of URLs."""
+
+    type: Literal["open"]
+    resume: UUID | None = None
+    mode: Literal["takeover", "recover"] = "takeover"
+    owner_token: str | None = Field(default=None, repr=False, max_length=256)
 
 
 async def _stream_reply(
@@ -322,6 +340,19 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
         if radio is None or radio.auth_session_id != principal.sid:
             raise HTTPException(status_code=404, detail="no such session")
 
+        def require_owner() -> None:
+            if (
+                not radio.active
+                or live.get((principal.user_id, session_id)) is not radio
+                or radio.upstream.state is not State.OPEN
+                or request.headers.get("X-CF86-Owner-Token") != radio.owner_token
+                or request.headers.get("X-CF86-Connection") != radio.connection_id
+            ):
+                raise HTTPException(
+                    status_code=409, detail="Session moved. Explicitly resume to transmit."
+                )
+
+        require_owner()
         recording = await request.body()
         if not auth.valid(principal):
             raise HTTPException(status_code=401, detail="Sign in to use the radio")
@@ -352,6 +383,7 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
 
         if not auth.valid(principal):
             raise HTTPException(status_code=401, detail="Sign in to use the radio")
+        require_owner()
         if not text:
             return {"id": str(message_id), "text": "", "audio": clip}
 
@@ -373,83 +405,129 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
             await browser.close(code=4401)
             return
         await browser.accept()
-        resume = browser.query_params.get("resume")
-
+        upstream = None
+        radio = None
+        tasks = set()
+        close_code = 1000
         try:
+            try:
+                resume = browser.query_params.get("resume")
+                resume = UUID(resume) if resume else None
+                mode, token = "legacy", None
+                if browser.query_params.get("protocol") == "2":
+                    async with asyncio.timeout(30):
+                        request = BrowserOpen.model_validate(await browser.receive_json())
+                    resume, mode, token = request.resume, request.mode, request.owner_token
+            except (ValueError, TimeoutError) as exc:
+                raise SessionCommandError(
+                    "Invalid session request. Please resume again.", "resume_required"
+                ) from exc
+            if mode == "recover" and resume is None:
+                raise SessionCommandError("Explicitly resume the session.", "resume_required")
+            if not auth.valid(principal):
+                close_code = 4401
+                return
             upstream = await connect(
                 upstream_uri, additional_headers={"X-CF86-User-ID": principal.user_id}
             )
-        except OSError as exc:
-            await browser.send_json({"type": "error", "text": f"cannot reach the game: {exc}"})
-            await browser.close()
-            return
+            result = await open_owned_session(upstream, resume, mode=mode, owner_token=token)
+            session_id = result.session_id
+            key = (principal.user_id, session_id)
+            previous = live.get(key)
+            if previous is not None:
+                previous.active = False
+                previous.retire.set()
+                await previous.finished.wait()
+            if not auth.valid(principal):
+                close_code = 4401
+                return
+            if upstream.state is not State.OPEN:
+                close_code = SESSION_REPLACED if upstream.close_code == SESSION_REPLACED else 1011
+                return
+            radio = Radio(
+                session_id=session_id,
+                upstream=upstream,
+                transcript=Transcript(session_id, WEB_GATEWAY_COMPONENT, user_id=principal.user_id),
+                browser=browser,
+                user_id=principal.user_id,
+                auth_session_id=principal.sid,
+                owner_token=result.owner_token,
+            )
+            live[key] = radio
+            radio.transcript.log("session", None, f"opened on {upstream_uri}")
+            logger.info("Session %s open for a browser", session_id)
 
-        try:
-            session_id = await open_session(upstream, UUID(resume) if resume else None)
-        except (SessionCommandError, ValueError) as exc:
-            await browser.send_json({"type": "error", "text": str(exc)})
-            await upstream.close()
-            await browser.close()
-            return
+            async def watch_authorization() -> None:
+                while auth.valid(principal):
+                    await asyncio.sleep(5)
 
-        if not auth.valid(principal):
-            await upstream.close()
-            await browser.close(code=4401, reason="Sign in to use the radio")
-            return
-
-        radio = Radio(
-            session_id=session_id,
-            upstream=upstream,
-            transcript=Transcript(session_id, WEB_GATEWAY_COMPONENT, user_id=principal.user_id),
-            browser=browser,
-            user_id=principal.user_id,
-            auth_session_id=principal.sid,
-        )
-        key = (principal.user_id, session_id)
-        live[key] = radio
-        radio.transcript.log("session", None, f"opened on {upstream_uri}")
-        logger.info("Session %s open for a browser", session_id)
-
-        await browser.send_json(
-            {"type": "session", "session_id": str(session_id), "voice": voice is not None}
-        )
-
-        pump = asyncio.create_task(_pump(radio, streaming_voice))
-        receiver = asyncio.create_task(browser.receive_text())
-
-        async def watch_authorization() -> None:
-            while auth.valid(principal):
-                await asyncio.sleep(5)
-            await browser.close(code=4401, reason="Sign in to use the radio")
-
-        guard = asyncio.create_task(watch_authorization())
-        try:
-            while True:  # The page sends keep-alives; microphone takes use HTTP.
-                done, _ = await asyncio.wait(
-                    {pump, receiver, guard}, return_when=asyncio.FIRST_COMPLETED
-                )
+            pump = asyncio.create_task(_pump(radio, streaming_voice))
+            receiver = asyncio.create_task(browser.receive_text())
+            guard = asyncio.create_task(watch_authorization())
+            retired = asyncio.create_task(radio.retire.wait())
+            closed = asyncio.create_task(upstream.wait_closed())
+            tasks = {pump, receiver, guard, retired, closed}
+            await browser.send_json(
+                {
+                    "type": "session",
+                    "session_id": str(session_id),
+                    "voice": voice is not None,
+                    "owner_token": result.owner_token,
+                    "connection_id": radio.connection_id,
+                }
+            )
+            while True:
+                done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 if guard in done:
-                    await guard
+                    close_code = 4401
+                    break
+                if retired in done:
+                    close_code = SESSION_REPLACED
+                    break
+                if closed in done:
+                    close_code = (
+                        SESSION_REPLACED if upstream.close_code == SESSION_REPLACED else 1011
+                    )
                     break
                 if pump in done:
-                    await pump  # Surface relay errors and close when the game ends.
+                    await pump
                     break
-                await receiver
+                if await receiver == ".":
+                    await browser.send_json({"type": "pong"})
+                tasks.remove(receiver)
                 receiver = asyncio.create_task(browser.receive_text())
-        except (WebSocketDisconnect, ConnectionClosed, RuntimeError):
+                tasks.add(receiver)
+        except SessionCommandError as exc:
+            if exc.code in {"resume_required", "session_in_use", "cleanup_failed"}:
+                close_code = RESUME_REQUIRED
+            await browser.send_json({"type": "error", "text": str(exc), "code": exc.code})
+        except OSError:
+            # Includes upstream handshake timeouts, which don't revoke ownership.
+            close_code = 1011
+            await browser.send_json(
+                {"type": "error", "text": "Cannot reach the game. Please try again."}
+            )
+        except ConnectionClosed as exc:
+            close_code = exc.rcvd.code if exc.rcvd else 1011
+        except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
-            pump.cancel()
-            receiver.cancel()
-            guard.cancel()
-            await asyncio.gather(pump, receiver, guard, return_exceptions=True)
-            if live.get(key) is radio:
-                live.pop(key, None)
-            with contextlib.suppress(ConnectionClosed):
-                await upstream.close()
-            with contextlib.suppress(WebSocketDisconnect, RuntimeError):
-                await browser.close()
-            logger.info("Session %s closed", session_id)
+            if radio is not None:
+                radio.active = False
+                if live.get(key) is radio:
+                    live.pop(key, None)
+            try:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                if upstream is not None:
+                    with contextlib.suppress(ConnectionClosed):
+                        await upstream.close()
+                with contextlib.suppress(WebSocketDisconnect, RuntimeError):
+                    await browser.close(code=close_code)
+            finally:
+                if radio is not None:
+                    radio.finished.set()
 
     return app
 

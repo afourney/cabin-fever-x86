@@ -30,6 +30,7 @@ from cabin_fever_x86_core import __version__
 from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
+    SESSION_REPLACED,
     AssistantMessage,
     ErrorResult,
     ListSessionsCommand,
@@ -182,6 +183,16 @@ class TextClient:
 
         for task in done:
             error = task.exception()
+            if (
+                isinstance(error, ConnectionClosed)
+                and error.rcvd is not None
+                and error.rcvd.code == SESSION_REPLACED
+            ):
+                self._console.say(
+                    "note",
+                    "Session moved to another connection. Run with --resume to take control again.",
+                )
+                return
             if error is not None and not isinstance(error, ConnectionClosed):
                 raise error
 

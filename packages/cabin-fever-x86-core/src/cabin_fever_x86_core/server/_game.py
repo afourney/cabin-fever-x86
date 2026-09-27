@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import random
@@ -20,6 +19,7 @@ from uuid import UUID, uuid4
 from openai import AsyncOpenAI, OpenAIError
 from openai.types.responses import FunctionToolParam, ResponseFunctionToolCall
 
+from cabin_fever_x86_core.async_utils import finish_on_cancel
 from cabin_fever_x86_core.config import ServerConfig
 from cabin_fever_x86_core.hints import has_hints
 from cabin_fever_x86_core.messages import AssistantMessage, UserMessage
@@ -402,13 +402,15 @@ class Game:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        tasks = []
         for name in ("_cabin", "_worker"):
             task = getattr(self, name)
             setattr(self, name, None)
             if task is not None:
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+                tasks.append(task)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        failures = [result for result in results if isinstance(result, Exception)]
 
         while True:
             try:
@@ -419,12 +421,22 @@ class Game:
                 pending.completed.set_exception(RuntimeError(COMPACTION_INTERRUPTED))
             self._inbox.task_done()
 
-        self._machine.reboot()
+        try:
+            self._machine.reboot()
+        except Exception as error:
+            logger.exception("Could not close the game interpreter")
+            failures.append(error)
 
         client = self._client
         self._client = None
         if client is not None:
-            await client.close()
+            try:
+                await client.close()
+            except Exception as error:
+                logger.exception("Could not close the game AI client")
+                failures.append(error)
+        if failures:
+            raise ExceptionGroup("Game cleanup failed", failures)
 
     async def receive(self, message: UserMessage) -> None:
         """Accept a transmission from the player, unless nobody is at the radio."""
@@ -622,7 +634,9 @@ class Game:
                         call_id=call.call_id,
                     ),
                 )
-            return await tool.execute(args)
+            # Machine tools may use worker threads for interpreter and save writes.
+            # Finish the operation before cancellation can release session ownership.
+            return await finish_on_cancel(tool.execute(args))
         except Exception as exc:
             logger.exception("Tool %r failed", call.name)
             return ToolOutput(f"The tool failed: {exc}")
@@ -695,8 +709,13 @@ class Game:
 
         self._messages = rebuilt(summary, excuse, tail)
         if self._journal is not None:
-            aside = await asyncio.to_thread(rotate, self._journal)
-            await asyncio.to_thread(rewrite, self._journal, self._messages)
+
+            def store_compaction() -> Path:
+                aside = rotate(self._journal)
+                rewrite(self._journal, self._messages)
+                return aside
+
+            aside = await finish_on_cancel(asyncio.to_thread(store_compaction))
             logger.info(
                 "Wrote the night down in %d characters, old journal at %s", len(summary), aside
             )

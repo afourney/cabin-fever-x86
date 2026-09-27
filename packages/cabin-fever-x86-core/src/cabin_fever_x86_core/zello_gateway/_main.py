@@ -19,17 +19,18 @@ import yaml
 from elevenlabs.client import ElevenLabs
 from pydantic import ValidationError
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import WebSocketException
+from websockets.exceptions import ConnectionClosed, WebSocketException
 
 from cabin_fever_x86_core import __version__
 from cabin_fever_x86_core.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from cabin_fever_x86_core.messages import (
     SERVER_MESSAGE_ADAPTER,
+    SESSION_REPLACED,
     AssistantMessage,
     ErrorResult,
     UserMessage,
 )
-from cabin_fever_x86_core.session_client import SessionCommandError, open_session
+from cabin_fever_x86_core.session_client import SessionCommandError, SessionTakenOver, open_session
 from cabin_fever_x86_core.sessions import ZELLO_GATEWAY_COMPONENT, user_dir
 from cabin_fever_x86_core.transcripts import Transcript
 from cabin_fever_x86_core.voice import VoiceError, synthesize, transcribe
@@ -193,9 +194,16 @@ class ZelloGateway:
             await self._receive_zello()
             raise ZelloGatewayError("Zello connection closed")
 
+        async def watch_connection() -> None:
+            await self.upstream.wait_closed()
+            if self.upstream.close_code == SESSION_REPLACED:
+                raise SessionTakenOver("Session moved elsewhere", "session_replaced")
+            raise ZelloGatewayError("game server connection closed")
+
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(receive_server(), name="receive-server")
             tasks.create_task(receive_zello(), name="receive-zello")
+            tasks.create_task(watch_connection(), name="watch-server")
 
     async def _receive_server(self) -> None:
         """Synthesize every companion transmission and send it over Zello."""
@@ -357,7 +365,7 @@ async def run_channels(
     channels: dict[str, tuple[str, set[str]]],
     elevenlabs_api_key: str,
 ) -> None:
-    """Supervise all channels together; any failure closes every connection."""
+    """Supervise channels together, retiring only the channel displaced by takeover."""
     if not channels:
         raise ZelloGatewayError("No Zello identities in users; no channels configured")
     # Validate every owner's state before any channel can start a new game.
@@ -377,6 +385,26 @@ async def run_channels(
             )
             raise ZelloGatewayError("channel relay stopped")
         except Exception as exc:
+
+            def displaced(error: BaseException) -> bool:
+                if isinstance(error, SessionTakenOver):
+                    return True
+                if isinstance(error, BaseExceptionGroup):
+                    return bool(error.exceptions) and all(
+                        displaced(item) for item in error.exceptions
+                    )
+                return (
+                    isinstance(error, ConnectionClosed)
+                    and error.rcvd is not None
+                    and error.rcvd.code == SESSION_REPLACED
+                )
+
+            if displaced(exc):
+                logger.warning(
+                    "Zello channel %r: session moved elsewhere. Restart this gateway to explicitly resume.",
+                    channel,
+                )
+                return
             raise ZelloGatewayError(
                 f"Zello channel {channel!r} (user {owner!r}): {_error_message(exc)}"
             ) from exc

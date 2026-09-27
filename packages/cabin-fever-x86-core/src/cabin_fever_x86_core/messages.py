@@ -20,6 +20,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, TypeAdapter
 
+SESSION_REPLACED = 4001
+RESUME_REQUIRED = 4002
+
 # --- Client -> server -------------------------------------------------------
 
 
@@ -44,6 +47,8 @@ class ResumeGameCommand(BaseModel):
     type: Literal["resume_game"] = "resume_game"
     id: UUID = Field(default_factory=uuid4)
     session_id: UUID
+    mode: Literal["legacy", "takeover", "recover"] = "legacy"
+    owner_token: str | None = Field(default=None, repr=False, max_length=256)
 
 
 class ListSessionsCommand(BaseModel):
@@ -99,6 +104,7 @@ class SessionResult(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     request_id: UUID
     session_id: UUID
+    owner_token: str | None = Field(default=None, repr=False)
 
 
 class SessionInfo(BaseModel):
@@ -124,6 +130,7 @@ class ErrorResult(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     request_id: UUID | None = None
     message: str
+    code: str | None = None
 
 
 ServerMessage = Annotated[

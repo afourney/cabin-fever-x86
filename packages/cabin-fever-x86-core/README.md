@@ -244,6 +244,9 @@ Invalid state, unavailable sessions, and connection failures are explicit errors
 the gateway stops and closes all channels rather than silently replacing a game.
 Ctrl-C also closes every channel. There are no `--resume` or `--list-sessions`
 options; `--help`, `--config`, `--host`, and `--port` remain available.
+If another client takes over a session, only its Zello channel retires; the
+other channels keep running. Restarting the gateway explicitly resumes its
+saved sessions and can take control back from another client.
 Credentials are read from the YAML file named by `zello.credentials_file`.
 The former `zello.channel` and `zello.authorized_users` settings are not accepted.
 
@@ -258,6 +261,16 @@ This header asserts identity; it is not a password or access token. The server
 accepts any valid user ID, without a user registry. Keep access restricted to
 trusted local processes or trusted adapters through an SSH tunnel or authenticated
 transport. Public-facing adapters must authenticate users before setting it.
+
+Only one connection can run a given user's session at a time. Explicit resume
+transfers ownership and waits for the previous game to finish cleanup before
+restoring the replacement. Browser reconnects use an ownership token and cannot
+take control back after another client has resumed the session. A displaced
+browser offers **Resume here**; Telegram requires `/resume` or `/continue`.
+After a game-server restart, existing clients also require explicit resume.
+Upgrade the server and adapters together and reload existing browser pages once.
+See the [session ownership specification](../cabin-fever-x86/docs/SESSION_OWNERSHIP.md)
+for protocol details and the single-server-process scope.
 
 Server data is stored relative to the working directory:
 
