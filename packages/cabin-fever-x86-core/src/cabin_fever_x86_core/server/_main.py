@@ -168,6 +168,8 @@ async def handle_connection(
     try:
         async with AsyncExitStack() as games:
             async for raw in connection:
+                # The iterator has already awaited receipt of this frame. Reject buffered
+                # commands if ownership changed while it was waiting; parsing cannot yield.
                 if connection.owner is not None and not connection.owner.active:
                     break
                 try:
@@ -199,6 +201,8 @@ async def handle_connection(
                         if connection.owner is not None and not connection.owner.active:
                             break
                         await send(result)
+                        if connection.owner is not None and not connection.owner.active:
+                            break
                         if isinstance(result, SessionResult) and game is not None:
                             # Only now that the client knows the session id is
                             # it safe for the cabin to speak first.
