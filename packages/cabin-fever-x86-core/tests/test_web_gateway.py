@@ -413,5 +413,8 @@ def test_takeover_rejects_inflight_and_stale_uploads(tmp_path, monkeypatch):
                 )
                 assert second.receive_json()["text"] == "hello"
                 assert len(connections[1].sent) == 1
+                # Let the gateway finish cleanup before TestClient cancels its task.
+                second.close()
+                assert second.receive()["type"] == "websocket.close"
         finally:
             release.set()
