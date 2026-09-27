@@ -132,9 +132,18 @@ test("retry setup timeouts and gateway errors schedule another attempt", async (
   p.tick(30000); // Timed out before the gateway returned a session, without a close event.
   assert.equal(p.sockets.at(-1).readyState, 2);
   p.tick(2000);
-  p.sockets.at(-1).message(JSON.stringify({ type: "error", text: "Cannot reach game" }));
+  const stalled = p.sockets.at(-1);
+  stalled.open();
+  stalled.message(JSON.stringify({ type: "error", text: "Cannot reach the game. Please try again." }));
+  stalled.closed(1011);
+  assert.equal(p.run("ownerToken"), "test-owner-token");
+  assert.equal(p.run("resumeRequired"), false);
   p.tick(4000);
-  p.sockets.at(-1).session();
+  const recovered = p.sockets.at(-1);
+  recovered.open();
+  assert.deepEqual(JSON.parse(recovered.sent[0]), { type: "open", resume: "saved-session",
+    mode: "recover", owner_token: "test-owner-token" });
+  recovered.session();
   assert.equal(p.element("talk").disabled, false);
 });
 

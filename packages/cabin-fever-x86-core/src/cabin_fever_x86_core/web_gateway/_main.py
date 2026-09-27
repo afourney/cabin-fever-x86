@@ -410,15 +410,20 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
         tasks = set()
         close_code = 1000
         try:
-            resume = browser.query_params.get("resume")
-            resume = UUID(resume) if resume else None
-            mode, token = "legacy", None
-            if browser.query_params.get("protocol") == "2":
-                async with asyncio.timeout(30):
-                    request = BrowserOpen.model_validate(await browser.receive_json())
-                resume, mode, token = request.resume, request.mode, request.owner_token
-                if mode == "recover" and resume is None:
-                    raise SessionCommandError("Explicitly resume the session.", "resume_required")
+            try:
+                resume = browser.query_params.get("resume")
+                resume = UUID(resume) if resume else None
+                mode, token = "legacy", None
+                if browser.query_params.get("protocol") == "2":
+                    async with asyncio.timeout(30):
+                        request = BrowserOpen.model_validate(await browser.receive_json())
+                    resume, mode, token = request.resume, request.mode, request.owner_token
+            except (ValueError, TimeoutError) as exc:
+                raise SessionCommandError(
+                    "Invalid session request. Please resume again.", "resume_required"
+                ) from exc
+            if mode == "recover" and resume is None:
+                raise SessionCommandError("Explicitly resume the session.", "resume_required")
             if not auth.valid(principal):
                 close_code = 4401
                 return
@@ -496,16 +501,9 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
             if exc.code in {"resume_required", "session_in_use", "cleanup_failed"}:
                 close_code = RESUME_REQUIRED
             await browser.send_json({"type": "error", "text": str(exc), "code": exc.code})
-        except (ValueError, TimeoutError):
-            close_code = RESUME_REQUIRED
-            await browser.send_json(
-                {
-                    "type": "error",
-                    "text": "Invalid session request. Please resume again.",
-                    "code": "resume_required",
-                }
-            )
         except OSError:
+            # Includes upstream handshake timeouts, which don't revoke ownership.
+            close_code = 1011
             await browser.send_json(
                 {"type": "error", "text": "Cannot reach the game. Please try again."}
             )
