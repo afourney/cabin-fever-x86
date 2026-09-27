@@ -6,6 +6,7 @@ having it, so all three share this.
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -27,6 +28,15 @@ from cabin_fever_x86_core.messages import (
 class SessionCommandError(Exception):
     """The server refused a session command, or answered in a way we can't use."""
 
+    def __init__(self, message: str, code: str | None = None) -> None:
+        """Keep the machine-readable reason alongside the displayed message."""
+        super().__init__(message)
+        self.code = code
+
+
+class SessionTakenOver(SessionCommandError):
+    """The current connection has been displaced by an explicit resume elsewhere."""
+
 
 async def send_command(
     connection: ClientConnection, command: SessionCommand
@@ -42,7 +52,7 @@ async def send_command(
             raise SessionCommandError(f"unreadable reply from the server: {exc}") from exc
 
         if isinstance(message, ErrorResult):
-            raise SessionCommandError(message.message)
+            raise SessionCommandError(message.message, message.code)
         if isinstance(message, SessionResult | SessionListResult):
             if message.request_id != command.id:
                 continue  # an answer to something else; keep waiting
@@ -50,13 +60,28 @@ async def send_command(
         # Nothing else should arrive before a game exists; ignore it.
 
 
-async def open_session(connection: ClientConnection, resume: UUID | None = None) -> UUID:
-    """Start or resume a game, returning the session it opened."""
-    command: SessionCommand = ResumeGameCommand(session_id=resume) if resume else NewGameCommand()
+async def open_owned_session(
+    connection: ClientConnection,
+    resume: UUID | None = None,
+    *,
+    mode: Literal["legacy", "takeover", "recover"] = "takeover",
+    owner_token: str | None = None,
+) -> SessionResult:
+    """Open a game and return its ownership grant; recovery never implies takeover."""
+    command: SessionCommand = (
+        ResumeGameCommand(session_id=resume, mode=mode, owner_token=owner_token)
+        if resume
+        else NewGameCommand()
+    )
     result = await send_command(connection, command)
     if not isinstance(result, SessionResult):
         raise SessionCommandError(f"expected a session id, got {result.type!r}")
-    return result.session_id
+    return result
+
+
+async def open_session(connection: ClientConnection, resume: UUID | None = None) -> UUID:
+    """Explicitly start or resume a game, returning the session it opened."""
+    return (await open_owned_session(connection, resume)).session_id
 
 
 async def list_sessions(connection: ClientConnection) -> list[SessionInfo]:

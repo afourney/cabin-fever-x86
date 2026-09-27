@@ -45,9 +45,11 @@ function page() {
       close() { this.readyState = 2; }
       closed(code = 1006) { this.readyState = 3; this.onclose({ code }); }
       message(data) { this.onmessage({ data }); }
+      open() { this.readyState = 1; this.onopen(); }
       session(id = "saved-session") {
-        this.readyState = 1;
-        this.message(JSON.stringify({ type: "session", session_id: id, voice: true }));
+        if (this.readyState === 0) this.open();
+        this.message(JSON.stringify({ type: "session", session_id: id, voice: true,
+          owner_token: "test-owner-token", connection_id: "test-connection" }));
       }
     },
     addEventListener, setTimeout: setTimer, clearTimeout: id => timers.delete(id),
@@ -82,7 +84,10 @@ test("a dropped socket resumes the confirmed session and keeps the transcript", 
   assert.equal(p.element("status").textContent, "reconnecting…");
   p.tick(1000);
   const replacement = p.sockets.at(-1);
-  assert.equal(replacement.url, "wss://radio.example/ws?resume=session%20%2F%20with%20spaces");
+  assert.equal(replacement.url, "wss://radio.example/ws?protocol=2");
+  replacement.open();
+  assert.deepEqual(JSON.parse(replacement.sent[0]), { type: "open", resume: "session / with spaces",
+    mode: "recover", owner_token: "test-owner-token" });
   assert.equal(p.element("talk").disabled, true);
   replacement.session("session / with spaces");
   assert.equal(p.element("talk").disabled, false);
@@ -103,7 +108,7 @@ test("failed retries back off to 30 seconds and success resets the delay", async
   p.sockets.at(-1).closed();
   p.tick(1000);
   assert.equal(p.sockets.length, 10);
-  assert.ok(p.sockets.slice(1).every(socket => socket.url.endsWith("?resume=saved-session")));
+  assert.ok(p.sockets.slice(1).every(socket => socket.url.endsWith("/ws?protocol=2")));
 });
 
 test("failed initial connections are left for the session picker to retry", async () => {
@@ -136,7 +141,7 @@ test("retry setup timeouts and gateway errors schedule another attempt", async (
 test("unanswered heartbeats replace sockets even if the close handshake never completes", async () => {
   const p = page(), socket = await p.start();
   p.tick(20000);
-  assert.deepEqual(socket.sent, ["."]);
+  assert.deepEqual(socket.sent.slice(1), ["."]);
   p.tick(10000);
   assert.equal(socket.readyState, 2);
   assert.equal(p.element("talk").disabled, true);
@@ -173,11 +178,11 @@ test("waking probes an open connection and accelerates a pending retry without d
   const socket = await p.start();
   p.document.visibilityState = "hidden";
   p.event("visibilitychange");
-  assert.deepEqual(socket.sent, []);
+  assert.deepEqual(socket.sent.slice(1), []);
   p.document.visibilityState = "visible";
   p.event("visibilitychange");
   p.event("online");
-  assert.deepEqual(socket.sent, ["."]);
+  assert.deepEqual(socket.sent.slice(1), ["."]);
   socket.closed();
   p.event("online");
   p.event("visibilitychange");
@@ -238,4 +243,50 @@ test("an upload finishing after disconnection preserves the reconnecting status"
   p.run('finishUpload({ ok: true, json: async () => ({ text: "Hello" }) })');
   await upload;
   assert.equal(p.element("status").textContent, "reconnecting…");
+});
+
+test("displacement stops retries and wake events until Resume here is clicked", async () => {
+  const p = page(), socket = await p.start();
+  socket.closed(4001);
+  assert.equal(p.timers.size, 0);
+  assert.equal(p.element("resume-radio").hidden, false);
+  p.event("online"); p.event("visibilitychange");
+  assert.equal(p.sockets.length, 1);
+  const resume = p.element("resume-radio").onclick();
+  await Promise.resolve();
+  const replacement = p.sockets.at(-1);
+  replacement.open();
+  assert.deepEqual(JSON.parse(replacement.sent[0]), { type: "open", resume: "saved-session",
+    mode: "takeover", owner_token: null });
+  replacement.session();
+  await resume;
+  assert.equal(p.element("resume-radio").hidden, true);
+  replacement.closed();
+  p.tick(1000);
+  assert.equal(p.sockets.length, 3);
+});
+
+test("a stale recovery token requires explicit resume even if displacement was missed", async () => {
+  const p = page(), socket = await p.start();
+  socket.closed();
+  p.tick(1000);
+  p.sockets.at(-1).open();
+  assert.equal(JSON.parse(p.sockets.at(-1).sent[0]).owner_token, "test-owner-token");
+  p.sockets.at(-1).message(JSON.stringify({ type: "error", text: "Explicitly resume", code: "resume_required" }));
+  assert.equal(p.timers.size, 0);
+  assert.equal(p.element("resume-radio").hidden, false);
+  p.event("online"); p.event("visibilitychange");
+  assert.equal(p.sockets.length, 2);
+});
+
+test("takes carry ownership and connection IDs outside the URL", async () => {
+  const p = page();
+  await p.start();
+  p.run(`recorder = { mimeType: "audio/webm" }; chunks = [new Blob(["voice"])];
+    fetch = async (url, options) => { globalThis.upload = { url, options };
+      return { ok: true, json: async () => ({ text: "hello" }) }; };`);
+  await p.run("send()");
+  assert.equal(p.run("upload.url"), "/takes/saved-session");
+  assert.equal(p.run('upload.options.headers["X-CF86-Owner-Token"]'), "test-owner-token");
+  assert.equal(p.run('upload.options.headers["X-CF86-Connection"]'), "test-connection");
 });

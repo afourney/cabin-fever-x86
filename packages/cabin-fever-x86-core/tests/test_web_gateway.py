@@ -2,14 +2,18 @@
 
 import asyncio
 import json
+import threading
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import aclosing
+from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
 import pytest
 from elevenlabs.client import AsyncElevenLabs
 from fastapi.testclient import TestClient
+from websockets.protocol import State
 
 from cabin_fever_x86_core import transcripts
 from cabin_fever_x86_core.messages import AssistantMessage
@@ -201,6 +205,11 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
     closed = []
 
     class Connection(Upstream):
+        state = State.OPEN
+
+        async def wait_closed(self):
+            await asyncio.Event().wait()
+
         async def iterate(self):
             yield message.model_dump_json()
             await asyncio.Event().wait()
@@ -212,14 +221,14 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
         assert additional_headers == {"X-CF86-User-ID": "guest"}
         return Connection()
 
-    async def open_session(*_):
-        return uuid4()
+    async def open_session(*_, **_kwargs):
+        return SimpleNamespace(session_id=uuid4(), owner_token="test-owner-token")
 
     async def audio(*_):
         yield b"\x01\x02"
 
     monkeypatch.setattr(web, "connect", connect)
-    monkeypatch.setattr(web, "open_session", open_session)
+    monkeypatch.setattr(web, "open_owned_session", open_session)
     monkeypatch.setattr(web, "stream_speech", audio)
     with TestClient(web.create_app("ws://game", "test"), base_url="http://localhost") as client:
         assert client.get("/pcm-player.js").status_code == 200
@@ -244,3 +253,101 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
             browser.close()
             assert browser.receive()["type"] == "websocket.close"
     assert closed
+
+
+def test_takeover_rejects_inflight_and_stale_uploads(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    session_id = uuid4()
+    connections = []
+    transcribing, release = threading.Event(), threading.Event()
+
+    class Connection:
+        state = State.OPEN
+        close_code = None
+
+        def __init__(self):
+            self.closed = asyncio.Event()
+            self.sent = []
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await self.closed.wait()
+            raise StopAsyncIteration
+
+        async def wait_closed(self):
+            await self.closed.wait()
+
+        async def close(self):
+            self.state = State.CLOSED
+            self.close_code = 1000
+            self.closed.set()
+
+        async def send(self, text):
+            self.sent.append(text)
+
+    async def connect(*_, **_kwargs):
+        connection = Connection()
+        connections.append(connection)
+        return connection
+
+    async def open_session(*_, **_kwargs):
+        return SimpleNamespace(session_id=session_id, owner_token=f"owner-{len(connections)}")
+
+    def transcribe(*_):
+        transcribing.set()
+        assert release.wait(5)
+        return "hello"
+
+    def headers(grant):
+        return {
+            "origin": "http://localhost",
+            "X-CF86-Owner-Token": grant["owner_token"],
+            "X-CF86-Connection": grant["connection_id"],
+        }
+
+    monkeypatch.setattr(web, "connect", connect)
+    monkeypatch.setattr(web, "open_owned_session", open_session)
+    monkeypatch.setattr(web, "transcribe", transcribe)
+    app = web.create_app("ws://game", "test")
+    with (
+        TestClient(app, base_url="http://localhost") as client,
+        ThreadPoolExecutor() as executor,
+        client.websocket_connect(
+            "ws://localhost/ws?protocol=2", headers={"origin": "http://localhost"}
+        ) as first,
+    ):
+        first.send_json({"type": "open"})
+        old = first.receive_json()
+        upload = executor.submit(
+            client.post, f"/takes/{session_id}", content=b"voice", headers=headers(old)
+        )
+        try:
+            assert transcribing.wait(5)
+            with client.websocket_connect(
+                "ws://localhost/ws?protocol=2", headers={"origin": "http://localhost"}
+            ) as second:
+                second.send_json({"type": "open", "resume": str(session_id), "mode": "takeover"})
+                new = second.receive_json()
+                assert first.receive()["code"] == 4001
+                assert new["connection_id"] != old["connection_id"]
+                release.set()
+                assert upload.result(timeout=5).status_code == 409
+                assert (
+                    client.post(
+                        f"/takes/{session_id}", content=b"voice", headers=headers(old)
+                    ).status_code
+                    == 409
+                )
+                assert not connections[0].sent and not connections[1].sent
+                assert (
+                    client.post(
+                        f"/takes/{session_id}", content=b"voice", headers=headers(new)
+                    ).status_code
+                    == 200
+                )
+                assert second.receive_json()["text"] == "hello"
+                assert len(connections[1].sent) == 1
+        finally:
+            release.set()

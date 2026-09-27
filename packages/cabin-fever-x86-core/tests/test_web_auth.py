@@ -5,6 +5,7 @@ import json
 import stat
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -12,6 +13,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 from starlette.websockets import WebSocketDisconnect
+from websockets.protocol import State
 
 from cabin_fever_x86_core.config import Config, ConfigError, load_config
 from cabin_fever_x86_core.messages import SessionInfo
@@ -339,6 +341,11 @@ def fake_upstream(monkeypatch):
     session_id = uuid4()
 
     class Connection:
+        state = State.OPEN
+
+        async def wait_closed(self):
+            await asyncio.Event().wait()
+
         async def __aenter__(self):
             return self
 
@@ -364,15 +371,15 @@ def fake_upstream(monkeypatch):
         headers.append(additional_headers)
         return Connection()
 
-    async def open_session(_connection, resume):
+    async def open_session(_connection, resume, **_kwargs):
         resumed.append(resume)
-        return resume or session_id
+        return SimpleNamespace(session_id=resume or session_id, owner_token="test-owner-token")
 
     async def list_sessions(_connection):
         return [SessionInfo(session_id=session_id, modified=datetime.now(UTC))]
 
     monkeypatch.setattr(web, "connect", connect)
-    monkeypatch.setattr(web, "open_session", open_session)
+    monkeypatch.setattr(web, "open_owned_session", open_session)
     monkeypatch.setattr(web, "list_sessions", list_sessions)
     yield headers, resumed, session_id
 
@@ -382,9 +389,16 @@ def test_upstream_identity_on_list_new_resume_and_upload_ownership(client, monke
         assert login(client).status_code == 200
         assert client.get("/sessions", headers={"X-CF86-User-ID": "guest"}).status_code == 200
         with client.websocket_connect("ws://localhost/ws", headers=ORIGIN) as browser:
-            assert browser.receive_json()["session_id"] == str(session_id)
+            grant = browser.receive_json()
+            assert grant["session_id"] == str(session_id)
+            upload_headers = {
+                **ORIGIN,
+                "X-CF86-Owner-Token": grant["owner_token"],
+                "X-CF86-Connection": grant["connection_id"],
+            }
             assert (
-                client.post(f"/takes/{session_id}", content=b"", headers=ORIGIN).status_code == 400
+                client.post(f"/takes/{session_id}", content=b"", headers=upload_headers).status_code
+                == 400
             )
             assert client.post("/auth/guest", headers=ORIGIN).status_code == 200
             assert (

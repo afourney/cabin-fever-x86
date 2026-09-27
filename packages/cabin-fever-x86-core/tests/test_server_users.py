@@ -1,9 +1,11 @@
 """User isolation through the real server handshake and session protocol."""
 
 import asyncio
+import json
 from contextlib import asynccontextmanager, suppress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
 import pytest
 from websockets.asyncio.client import connect
@@ -11,10 +13,17 @@ from websockets.asyncio.server import serve
 from websockets.exceptions import InvalidStatus
 
 from cabin_fever_x86_core.config import Config, ServerConfig
+from cabin_fever_x86_core.messages import SESSION_REPLACED, ErrorResult, ResumeGameCommand
 from cabin_fever_x86_core.server import _game, _main
-from cabin_fever_x86_core.session_client import SessionCommandError, list_sessions, open_session
+from cabin_fever_x86_core.session_client import (
+    SessionCommandError,
+    list_sessions,
+    open_owned_session,
+    open_session,
+)
 from cabin_fever_x86_core.sessions import SERVER_COMPONENT, session_dir
 from cabin_fever_x86_core.telegram_gateway._main import TelegramGateway, _load_state, _state_path
+from cabin_fever_x86_core.web_gateway import _main as web
 from cabin_fever_x86_core.zello_gateway import _main as zello
 
 
@@ -116,6 +125,116 @@ async def test_users_can_only_list_and_resume_their_own_sessions(start_server):
         async with connect(uri, additional_headers={"X-CF86-User-ID": "guest"}) as client:
             assert [s.session_id for s in await list_sessions(client)] == [guest_session]
             assert await open_session(client, guest_session) == guest_session
+
+
+@asynccontextmanager
+async def browser_socket(uri):
+    incoming, outgoing = asyncio.Queue(), asyncio.Queue()
+    app = web.create_app(uri, None)
+    scope = {
+        "type": "websocket",
+        "asgi": {"version": "3.0"},
+        "scheme": "ws",
+        "path": "/ws",
+        "raw_path": b"/ws",
+        "query_string": b"protocol=2",
+        "headers": [(b"host", b"localhost"), (b"origin", b"http://localhost")],
+        "client": ("127.0.0.1", 1234),
+        "server": ("localhost", 80),
+        "root_path": "",
+        "subprotocols": [],
+    }
+    task = asyncio.create_task(app(scope, incoming.get, outgoing.put))
+    await incoming.put({"type": "websocket.connect"})
+
+    async def receive():
+        return await asyncio.wait_for(outgoing.get(), 3)
+
+    async def send(request):
+        await incoming.put({"type": "websocket.receive", "text": json.dumps(request)})
+
+    try:
+        assert (await receive())["type"] == "websocket.accept"
+        yield SimpleNamespace(send=send, receive=receive)
+    finally:
+        await incoming.put({"type": "websocket.disconnect", "code": 1000})
+        await asyncio.wait_for(task, 3)
+
+
+async def test_web_telegram_takeover_and_stale_browser_recovery(start_server, no_model):
+    async with start_server() as uri:
+        bot = SimpleNamespace(send_message=AsyncMock())
+        telegram = TelegramGateway(bot, uri, {123: "guest"})
+        try:
+            first = await telegram.open(123, 123, None)
+            async with browser_socket(uri) as browser:
+                await browser.send(
+                    {"type": "open", "resume": str(first.session_id), "mode": "takeover"}
+                )
+                grant = json.loads((await browser.receive())["text"])
+                assert grant["session_id"] == str(first.session_id)
+                await asyncio.wait_for(first.pump, 3)
+                assert 123 in telegram.displaced
+                assert 123 not in telegram.sessions
+                before = no_model.call_count
+                with pytest.raises(SessionCommandError, match="/resume"):
+                    await telegram._handle_text(123, 123, "hello")
+                assert no_model.call_count == before
+                await telegram._handle_text(123, 123, f"/resume {first.session_id}")
+                assert (await browser.receive())["code"] == SESSION_REPLACED
+                assert 123 not in telegram.displaced
+            # A browser that missed the close notice must not steal ownership back.
+            async with browser_socket(uri) as stale:
+                await stale.send(
+                    {
+                        "type": "open",
+                        "resume": grant["session_id"],
+                        "mode": "recover",
+                        "owner_token": grant["owner_token"],
+                    }
+                )
+                assert json.loads((await stale.receive())["text"])["code"] == "resume_required"
+                assert (await stale.receive())["code"] == 4002
+            assert telegram.sessions[123].session_id == first.session_id
+        finally:
+            await telegram.close()
+
+
+async def test_wire_recovery_keeps_token_and_legacy_cannot_take_over(start_server):
+    async with start_server() as uri, connect(uri) as first, connect(uri) as second:
+        grant = await open_owned_session(first)
+        await second.send(ResumeGameCommand(session_id=grant.session_id).model_dump_json())
+        assert ErrorResult.model_validate_json(await second.recv()).code == "session_in_use"
+        recovered = await open_owned_session(
+            second, grant.session_id, mode="recover", owner_token=grant.owner_token
+        )
+        assert recovered.owner_token == grant.owner_token
+        await first.wait_closed()
+        assert first.close_code == SESSION_REPLACED
+        async with connect(uri) as third:
+            takeover = await open_owned_session(third, grant.session_id)
+            assert takeover.owner_token != grant.owner_token
+        async with connect(uri) as stale:
+            with pytest.raises(SessionCommandError) as error:
+                await open_owned_session(
+                    stale, grant.session_id, mode="recover", owner_token=grant.owner_token
+                )
+            assert error.value.code == "resume_required"
+
+
+async def test_invalid_takeover_does_not_close_another_users_game(start_server):
+    async with (
+        start_server() as uri,
+        connect(uri, additional_headers={"X-CF86-User-ID": "alice"}) as alice,
+    ):
+        grant = await open_owned_session(alice)
+        async with connect(uri) as guest:
+            with pytest.raises(SessionCommandError, match="no such session"):
+                await open_owned_session(guest, grant.session_id)
+            with pytest.raises(SessionCommandError, match="no such session"):
+                await open_owned_session(guest, uuid4())
+        assert alice.close_code is None
+        assert (await list_sessions(alice))[0].session_id == grant.session_id
 
 
 async def test_telegram_uses_configured_users_for_all_session_operations(start_server):

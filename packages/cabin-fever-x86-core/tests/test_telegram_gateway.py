@@ -58,17 +58,17 @@ async def test_overlapping_messages_share_one_game(gateway, monkeypatch, followi
         connections.append(connection)
         return connection
 
-    async def open_session(_connection, _resume):
+    async def open_session(_connection, _resume, **_kwargs):
         opening.set()
         await release.wait()
-        return uuid4()
+        return SimpleNamespace(session_id=uuid4(), owner_token="test-owner-token")
 
     async def pump(_session):
         await asyncio.Event().wait()
 
     monkeypatch.setattr(gateway, "_connect", connect)
     monkeypatch.setattr(gateway, "_pump", pump)
-    monkeypatch.setattr(_main, "open_session", open_session)
+    monkeypatch.setattr(_main, "open_owned_session", open_session)
     tasks = [asyncio.create_task(gateway.handle(_event(123, "first")))]
     try:
         await asyncio.wait_for(opening.wait(), timeout=1)
