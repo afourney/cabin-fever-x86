@@ -128,7 +128,8 @@ test("rejects unsupported formats, truncated samples, and excessive buffering", 
 function page() {
   const elements = new Map();
   const element = () => ({ textContent: "", classList: { add() {}, remove() {} },
-    addEventListener() {}, append() {}, disabled: false });
+    addEventListener() {}, append() {}, disabled: false,
+    setAttribute() {}, removeAttribute() {}, remove() {} });
   const scope = vm.createContext({ PCMPlayer, Uint8Array, ArrayBuffer, DataView,
     BrowserAuthController: class { authenticated = true; state = { implicit_guest: true }; async initialize() {} },
     SessionPickerController: class {},

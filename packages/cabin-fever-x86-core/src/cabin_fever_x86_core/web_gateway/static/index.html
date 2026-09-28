@@ -28,6 +28,12 @@
   .line { white-space: pre-wrap; }
   .line.user { color: #7f9ec4; }
   .line.user::before { content: "you  "; color: #46586e; }
+  .take-meter { display: inline-flex; gap: .2em; height: 1.5em; vertical-align: top; white-space: nowrap; }
+  .take-meter span { flex: none; width: 1ch; text-align: center; }
+  .take-dots span { animation: waiting-dot 1.2s infinite; }
+  .take-dots span:nth-child(2) { animation-delay: .2s; }
+  .take-dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes waiting-dot { 0%, 80%, 100% { opacity: .25 } 40% { opacity: 1 } }
   .line.assistant::before { content: "sam  "; color: #46586e; }
   .line.error { color: #c98b7a; }
   .line.note { color: #5d7364; font-style: italic; }
@@ -137,6 +143,7 @@
   @keyframes breathe { 0%, 100% { opacity: .72 } 50% { opacity: 1 } }
   @media (prefers-reduced-motion: reduce) {
     #splash .call { animation: none; }
+    .take-dots span { animation: none; }
   }
 </style>
 </head>
@@ -227,6 +234,7 @@ const browserAuth = new BrowserAuthController({
     ws = null;
     socket?.close();
     cutPlayback();
+    clearTakeIndicators();
     recorder?.stream?.getTracks().forEach(track => track.stop());
     location.reload(); // Clear the previous user's transcript and microphone state.
   },
@@ -254,6 +262,7 @@ function say(kind, text) {
   div.textContent = text;
   log.append(div);
   log.scrollTop = log.scrollHeight;
+  return div;
 }
 
 function setStatus(text) { status.textContent = text || " "; }
@@ -622,6 +631,8 @@ function connect(resume, mode = "takeover") {
     // Discard a take interrupted by the outage, including queued recorder events.
     if (recorder) { recorder.onstop = null; recorder.ondataavailable = null; }
     keyUp();
+    clearTakeIndicators();
+    recorderStopping = false;
     recorder?.stream.getTracks().forEach(track => track.stop());
     recorder = null;
     chunks = [];
@@ -706,7 +717,9 @@ function connect(resume, mode = "takeover") {
         else stream?.stop();
       } catch { failStream(msg.stream_id); }
     } else if (msg.type === "user") {
-      say("user", msg.text);
+      // send() uses the matching HTTP response to fill the correct pending row,
+      // even when uploads finish out of order. Ignore this duplicate echo.
+      return;
     } else if (msg.type === "error") {
       if (!opened) {
         const terminal = ["resume_required", "session_in_use", "cleanup_failed"].includes(msg.code);
@@ -731,6 +744,92 @@ function connect(resume, mode = "takeover") {
 // --- push to talk ---------------------------------------------------------
 
 let micPending = null, talkHeld = false;
+let recordingTake = null, recorderStopping = false;
+const pendingTakes = new Set();
+const METER_GLYPHS = { empty: "▯", filled: "▮" };
+const METER_SEGMENTS = 7;
+const METER_MIN_DB = -60, METER_MAX_DB = -12;
+
+function startTakeIndicator() {
+  const line = say("user", "");
+  const meter = document.createElement("span");
+  meter.className = "take-meter";
+  const segments = Array.from({ length: METER_SEGMENTS }, () => {
+    const segment = document.createElement("span");
+    segment.textContent = METER_GLYPHS.empty;
+    meter.append(segment);
+    return segment;
+  });
+  line.append(meter);
+  line.setAttribute("role", "img");
+  line.setAttribute("aria-label", "You: recording microphone");
+  const take = { line, timer: null, source: null, analyser: null };
+  pendingTakes.add(take);
+  try {
+    take.source = audioCtx.createMediaStreamSource(recorder.stream);
+    take.analyser = audioCtx.createAnalyser();
+    take.analyser.fftSize = 2048;
+    take.source.connect(take.analyser); // Meter only; never monitor the mic through speakers.
+    const samples = new Float32Array(take.analyser.fftSize);
+    take.timer = setInterval(() => {
+      take.analyser.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (const sample of samples) sum += sample * sample;
+      const db = 20 * Math.log10(Math.max(Math.sqrt(sum / samples.length), 0.000001));
+      // Use a speech-friendly logarithmic range, from silence to a strong signal.
+      const level = Math.max(0, Math.min(1, (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB)));
+      const filled = Math.round(level * METER_SEGMENTS);
+      segments.forEach((segment, i) => {
+        segment.textContent = i < filled ? METER_GLYPHS.filled : METER_GLYPHS.empty;
+      });
+    }, 100);
+  } catch {
+    // A meter failure must not prevent recording.
+    stopTakeMeter(take);
+  }
+  return take;
+}
+
+function stopTakeMeter(take) {
+  if (!take) return;
+  clearInterval(take.timer);
+  take.source?.disconnect();
+  take.analyser?.disconnect();
+  take.timer = take.source = take.analyser = null;
+}
+
+function waitForTake(take) {
+  if (!take) return;
+  stopTakeMeter(take);
+  take.line.textContent = "";
+  take.line.classList.add("take-dots");
+  take.line.setAttribute("aria-label", "You: waiting for transcription");
+  for (let i = 0; i < 3; i++) {
+    const dot = document.createElement("span");
+    dot.textContent = ".";
+    take.line.append(dot);
+  }
+}
+
+function finishTake(take, text) {
+  if (!take || !pendingTakes.delete(take)) return;
+  stopTakeMeter(take);
+  if (text) {
+    const followBottom = log.scrollHeight - log.clientHeight - log.scrollTop <= 2;
+    take.line.classList.remove("take-dots");
+    take.line.removeAttribute("role");
+    take.line.removeAttribute("aria-label");
+    take.line.textContent = text;
+    if (followBottom) log.scrollTop = log.scrollHeight;
+  } else {
+    take.line.remove();
+  }
+}
+
+function clearTakeIndicators() {
+  for (const take of pendingTakes) finishTake(take);
+  recordingTake = null;
+}
 
 function micError(error) {
   if (error.name === "NotAllowedError") {
@@ -779,10 +878,15 @@ async function startMic() {
 }
 
 async function send() {
+  const take = recordingTake;
+  recordingTake = null;
   const socket = ws;
   const blob = new Blob(chunks, { type: recorder.mimeType });
   chunks = [];
-  if (!blob.size || !sessionId) return;
+  recorderStopping = false;
+  // The previous take is captured; a held press can now start its own recording.
+  if (talkHeld) void startHeldTake();
+  if (!blob.size || !sessionId) { finishTake(take); return; }
 
   setStatus("DECODING");
   try {
@@ -792,22 +896,31 @@ async function send() {
         "X-CF86-Owner-Token": ownerToken, "X-CF86-Connection": connectionId },
       body: blob,
     });
+    const result = await res.json();
+    if (ws !== socket) return;
     if (!res.ok) {
-      say("error", `transmission failed: ${(await res.json()).detail ?? res.status}`);
-    } else if (!(await res.json()).text) {
+      say("error", `transmission failed: ${result.detail ?? res.status}`);
+    } else if (!result.text) {
       say("note", "(nothing heard)");
-    }
+    } else if (take) finishTake(take, result.text);
+    else say("user", result.text);
   } catch (err) {
-    say("error", `transmission failed: ${err}`);
+    if (ws === socket) say("error", `transmission failed: ${err}`);
   } finally {
-    if (ws === socket && socket) setStatus(playing ? "RECEIVING" : "");
+    finishTake(take);
+    if (ws === socket && socket && !keyed) setStatus(playing ? "RECEIVING" : "");
   }
 }
 
 async function keyDown() {
   if ($("talk").disabled || talkHeld || keyed) return;
   talkHeld = true;
-  if (!await ensureMic() || !talkHeld || $("talk").disabled || keyed) return;
+  return startHeldTake();
+}
+
+async function startHeldTake() {
+  if (!talkHeld || $("talk").disabled || keyed || recorderStopping) return;
+  if (!await ensureMic() || !talkHeld || $("talk").disabled || keyed || recorderStopping) return;
   try {
     chunks = [];
     recorder.start();
@@ -818,6 +931,7 @@ async function keyDown() {
     return;
   }
   keyed = true;
+  recordingTake = startTakeIndicator();
   cutPlayback();          // half-duplex: keying the mic cuts them off
   rainLevel(RAIN_DUCKED);   // the mic does not need the roof in it
   $("talk").classList.add("hot");
@@ -828,7 +942,11 @@ function keyUp() {
   talkHeld = false;
   if (!keyed) return;
   keyed = false;
-  if (recorder?.state === "recording") recorder.stop();
+  waitForTake(recordingTake);
+  if (recorder?.state === "recording") {
+    recorderStopping = true; // Keep the next press from replacing queued recorder data.
+    recorder.stop();
+  }
   if (!playing) rainLevel(RAIN_UNDER);
   $("talk").classList.remove("hot");
 }
