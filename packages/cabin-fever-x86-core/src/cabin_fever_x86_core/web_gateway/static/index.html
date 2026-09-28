@@ -744,9 +744,14 @@ function connect(resume, mode = "takeover") {
 let micPending = null, talkHeld = false;
 let recordingTake = null, recorderStopping = false;
 const pendingTakes = new Set();
+// Quietest to loudest; edit this list to change the meter style.
+const METER_GLYPHS = ["⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣿"];
+const METER_HISTORY_LENGTH = 5;
+const METER_MIN_DB = -60, METER_MAX_DB = -12;
 
 function startTakeIndicator() {
-  const line = say("user", "▁▁▁▁▁");
+  const history = Array(METER_HISTORY_LENGTH).fill(METER_GLYPHS[0]);
+  const line = say("user", history.join(""));
   line.setAttribute("role", "img");
   line.setAttribute("aria-label", "You: recording microphone");
   const take = { line, timer: null, source: null, analyser: null };
@@ -763,8 +768,11 @@ function startTakeIndicator() {
       for (const sample of samples) sum += sample * sample;
       const db = 20 * Math.log10(Math.max(Math.sqrt(sum / samples.length), 0.000001));
       // Use a speech-friendly logarithmic range, from silence to a strong signal.
-      const level = Math.max(0, Math.min(7, Math.floor((db + 60) / 6)));
-      line.textContent = line.textContent.slice(1) + "▁▂▃▄▅▆▇█"[level];
+      const level = Math.max(0, Math.min(1, (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB)));
+      const index = Math.min(METER_GLYPHS.length - 1, Math.floor(level * METER_GLYPHS.length));
+      history.shift();
+      history.push(METER_GLYPHS[index]);
+      line.textContent = history.join("");
     }, 100);
   } catch {
     // A meter failure must not prevent recording.
