@@ -32,7 +32,11 @@ export class AudioSettings {
     this.$ = $;
     $("audio-settings-open").onclick = () => this.open();
     $("audio-settings-close").onclick = () => $("audio-settings").close();
-    $("audio-settings").addEventListener("close", () => this.stopPreview());
+    $("audio-settings").addEventListener("close", () => {
+      this.stopPreview();
+      // Dialogs restore focus to their opener; let Space resume push-to-talk.
+      $("audio-settings-open").blur();
+    });
     $("audio-refresh").onclick = () => this.refreshDevices();
     $("microphone-test").onclick = () => this.togglePreview();
     $("microphone-device").onchange = () => {

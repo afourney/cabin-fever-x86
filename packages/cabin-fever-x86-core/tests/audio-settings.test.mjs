@@ -21,6 +21,7 @@ function page({ saved = null, supported = true, blockedStorage = false, onInputC
   const element = () => ({ value: "", textContent: "", children: [], disabled: false, hidden: false,
     events: {}, addEventListener(name, callback) { this.events[name] = callback; },
     append(child) { this.children.push(child); }, replaceChildren() { this.children = []; },
+    blur() {},
     showModal() { this.open = true; }, close() { this.open = false; this.events.close?.(); } });
   const document = { createElement: element, getElementById(id) {
     if (!elements.has(id)) elements.set(id, element());
