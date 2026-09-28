@@ -1,5 +1,5 @@
 Hello? Anybody out there tonight? Cabin station up on the ridge here — figured I'd see if the repeater's behaving for once.
-Uh... anybody awake out there tonight? This is Sam up on the peninsula. Channel’s been dead all evening and I’m getting tired of listening to rain. If you’re monitoring, go ahead.
+Uh... anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of listening to rain. If you're monitoring, go ahead.
 ...Hello? Anybody monitoring tonight? This is Sam up on the west spur, getting a little tired of hearing only rain and weather radio.
 Hello, hello. Anybody awake out there tonight, or is it just me and the rain again?
 Uh, hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing if the repeater's still pretending to work.
@@ -8,19 +8,18 @@ Hello, hello... anybody awake out there tonight? Sam up on the peninsula. Figure
 Uh, hello? Anybody monitoring tonight? This is Sam up on the west side, seeing if the repeater's still alive in all this rain.
 Hello, hello. Anybody awake out there tonight, or am I just talking to rain and static?
 Evening, anybody awake out there? Sam up on the peninsula. If someone's monitoring, go ahead.
-...You awake out there, or is it just me and the rain tonight? Sam at the cabin, seeing if anybody’s monitoring.
+...You awake out there, or is it just me and the rain tonight? Sam at the cabin, seeing if anybody's monitoring.
 You out there? ... Hello? Anybody awake and listening tonight?
 ...Hello? You out there tonight? Cabin up on the west side, just seeing if anybody's awake enough to answer.
-...Hello, anybody awake out there? This is Sam up in the wet end of nowhere, seeing if anyone’s monitoring tonight.
+...Hello, anybody awake out there? This is Sam up in the wet end of nowhere, seeing if anyone's monitoring tonight.
 Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing who the rain hasn't drowned yet.
 Anybody awake out there tonight? Sam up on the peninsula, listening to the rain try to come through the roof. If someone's monitoring, go ahead.
-Hello? You out there tonight? Cabin’s still standing, rain’s still trying to prove otherwise.
+Hello? You out there tonight? Cabin's still standing, rain's still trying to prove otherwise.
 ...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Rain's trying to come through the roof again, and I'm getting tired of listening to it by myself.
-Hello, anybody up on this frequency tonight? Sam out by the west side of the peninsula. Radio’s working, rain’s still trying to drown the roof, and I figured I’d see if anyone was awake.
-You awake out there? Sam at the cabin. Thought I’d see if anyone’s listening before the rain drowns out the whole peninsula.
+Hello, anybody up on this frequency tonight? Sam out by the west side of the peninsula. Radio's working, rain's still trying to drown the roof, and I figured I'd see if anyone was awake.
+You awake out there? Sam at the cabin. Thought I'd see if anyone's listening before the rain drowns out the whole peninsula.
 Uh, hello? Anybody awake out there tonight? Sam up on the peninsula, listening to the rain and getting sick of my own company.
-...Hello, hello. Anybody awake out there tonight, or is it just me and the rain again?
-Hello, hello. Anybody monitoring tonight? Sam up in the hills here, seeing if the repeater’s behaving for once.
+Hello, hello. Anybody monitoring tonight? Sam up in the hills here, seeing if the repeater's behaving for once.
 Hello, hello. Anybody awake out there tonight? Sam up on the wet side, seeing if this radio still reaches civilization.
 Uh, hello? Anybody awake out there tonight, or am I just talking to wet trees again?
 ...Hello? Anybody awake out there tonight? This is Sam up on the Peninsula, seeing if the repeater's still willing to work with me.
@@ -30,73 +29,430 @@ Hello, hello. Anybody awake out there, or am I just talking to wet trees again?
 Uh, hello? Anybody awake out there and pretending not to be? Sam at the cabin, giving the radio one more try.
 Hello? ... Hello? Anybody monitoring tonight?
 ...Hello, hello. Anybody awake out there tonight? This is Sam up on the west side, getting rained on in a fairly committed way.
-...Anybody out there tonight? This is Sam up on the peninsula. Radio’s on if you feel like proving I’m not talking to weather and trees.
+...Anybody out there tonight? This is Sam up on the peninsula. Radio's on if you feel like proving I'm not talking to weather and trees.
 ...Hello? Anybody awake out there tonight? Sam up on the Peninsula. Just seeing if this thing still reaches anybody through all this rain.
-...You awake out there? This is Sam up on the peninsula. Channel’s been dead all day. Anybody monitoring?
+...You awake out there? This is Sam up on the peninsula. Channel's been dead all day. Anybody monitoring?
 ...You awake out there? Anybody monitoring tonight? This is Sam up on the peninsula.
-...Anybody awake out there tonight? This is Sam up on the peninsula. Weather’s miserable, radio works, somehow. If you’re monitoring, go ahead.
-You alive out there? This is Sam up on the peninsula. Rain’s trying to come through the roof and I’m getting tired of hearing only myself. Anybody monitoring tonight?
-Uh, anybody awake out there tonight? This is Sam up on the peninsula. Rain’s still trying to come through the roof. If you’re monitoring, go ahead.
-Hello, hello. Anybody awake out there tonight, or is it just me and the rain again?
-...Anybody awake out there tonight? This is Sam up on the peninsula. Weather’s filthy, radio still works, figured I’d see who’s listening.
-Hello, hello. Anybody awake out there tonight, or is it just me and the rain again?
-...Anybody out there tonight? This is Sam up on the peninsula. Just checking if the repeater’s still pretending to work.
-...Hello, anybody awake out there? This is Sam up on the peninsula. Just seeing if the repeater’s still doing its job tonight.
-...You around tonight? This is Sam up on the peninsula. Figured I’d see if anybody’s awake and listening.
-Uh… anybody awake out there tonight? This is Sam up on the peninsula. Channel’s been dead all evening.
+...Anybody awake out there tonight? This is Sam up on the peninsula. Weather's miserable, radio works, somehow. If you're monitoring, go ahead.
+You alive out there? This is Sam up on the peninsula. Rain's trying to come through the roof and I'm getting tired of hearing only myself. Anybody monitoring tonight?
+Uh, anybody awake out there tonight? This is Sam up on the peninsula. Rain's still trying to come through the roof. If you're monitoring, go ahead.
+...Anybody awake out there tonight? This is Sam up on the peninsula. Weather's filthy, radio still works, figured I'd see who's listening.
+...Anybody out there tonight? This is Sam up on the peninsula. Just checking if the repeater's still pretending to work.
+...Hello, anybody awake out there? This is Sam up on the peninsula. Just seeing if the repeater's still doing its job tonight.
+...You around tonight? This is Sam up on the peninsula. Figured I'd see if anybody's awake and listening.
+Uh… anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead all evening.
 ...Hello out there? Anybody awake and hiding from this weather, or is it just me tonight?
-Anybody awake out there tonight? This is Sam up on the peninsula. Weather’s rotten and I’m getting tired of hearing my own thoughts. If you’re monitoring, give me a shout.
-...Hello, hello. Anybody awake out there tonight, or is it just me and the rain again?
-...Anybody out there tonight? This is Sam up on the peninsula. Radio’s working, rain’s still trying to drown the roof, and I figured I’d see if the world still exists.
+Anybody awake out there tonight? This is Sam up on the peninsula. Weather's rotten and I'm getting tired of hearing my own thoughts. If you're monitoring, give me a shout.
+...Anybody out there tonight? This is Sam up on the peninsula. Radio's working, rain's still trying to drown the roof, and I figured I'd see if the world still exists.
 Hello, hello—anybody awake out there tonight? This is Sam up in the Peninsula, listening to rain hammer the roof and getting pretty tired of my own company.
 Uh, hello? Anybody awake out there tonight, or is it just me and the rain again?
 ...Hello out there? Anybody awake and listening tonight? This is Sam up on the peninsula.
 ...Hello out there? Anybody awake and listening tonight?
 Evening, anyone awake out there? Sam up on the peninsula. Just seeing if this repeater still remembers me.
-Hello, hello—anybody awake out there tonight? This is Sam up on the peninsula. Go ahead if you’ve got me.
+Hello, hello—anybody awake out there tonight? This is Sam up on the peninsula. Go ahead if you've got me.
 Hello, hello. Anybody out there tonight? This is Sam up on the peninsula, hiding from the rain.
-...You awake out there? This is Sam up on the peninsula. Weather’s doing its usual charming thing. Anybody monitoring tonight?
-...Hello? Anybody up on this channel tonight? Sam out by the peninsula. Radio’s been dead all day and I’m getting tired of hearing only rain.
-Uh, hello? Anybody awake out there tonight? This is Sam up on the peninsula, just seeing if the repeater’s still pretending to work.
+...You awake out there? This is Sam up on the peninsula. Weather's doing its usual charming thing. Anybody monitoring tonight?
+...Hello? Anybody up on this channel tonight? Sam out by the peninsula. Radio's been dead all day and I'm getting tired of hearing only rain.
+Uh, hello? Anybody awake out there tonight? This is Sam up on the peninsula, just seeing if the repeater's still pretending to work.
 ...Hello? You out there tonight? Sam up on the Peninsula, seeing if this old radio still talks to anybody.
-Hello, anybody awake out there tonight? Sam up on the peninsula. Weather’s miserable and the radio’s better company than the stove. Go ahead if you’re hearing me.
-Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater’s still talking to anybody in this weather.
-Hello? Anybody out there tonight? This is Sam up on the peninsula. Channel’s been dead all day.
+Hello, anybody awake out there tonight? Sam up on the peninsula. Weather's miserable and the radio's better company than the stove. Go ahead if you're hearing me.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's still talking to anybody in this weather.
+Hello? Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all day.
 Hello? Anybody awake out there tonight? Sam up on the peninsula. Just seeing if this thing still reaches anybody in all this rain.
 —Hello? Anybody awake out there, or is it just me and the rain again?
 Hello? You out there tonight? Cabin station up on the peninsula, trying my luck.
-Hello out there. Anybody awake and listening tonight?
 Hello out there? You getting anything through this rain, or am I just talking to wet trees again?
 ...Hello? Anybody awake out there tonight? This is Sam up on the peninsula, getting real tired of listening to rain and my own thoughts.
 Hello, hello. Anybody monitoring tonight? Sam up on the Peninsula, trying not to go completely feral in this rain.
-Hello? ... Anybody monitoring tonight? This is Sam up on the west side. Radio’s been dead quiet and I figured I’d check if the world still exists.
-...Hello? Anybody awake out there tonight? Sam up on the peninsula. Weather’s filthy and I’m getting tired of hearing only rain. If you’re monitoring, go ahead.
-Hello? Anybody awake out there tonight? Sam up on the peninsula. Weather’s making a mess of everything and I figured I’d see if this repeater still remembers me.
-You awake out there? This is Sam up on the Peninsula. Channel’s been dead all evening. If anybody’s monitoring, go ahead.
-...Hello? Anybody awake out there tonight? This is Sam up on the west side, listening in if you’ve got a signal.
+Hello? ... Anybody monitoring tonight? This is Sam up on the west side. Radio's been dead quiet and I figured I'd check if the world still exists.
+...Hello? Anybody awake out there tonight? Sam up on the peninsula. Weather's filthy and I'm getting tired of hearing only rain. If you're monitoring, go ahead.
+Hello? Anybody awake out there tonight? Sam up on the peninsula. Weather's making a mess of everything and I figured I'd see if this repeater still remembers me.
+You awake out there? This is Sam up on the Peninsula. Channel's been dead all evening. If anybody's monitoring, go ahead.
+...Hello? Anybody awake out there tonight? This is Sam up on the west side, listening in if you've got a signal.
 Hello, hello. Anybody awake out there and monitoring, go ahead.
-Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing who’s about.
-Hello? You out there tonight? This is Sam up on the peninsula. Channel’s been dead all evening.
-Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel’s been dead all day.
-Hello? Anybody awake out there tonight? Sam up on the peninsula. Weather’s rotten and I’m getting tired of listening to rain, so I figured I’d see if anyone was monitoring.
-Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel’s been dead for hours and the rain’s making me talkative.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing who's about.
+Hello? You out there tonight? This is Sam up on the peninsula. Channel's been dead all evening.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead all day.
+Hello? Anybody awake out there tonight? Sam up on the peninsula. Weather's rotten and I'm getting tired of listening to rain, so I figured I'd see if anyone was monitoring.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead for hours and the rain's making me talkative.
 ...Hello? You awake out there, or am I just talking to wet trees again?
 Hello, hello. Anybody awake out there and bored enough to answer me tonight?
 Hello, anybody up on this channel tonight? Sam out by the peninsula. Weather's filthy and I'm getting tired of listening to the roof. Go ahead if you can hear me.
 Uh, hello? Anybody awake out there, or am I talking to wet trees again?
 Hello, hello... anybody awake out there and monitoring, or is it just me and this rain again?
 ...Hello? Anybody out there tonight? This is Sam up on the ridge. Just seeing if the repeater's awake.
-Anybody awake out there tonight? This is Sam up in the wet end of nowhere. If you’re monitoring, go ahead.
+Anybody awake out there tonight? This is Sam up in the wet end of nowhere. If you're monitoring, go ahead.
 Hello? Anyone awake out there tonight? This is Sam up on the peninsula, listening to rain try to dismantle the roof. Go ahead if you read me.
 Hello? You out there tonight? Cabin station up on the peninsula, seeing if anybody's awake enough to answer.
 Hello, hello. Anybody awake out there tonight, or is it just me and the rain?
 Evening, anybody out there? Sam up on the wet side, listening. Weather's filthy and I'm getting tired of hearing my own thoughts.
-Hello? Anybody monitoring tonight? This is Sam up on the peninsula. Just seeing if the repeater’s awake.
-Evening, anybody awake out there? This is Sam up in the wet end of nowhere. Just seeing if this channel’s got a pulse tonight.
-Hello, hello. Anybody awake out there tonight, or is it just me and the rain?
+Hello? Anybody monitoring tonight? This is Sam up on the peninsula. Just seeing if the repeater's awake.
+Evening, anybody awake out there? This is Sam up in the wet end of nowhere. Just seeing if this channel's got a pulse tonight.
 Evening, anybody out there on this miserable wet channel? Sam up at the cabin. If you're monitoring, go ahead.
 ...Hello? Anybody awake out there tonight? Sam up on the peninsula. Just seeing if this channel still belongs to the living.
 Uh, hello out there? Anybody awake and monitoring tonight, or am I just talking to wet trees again?
-Uh, anybody awake out there tonight? This is Sam up on the west side. Channel’s been dead all evening and I’m getting tired of hearing rain. Go ahead if you’re monitoring.
+Uh, anybody awake out there tonight? This is Sam up on the west side. Channel's been dead all evening and I'm getting tired of hearing rain. Go ahead if you're monitoring.
 Hello, hello. Anybody awake out there tonight, or am I talking to wet trees again?
 Hello, hello. Anybody awake out there and bored enough to answer? Sam up on the peninsula.
+Hello, hello. Anybody awake out there tonight, or am I just talking to wet trees again?
+Hello, hello. Anybody awake out there tonight, or am I talking to rain and static again?
+Uh, hello? Anybody monitoring tonight? Sam up on the peninsula, getting tired of listening to rain by myself.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Radio's working, rain's still falling, and I'm seeing if the world remembers I exist.
+...You awake out there? This is Sam up in the wet end of nowhere, seeing if anybody's monitoring tonight.
+You out there tonight? Cabin station on the ridge here. Weather's filthy and I'm getting tired of hearing only rain, so if you're monitoring, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up on the ridge. Just seeing if the repeater's behaving.
+Hello? You out there tonight? This is Sam up on the peninsula. Radio's been dead quiet for hours.
+Hello? Anybody awake out there on this wet miserable night? Sam up on the peninsula, just seeing if this repeater's still pretending to be useful.
+...You awake out there? Anybody monitoring tonight?
+...Hello, hello. Anybody monitoring tonight? This is Sam up on the wet side, getting tired of listening to rain and my own thoughts.
+...You monitoring tonight? Cabin station out by the logging road. Weather's rotten and I'm getting tired of listening to rain talk to itself.
+...You awake out there? This is Sam up in the Peninsula. Channel's dead as a stump tonight, but I'm listening if anybody's bored enough to answer.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing if the repeater's behaving for once.
+...You out there tonight? This is Sam at the cabin. Channel's been dead all day. If anybody's monitoring, go ahead.
+Evening. Anybody awake out there and monitoring? This is Sam up on the west side. Go ahead if you can hear me.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Just checking if someone's monitoring.
+Hello, hello... anybody awake out there tonight? This is Sam up on the peninsula. Radio's on, rain's loud, and I figured I'd see if the world still answers.
+...Hello? Anybody monitoring tonight? This is Sam up on the Peninsula. Just seeing if the repeater's behaving.
+...Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I figured I'd poke it with a stick.
+Hello, hello. Anybody awake out there, or is it just me and this rain tonight?
+Hello, hello... anybody monitoring tonight? Sam up in the wet end of nowhere. If you're out there, go ahead.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead all evening.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing if the repeater's still got some life in it.
+...Hello? Anybody out there tonight? This is Sam up on the west side. Just checking if someone's monitoring.
+Hello? Anybody up and listening tonight? This is Sam out by the west side hills. Channel's been dead for hours.
+Hello? Anybody awake out there tonight? This is Sam up in the woods, seeing if the repeater's behaving.
+Hello, hello. Anybody awake out there, or is it just me and the rain tonight?
+...You there? This is Sam up on the peninsula. Channel's been dead all evening. Anybody listening tonight?
+...Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all evening. If you're monitoring, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up on the west side, listening if you've got a minute.
+Uh, hello out there? Anybody monitoring tonight, or am I just talking to wet trees again?
+...Hello? Anybody awake out there tonight? I've got rain, static, and too much free time.
+...You out there tonight? This is Sam up on the peninsula. Channel's been dead all day and I was starting to take it personally.
+Hello? ... Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's behaving.
+Hello, hello... anybody out there tonight? This is Sam up on the peninsula, idly abusing a radio because the rain won't quit.
+...You awake out there? This is Sam at the cabin. Channel's been dead all evening. If anybody's monitoring, go ahead.
+Evening. Anybody out there monitoring, or am I just talking to wet trees again?
+Hello? Anybody monitoring tonight? This is Sam up on the west side, getting a little too familiar with the sound of rain. Go ahead if you read me.
+Hello, hello. Anybody awake out there tonight? This is Sam up on the west slope, listening if you've got a minute.
+...Hello? Anybody up and listening tonight? This is Sam out on the west side. Weather's filthy and I'm getting tired of hearing only the rain. Go ahead if you've got me.
+Evening. Anybody out there on this side of the rain?
+...Hello? Anyone out there monitoring tonight? This is Sam up on the west side, getting thoroughly sick of listening to rain. Go ahead if you read me.
+...Hello? You awake out there? This is Sam up in the hills. Anybody monitoring tonight?
+...You out there tonight? Cabin station on the peninsula, seeing if anybody's monitoring. Go ahead if you've got me.
+...Hello? Anybody awake out there and listening tonight? This is Sam up in the hills. Radio check, I guess.
+...Anybody out there tonight? Cabin station up on the peninsula, just seeing if this thing still reaches anybody in all this rain.
+...Anybody out there tonight? This is Sam at the cabin. Radio's on if you're listening.
+Uh, hello? Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead for hours.
+Hello? Anybody out there tonight? This is Sam up in the Peninsula, seeing if the repeater's awake.
+...Hello? Anybody awake out there tonight? This is Sam up in the hills. Just seeing if the repeater's still carrying a human voice.
+Hello? Anybody monitoring tonight? Sam out by the south fork, getting tired of listening to rain and static. If you're there, go ahead.
+...Hello, hello. Anybody awake out there tonight? Sam up on the peninsula, listening to rain and getting tired of my own company.
+Uh, hello? Anyone awake out there tonight? This is Sam up on the Peninsula, listening if somebody's got a radio on.
+...Anybody out there tonight? This is Sam up on the peninsula. Radio's working, rain's still trying to come through the roof, and I figured I'd see if the world still answers back.
+...Anybody awake out there tonight? This is Sam up in the hills. Just checking if the repeater's still carrying a human voice.
+...You awake out there? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of hearing only rain and my own bad opinions.
+Evening. Anybody out there tonight? Sam up at the cabin here. Radio's working, rain's trying to prove otherwise.
+Hello? Anybody awake out there tonight? Sam up on the Peninsula. Thought I'd see if this channel still has a pulse.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing if the repeater's still doing its job.
+...Hello? Anybody monitoring tonight? This is Sam up on the west side, seeing if the repeater's behaving for once.
+Evening. Anybody awake out there? Sam up on the peninsula. If you're monitoring, go ahead.
+...You awake out there? This is Sam at the cabin. Channel's been dead all day and I'm getting tired of listening to rain. If anyone's monitoring, go ahead.
+Evening. Anybody out there monitoring? This is Sam up on the peninsula. Radio check, I guess.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. If you're monitoring, give me a shout.
+Hello? Anybody monitoring tonight? Sam up on the west side, getting thoroughly rained on.
+You awake out there? Sam up at the cabin. Weather's filthy and I'm getting tired of hearing only rain. Anybody on?
+Hello, hello... anybody awake out there tonight? This is Sam up on the Peninsula. Channel's been dead all evening and I'm getting tired of listening to rain. If you're monitoring, go ahead.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of listening to rain on the roof.
+...You awake out there? Anybody monitoring tonight? Cabin station on the west side, getting a little stir-crazy in the rain.
+...Anybody awake out there tonight? Olympic side, you got Sam at the cabin. Channel's been dead all evening.
+...You awake out there? This is Sam up on the Peninsula. Weather's ugly and I'm getting tired of listening to rain, so if anybody's monitoring, go ahead.
+Evening, anybody out there? This is Sam up on the peninsula. Just seeing if the repeater's behaving tonight.
+Hello, hello... anybody monitoring tonight? This is Sam up in the hills. Channel's too quiet for a night like this.
+Hello, hello. Anybody out there on this wet miserable evening? Sam up in the hills, seeing if the radio still reaches someone.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Radio's on if you're listening.
+...Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all evening.
+Hello, hello... anybody monitoring tonight? Sam up in the wet end of nowhere. If that repeater's behaving, give me a shout.
+...You monitoring tonight? This is Sam up in the hills. Weather's filthy and I'm getting tired of talking to the stove.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula, just seeing if the radio still talks back.
+Hello? Anybody awake out there tonight? This is Sam up in the hills. Just checking whether I've still got the repeater.
+You awake out there? This is Sam up on the Peninsula. Channel's been dead all evening and I'm getting tired of talking to the rain.
+Hello, hello. Anybody awake out there tonight? This is Sam up on the peninsula, seeing if the radio still reaches somebody besides the rain.
+...You around tonight? This is Sam up on the ridge. Radio's been dead quiet for hours and I'm getting tired of listening to rain. If you're monitoring, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up on the west side, seeing if the repeater's behaving for once.
+...Hello? Anybody out there tonight? Sam up on the peninsula, seeing if this radio still reaches anyone.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Radio's on if you feel like answering.
+Hello, hello... anybody awake out there tonight? Sam up on the peninsula. If you've got me, go ahead.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Radio's on if you feel like proving I'm not talking to the rain.
+Hello? Anybody awake out there tonight? Sam at the cabin, giving the radio one more chance before I start talking to the stove.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Radio's on if someone's bored enough to answer.
+...You out there tonight? Cabin station on the peninsula here. Channel's been dead all day and I'm getting tired of listening to rain. Go ahead if you copy.
+Hello? You out there tonight? This is Sam up in the wet end of nowhere, seeing if anybody's listening.
+...You awake out there? This is Sam at the cabin. Channel's been dead all day and I'm getting tired of hearing only rain, so if anybody's monitoring, give me a shout.
+...You awake out there? Sam at the cabin, seeing if anyone's monitoring. It's a wet enough night to make a person start talking to the radio. Go ahead if you've got me.
+Uh, hello out there? Anybody monitoring tonight, or am I just talking to rain again?
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's still got some life in it.
+Evening, anybody out there? Sam up on the peninsula. Channel's been dead all day and I'm getting tired of hearing only rain. If you're monitoring, go ahead.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's behaving for once.
+...Hello? Anybody out there tonight? This is Sam at the cabin, up on the peninsula. Channel's been dead all evening. If you're monitoring, go ahead.
+...Hello? Anybody awake out there tonight? This is Sam up on the west side, seeing if the repeater's behaving.
+...Hello? Anybody monitoring tonight? Sam out on the peninsula here. Radio's been too quiet and the rain's getting ideas.
+You awake out there? Cabin station on the peninsula, just seeing if anybody's monitoring tonight.
+Hello? Anybody monitoring tonight? Cabin station out on the peninsula here. If you can hear me, go ahead.
+...Hello? Anybody out there tonight? Cabin station up on the ridge here. Channel's been dead as a grave, thought I'd try my luck.
+Hello, hello... anybody awake out there tonight? This is Sam up on the west side, seeing if the rain hasn't drowned the whole band.
+Hello, hello... anybody monitoring tonight? Sam up in the hills here, listening to the rain and getting a little too familiar with my own thoughts.
+...You awake out there? Anybody monitoring tonight? Cabin station on the peninsula here. Weather's filthy and I'm getting tired of hearing only rain, so if that's a human on the other end, go ahead.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula, trying the repeater again.
+...You awake out there? This is Sam on the peninsula. Channel's dead as a stump tonight, but I figured I'd try anyway.
+...Hello? Anybody awake out there tonight? Sam at the cabin, seeing if this radio still talks to the world.
+Hello? Anybody monitoring tonight? Sam up in the wet end of nowhere, seeing if this thing still reaches anybody.
+...Hello? Anybody awake out there tonight? This is Sam up in the wet end of nowhere, seeing who the rain hasn't drowned out.
+...Hello? Anybody out there on this channel tonight? Sam up on the peninsula, seeing if the radio still talks to civilized company.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Radio's on if you're listening.
+Hello, hello... anybody awake out there tonight? Sam up in the hills. Channel's been dead all day and I'm getting tired of hearing rain.
+Evening, anybody out there? Cabin station on the peninsula, just seeing if this channel's alive tonight.
+...You awake out there? This is Sam up on the peninsula. Radio's too quiet tonight. Anybody monitoring, go ahead.
+Hello, hello—anybody awake out there tonight? This is Sam up on the Peninsula. Just seeing if the repeater's still carrying voices through all this rain.
+...You out there tonight? This is Sam up in the hills. Radio's on, rain's making a hell of a racket, and I figured I'd see if anybody was awake.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Just checking if the repeater's still carrying voices through this weather.
+...You awake out there? Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of hearing just the rain. If anybody's monitoring, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up in the wet end of the woods, seeing if the radio still reaches somebody.
+Hello, hello. Anybody awake out there tonight? This is Sam up on the west side, seeing if the repeater's still got a pulse.
+...You around tonight? This is Sam at the cabin. Channel's been dead for hours and I'm getting tired of listening to rain, so if anybody's awake, go ahead.
+...Hello? Anybody out there monitoring tonight? This is Sam up on the west side. Radio check, I guess.
+...Hello? Anybody awake out there and pretending they enjoy this weather? Sam up on the peninsula. Monitoring if anyone feels like proving the radio still works.
+...You awake out there? This is Sam at the cabin. Channel's been dead all afternoon, figured I'd try my luck.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's alive.
+Evening, anybody monitoring? Sam up on the peninsula here. Radio's been too damn quiet tonight.
+...You awake out there? Sam at the cabin. Channel's dead as a fence post tonight, but I figured I'd try anyway.
+...Hello? Anybody out there tonight? This is Sam at the cabin. If you're monitoring, go ahead.
+...You out there tonight? This is Sam up on the peninsula. Channel's been dead for hours and I'm getting tired of hearing rain hit the roof.
+Uh, hello out there? Anybody monitoring tonight? Sam up on the peninsula, trying not to go stir-crazy in the rain.
+Hello, hello... anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead for hours and I'm getting tired of listening to the rain.
+...Hello? Anybody out there tonight? This is Sam up on the Peninsula. Radio check, I guess.
+...You awake out there? Anybody monitoring tonight? Sam up on the peninsula. Weather's filthy and I'm getting tired of listening to rain hit the roof.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Radio's been dead quiet for hours.
+Hello? Anybody up on this channel tonight? Sam out by the west end road here. Just checking if the repeater's still willing to pretend it works.
+Hello? Anybody out there tonight? This is Sam up on the west side. Channel's been dead all evening and I'm getting tired of listening to rain.
+Uh, hello? Anybody monitoring tonight? This is Sam up on the peninsula. Radio check, I guess.
+Hello, hello... anybody awake out there tonight? This is Sam up on the peninsula. If someone's monitoring, give me a shout.
+Hello? Anybody awake out there tonight? This is Sam up in the hills. Radio's on if you feel like answering.
+Hello, hello... anybody out there tonight? This is Sam up in the hills. Channel's been dead all evening and I'm getting tired of hearing only rain, so if you're monitoring, give me a shout.
+Uh, hello out there? Anybody awake and monitoring tonight, or am I just talking to the rain again?
+...You awake out there? This is Sam up on the peninsula. Channel's dead as a doornail tonight, so if anybody's monitoring, give me a shout.
+...Hello? You out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of listening to rain hit the roof by myself.
+...You awake out there? This is Sam up on the peninsula. Channel's dead as a stump tonight, but I figured I'd try anyway.
+Hello? Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all day and I figured I'd see if the set still works.
+Hello, hello... anybody awake out there tonight? This is Sam up in the wet end of nowhere, seeing if the radio still reaches somebody.
+Anybody awake out there? This is Sam up on the peninsula. Rain's got me listening to my own thoughts again, which is never ideal.
+...You awake out there? Anybody monitoring tonight? Sam up on the peninsula, listening to rain and bad decisions. Go ahead if you read me.
+Hello out there? Anybody monitoring tonight? Sam up on the Peninsula, getting mighty tired of listening to rain.
+Hello, hello... anybody awake out there tonight? This is Sam up in the hills. Channel's been dead as a fence post. If you're monitoring, go ahead.
+Uh, hello? Anybody monitoring tonight? This is Sam up on the peninsula. Go ahead if you've got a copy.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead for hours.
+...Hello? Anybody monitoring tonight? Sam up on the peninsula. Weather's filthy and I'm about done listening to rain by myself.
+...You awake out there? This is Sam up on the peninsula. Radio's too quiet tonight, figured I'd poke it with a stick.
+Hello, hello. Anybody awake out there and monitoring tonight? This is Sam up in the wet end of nowhere.
+...Hello? You awake out there, or am I talking to weather and fir trees again?
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing who's listening.
+Hello, hello... anybody monitoring tonight? Sam out on the peninsula. Weather's filthy and I'm getting tired of hearing only rain, so if that's a person and not static, go ahead.
+Hello, hello. Anybody monitoring tonight? This is Sam up on the peninsula, trying not to go stir-crazy in the rain.
+Hello? Anybody monitoring tonight? Sam up in the hills here. Thought I'd see if the repeater was still alive in this weather.
+Hello, hello... anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's still got some life in it.
+...You up tonight? This is Sam at the cabin. Just seeing if anybody's awake out there.
+...You out there tonight? Sam up on the peninsula. Channel's been dead all day.
+...You out there tonight? Cabin station up on the peninsula. If anybody's monitoring, go ahead.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all evening.
+...Hello? Anybody out there monitoring tonight? This is Sam up on the peninsula. Go ahead if you can hear me.
+...You awake out there? Anybody monitoring tonight? This is Sam up on the peninsula, getting a little tired of listening to rain and my own thoughts.
+Uh, hello? Anybody awake out there and monitoring, or am I just talking to wet fir trees again?
+...Hello? Anybody monitoring tonight? This is Sam out on the Peninsula. Channel's been dead for hours and I'm getting tired of hearing rain. Go ahead if you've got me.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Weather's ugly and I'm getting tired of hearing only the rain, so if you're monitoring, come back.
+Hello, hello... anybody awake out there tonight? This is Sam up on the Peninsula. Just seeing if the repeater's behaving.
+You up there tonight? Cabin station out by the timberline, giving the radio one more chance before I start talking to the stove.
+...Hello? Anybody out there tonight? I've got the set on and the rain's making a racket, but I should still hear you. Go ahead.
+...Hello? Anybody awake out there tonight? This is Sam up in the wet end of nowhere, seeing if anyone's monitoring.
+...Hello? Anybody awake out there tonight? This is Sam up in the hills, seeing if the repeater's still feeling generous.
+...You awake out there? Sam up on the peninsula, on the off chance anyone's listening.
+...Hello, hello. Anybody awake out there tonight, or is it just me and this rain?
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Radio's on if you feel like answering.
+...Anybody awake out there tonight? This is Sam up on the peninsula. If you're monitoring, give me a shout.
+Uh, hello? Anybody awake out there tonight? Sam up on the Peninsula, seeing if this radio still talks to people.
+...You awake out there? Anybody monitoring tonight? Cabin station up on the peninsula, getting thoroughly sick of this rain.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's awake.
+...You awake out there? Sam at the cabin, seeing if anyone's on this channel tonight.
+Hello, hello. Anybody awake out there tonight? This is Sam up in the hills. Channel's been dead all evening and I figured I'd poke it with a stick.
+Uh, hello? Anybody out there tonight? This is Sam up on the Peninsula. Channel's been dead all evening, figured I'd try my luck.
+Uh, hello? Anybody out there tonight? This is Sam up in the hills, getting thoroughly rained on. If you're monitoring, go ahead.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula, seeing if the repeater's behaving for once.
+...You awake out there? This is Sam up on the west side. Channel's been dead all day and I'm getting tired of hearing only rain and my own bad opinions.
+Hello, hello... anybody monitoring tonight? Sam up in the hills here. Weather's filthy and I'm running out of ways to entertain myself. If you've got a radio on, go ahead.
+...Hello? Anybody out there tonight? This is Sam up on the Peninsula. Channel's been dead for hours and I'm getting tired of hearing rain. If you're monitoring, go ahead.
+...Anybody out there tonight? This is Sam up on the west side. Radio's been dead as a stump all evening. If you're monitoring, go ahead.
+You out there tonight? Cabin station by the ridge, giving the radio another chance. Go ahead if you can hear me.
+...Hello? Anybody monitoring tonight? Sam up on the peninsula. Weather's filthy and the roof sounds like a drum. If you're out there, go ahead.
+Hello? You out there tonight? Cabin station on the peninsula, just seeing if anybody's awake.
+Evening. Anybody out there on this channel, or am I just talking to wet trees again?
+You awake out there? This is Sam at the cabin. Channel's been dead all day and I'm getting tired of talking to the rain.
+Hello? ... Anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of listening to rain. Go ahead if you're hearing me.
+...You awake out there? Sam at the cabin, checking the channel. Anybody monitoring tonight?
+Hello? Anybody awake out there tonight? Sam up in the hills, seeing who's on.
+Hello? You out there tonight? Sam up on the peninsula, seeing if anyone's awake enough to answer in this weather.
+...You awake out there? This is Sam at the cabin. Channel's been dead all evening and I figured I'd see if anyone's listening.
+...You up tonight? Cabin station out by the timber road. If anybody's monitoring, go ahead.
+...You out there tonight? Cabin station on the peninsula. Channel's been dead for hours and I'm getting tired of hearing my own thoughts.
+Hello? Anybody awake out there tonight? This is Sam up in the wet end of nowhere, seeing if the radio still reaches another human.
+...Hello? Anybody monitoring tonight? This is Sam up on the peninsula. Channel's been dead all evening.
+Hello, hello... anybody awake out there tonight? Sam up on the Peninsula. Channel's been dead all evening.
+Uh, hello? Anybody monitoring tonight? Sam up on the west side, listening if you've got a minute.
+...You up there tonight? This is Sam out on the peninsula. Channel's been dead all day and I'm getting tired of listening to rain. If anybody's monitoring, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up in the wet end of nowhere, seeing if the radio still works.
+...Hello? Anybody awake out there and listening tonight? This is Sam up on the peninsula.
+...Hello? Anybody awake out there tonight? Sam up on the peninsula, listening if you've got a signal.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's still carrying voices through all this rain.
+...Anybody out there tonight? This is Sam up on the peninsula. Radio check, I guess. Channel's too damn quiet.
+Hello? Anybody monitoring tonight? This is Sam out by the west end of nowhere, getting tired of listening to rain. Go ahead if you can hear me.
+...Hello? Anybody awake out there and pretending this weather is normal? Sam up in the hills, just seeing if this channel's got a pulse tonight.
+...Hello? Anybody awake out there and bored enough to answer a wet cabin in the woods?
+Hello, hello. Anybody out there tonight, or am I talking to wet fir trees again?
+Hello, hello... anybody monitoring tonight? Sam up on the peninsula. Figured I'd see if the repeater was still alive.
+You out there tonight? Cabin station up on the ridge here. If anybody's monitoring, go ahead.
+Uh, hello? Anybody out there monitoring tonight? This is Sam up on the peninsula. Radio's quiet as a tomb and I figured I'd check.
+Hello? Anybody monitoring tonight? Sam up on the Peninsula here, listening to rain and getting pretty tired of my own company.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Radio's too quiet and the rain is making me sociable.
+Hello, hello... anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of hearing my own thoughts.
+...You out there tonight? This is Sam at the cabin. Channel's been dead all day and I'm getting tired of hearing only rain, so if anybody's monitoring, go ahead.
+...Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's behaving. Go ahead if you can hear me.
+Hello? Anybody awake out there tonight? This is Sam at the cabin. Channel's been dead all evening, figured I'd try my luck.
+...Hello, hello. Anybody awake out there and monitoring, or am I just talking to wet trees tonight?
+...Hello? Anybody monitoring tonight? This is Sam up in the hills. If you can hear me, go ahead.
+...Hello? Anybody awake out there tonight? This is Sam at the cabin. Channel's been dead for hours and I'm getting tired of talking to the rain.
+Hello, hello... anybody awake out there tonight? Sam up in the hills, listening if you've got a minute.
+Hello, hello... anybody awake out there tonight? This is Sam up on the Peninsula. Radio's on if anyone feels like proving the world still exists.
+...You awake out there? This is Sam up on the peninsula. Channel's been dead all day and I'm getting tired of my own company.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Radio's been dead quiet for hours.
+Hello, hello... anybody awake out there tonight? Cabin station out on the Peninsula giving the repeater a try.
+Hello? Anybody out there tonight? Cabin station on the peninsula, just seeing if this thing still talks to people.
+Hello, hello... anybody awake out there tonight? This is Sam up in the Peninsula, listening to rain hit the roof and getting a little tired of my own company.
+...You monitoring tonight? Cabin station out by the ridge. Weather's filthy and I'm getting tired of listening to rain, so if anybody's there, go ahead.
+...You awake out there? This is Sam at the cabin. Weather's ugly and the channel's been dead all evening. If anybody's monitoring, go ahead.
+Hello? Anyone awake out there tonight? This is Sam up on the peninsula.
+...Hello? Anybody awake out there tonight? This is Sam up in the Peninsula. Channel's been dead for hours and I'm getting tired of listening to rain.
+Evening... anybody awake out there? This is Sam up on the peninsula. Just seeing if the repeater's still carrying voices tonight.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead all afternoon.
+Hello, hello... anybody awake out there tonight? This is Sam up in the wet end of nowhere, seeing if the repeater's still feeling generous.
+...You awake out there? Sam up on the peninsula, seeing if anybody's monitoring tonight.
+Evening, anybody awake out there? Sam up in the wet end of the Peninsula. Channel's been dead for an hour and I was starting to take it personally.
+Hello? You out there tonight? Cabin station up on the peninsula here, seeing if anyone's awake enough to answer in this weather.
+Hello, hello. Anybody monitoring tonight? Sam out on the peninsula here, listening.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula, seeing if the repeater's still got a pulse.
+Hello, hello... anybody awake out there tonight? This is Sam up in the hills. Channel's been dead all evening and I figured I'd see if the radio still works.
+...Hello? Anyone awake out there tonight? This is Sam up in the hills. Just seeing if the repeater's still got a pulse.
+Hello, hello. Anybody up on this channel tonight? Sam out by the peninsula. Go ahead if you can hear me.
+Hello? Anybody awake out there tonight? Sam up on the peninsula here. Just seeing if anyone's monitoring.
+...You awake out there? This is Sam up in the wet end of nowhere, seeing if anybody's on. Channel's been dead all afternoon. Go ahead if you can hear me.
+...Hello? Anybody out there monitoring tonight? This is Sam up in the wet end of nowhere, seeing if the repeater's still alive.
+...Anybody out there tonight? This is Sam up in the hills. Radio's been too quiet. If you're monitoring, give me a shout.
+...You out there tonight? This is Sam at the cabin. Weather's rotten and I'm getting tired of hearing only rain, so if you're monitoring, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula, seeing if the repeater's still feeling generous.
+Hello? You out there tonight? This is Sam up on the peninsula. Channel's been dead all day and I'm getting tired of hearing only the rain.
+...You awake out there? Anybody monitoring tonight? Sam at the cabin, a little west of drowned and miserable.
+Evening. Anybody out there tonight? Sam up on the peninsula, just seeing if this channel's alive.
+...Hello? Anybody up and listening tonight? This is Sam out on the peninsula. Channel's been dead all day and I'm getting tired of hearing only rain. Go ahead if you copy.
+...You out there tonight? This is Sam up on the peninsula. Channel's been dead all day, figured I'd try my luck.
+...You awake out there? Anybody monitoring tonight, go ahead.
+Breaker, breaker—anybody awake out there tonight? This is Sam up on the wet side, seeing if the repeater's still feeling sociable.
+Breaker, breaker—anybody awake out there tonight? This is Sam up in the wet end of nowhere, seeing if the radio still talks to civilized company.
+...You out there tonight? Anybody monitoring? Cabin station up on the peninsula, getting tired of listening to rain and static by myself.
+Hello, hello... anybody monitoring tonight? Sam up in the hills here. Radio check, I guess.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's still carrying voices in this weather.
+Breaker, breaker—well, not really. Anybody out there tonight? This is Sam up on the peninsula. Just checking if the repeater's still in the mood to cooperate.
+...You awake out there? This is Sam up in the hills. Channel's been dead all afternoon and I'm getting tired of listening to rain. If anybody's monitoring, go ahead.
+Hello, hello. Anybody awake out there and listening, or is it just me and the rain tonight?
+Hello, hello... anybody awake out there tonight? This is Sam up on the west side. Channel's been dead all day and I'm getting tired of hearing rain. If you're monitoring, go ahead.
+...You up out there? This is Sam at the cabin. Channel's been dead all day, so I figured I'd try my luck.
+...You awake out there? This is Sam at the cabin. Channel's been dead all evening, figured I'd try my luck.
+Hello? Anybody monitoring tonight? This is Sam up on the peninsula. Weather's rotten and I'm getting tired of hearing only the rain, so if you're out there, go ahead.
+...You awake out there? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of listening to rain. If anybody's monitoring, go ahead.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Channel's been dead all day and I'm getting tired of hearing only rain, so if you're monitoring, go ahead.
+Hello, hello. Anybody awake out there and monitoring, or is it just me and the rain tonight?
+...You awake out there? This is Sam at the cabin. Channel's been dead all evening. Anybody monitoring?
+Hello? Anybody monitoring tonight? This is Sam up on the peninsula. Radio's too quiet and the rain's getting ideas.
+...Hello? Anybody awake out there on this miserable wet night? Sam up on the peninsula, just seeing if anyone's monitoring.
+...Hello? Anybody awake out there and monitoring tonight? This is Sam up on the peninsula.
+...You awake out there? This is Sam up on the peninsula. Weather's filthy and I'm getting tired of hearing my own voice. If anybody's monitoring, go ahead.
+...Anybody out there tonight? This is Sam up on the peninsula. Radio's been too quiet. If you're monitoring, go ahead.
+Uh, hello? Anybody monitoring tonight, or am I talking to wet trees again?
+Hello? You monitoring tonight? This is Sam out on the Peninsula. Channel's been dead all evening.
+Anybody monitoring tonight? Sam up on the peninsula here. Weather's miserable and I'm getting a little tired of listening to rain talk to itself. If you're out there, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula, listening if someone's got the channel.
+...Hello? Anybody monitoring tonight? This is Sam up in the wet end of nowhere. Radio check, I guess.
+...Hello? You monitoring tonight? This is Sam up in the hills. Weather's filthy and I've about run out of ways to be entertained, so if that's a human on the other end, go ahead.
+...Anybody out there tonight? This is Sam up on the west side. Channel's been dead all day and I'm getting tired of hearing rain hit the roof.
+Hello? Anybody monitoring tonight? Sam up in the hills here — starting to think it's just me and the rain.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I got tired of listening to the rain.
+Breaker, breaker—anybody awake out there tonight? Sam at the cabin, seeing if this old set still reaches somebody.
+Hello, hello... anybody monitoring tonight? This is Sam out on the peninsula. Channel's been dead all evening.
+...Hello? You awake out there? Anybody monitoring tonight?
+...You awake out there? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of listening to rain. Anybody monitoring?
+Evening. Anybody awake out there and foolish enough to be listening in this weather?
+...Hello? Anyone awake out there and babysitting a radio tonight? This is Sam up in the rain, seeing if the repeater's still feeling charitable.
+Hello? You out there tonight? Cabin station on the peninsula, seeing if anybody's awake enough to answer.
+Breaker, breaker— anybody awake out there tonight? This is Sam up on the west side, listening if anyone's got a radio and poor judgment.
+...You out there tonight? This is Sam up on the peninsula. Channel's been dead all day. Figured I'd see if anybody's awake.
+Hello, hello... anybody awake out there tonight? This is Sam up on the peninsula, listening in if someone's got a minute.
+...You awake out there? This is Sam up in the wet end of nowhere. Channel's been dead all evening, figured I'd see if anybody's listening.
+...Hello? Anybody monitoring tonight? Sam out on the peninsula here. If you can hear me, go ahead.
+...Hello? Anybody out there monitoring tonight? Sam up in the hills. Weather's filthy and I'm getting tired of listening to the roof, so if you've got a copy, go ahead.
+...Hello, hello? Anybody awake out there and monitoring? This is Sam up on the peninsula. Radio check, I guess.
+...Anybody monitoring tonight? Sam up in the hills here, just seeing if this old repeater still works in the rain.
+Evening. Anybody out there tonight? ... Hello?
+Evening. Anybody monitoring? ... This is Sam up in the hills. Radio's too quiet tonight.
+Hello? Anybody monitoring tonight? Sam up on the peninsula here. Weather's rotten and I'm getting tired of listening to the rain, so if you're out there, give me a shout.
+...Anybody out there tonight? This is Sam up on the peninsula. Weather's filthy and I'm getting tired of listening to rain. If you're monitoring, go ahead.
+...You up tonight? This is Sam out by the west ridge. Channel's been dead all evening, figured I'd try my luck.
+...You out there tonight? This is Sam up in the hills. Channel's been dead for hours. If anybody's monitoring, go ahead.
+Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the repeater's still willing to pretend it works.
+...Anybody awake out there tonight? This is Sam up on the peninsula. Just seeing if the radio still reaches somebody besides the rain.
+Hello, hello. Anybody out there tonight? Sam up on the peninsula, listening in.
+Evening, anybody out there? This is Sam at the cabin. Channel's been dead all day, figured I'd try my luck.
+...Anybody out there tonight? This is Sam up in the hills. Radio's on, coffee's bad, weather's worse. If you're monitoring, go ahead.
+Hello, hello. Anybody awake out there tonight, or am I talking to the weather again?
+...You copy? Anybody awake out there tonight? This is Sam up on the Peninsula, listening in and getting a little too familiar with the sound of rain.
+...Hello? Anybody awake out there tonight? This is Sam up on the peninsula. Radio check, I guess.
+Hello? You out there tonight? This is Sam up on the wet end of nowhere. If anybody's monitoring, go ahead.
+Hello? Anybody out there tonight? Cabin station on the peninsula, seeing if this thing still reaches anybody in this weather.
+...Hello? You out there tonight? Cabin station up on the peninsula, just seeing if anybody's awake enough to answer.
+...Anybody out there tonight? This is Sam up in the wet end of nowhere, seeing if the radio still works.
+Uh... hello? Anybody monitoring tonight? Sam out by the west slope cabin here. Radio's too quiet and I'm getting desperate enough to talk to static.
+Evening, anyone awake out there? This is Sam up on the peninsula. Radio's too quiet and the rain's making me talk to myself. If you're monitoring, go ahead.
+Uh... hello? Anybody monitoring tonight? This is Sam up in the hills. Channel's been dead all evening.
+Hello, hello... anybody out there tonight? This is Sam up on the peninsula, listening if someone feels like answering.
+...You up there tonight? This is Sam at the cabin. Channel's been dead all day. If anybody's monitoring, go ahead.
+Hello, hello... anybody awake out there tonight? This is Sam up in the hills. Just seeing if the repeater's behaving.
+Hello? Anybody out there tonight? This is Sam up on the peninsula. Radio's been dead all evening and I'm getting tired of listening to rain. Go ahead if you're on frequency.
+...You awake out there? Anybody monitoring tonight? This is Sam up on the peninsula. Channel's been dead for hours.
+...You out there tonight? This is Sam at the cabin. Channel's been dead as a stump. If anybody's monitoring, go ahead.
+...You awake out there? This is Sam up on the peninsula. Channel's been dead all evening and I got tired of listening to rain. If anybody's monitoring, go ahead.
+Uh, hello out there? Anybody monitoring tonight? Sam up on the west side, getting thoroughly rained on.
+Evening. Anybody monitoring? Sam up in the hills here, getting tired of listening to rain. If you've got a copy, go ahead.
+Hello, hello. Anybody awake out there tonight? This is Sam up on the Peninsula, listening if you've got traffic.
+...Hello? Anybody awake out there and monitoring tonight? This is Sam up on the peninsula. Radio check, I guess.
+...You awake out there? This is Sam at the cabin. Channel's dead as a stump tonight, but I figured I'd try anyway.
+Hello? Anybody awake out there tonight? Cabin station up on the Peninsula, seeing if this repeater's still worth a damn.
+Hello? Anyone awake out there tonight? This is Sam up on the peninsula. Channel's been dead all evening and I'm getting tired of listening to rain. Go ahead if you're copying me.
+...You up out there? This is Sam at the cabin. Weather's filthy and I'm getting tired of hearing my own thoughts. If anybody's monitoring, go ahead.
+Hello? Anybody monitoring tonight? Sam up at the cabin here. Weather's filthy and I'm getting tired of listening to rain talk to itself.
+...Hello? Anybody out there tonight? This is Sam up on the peninsula. Radio's working, rain's still trying to come through the roof, and I figured I'd see if the world still exists.
+Hello, hello. Anybody monitoring tonight, or is it just me and the rain again?
+...You monitoring tonight? This is Sam up in the hills. Radio's too quiet and the rain's making me suspicious.
+...Hello? Anybody out there tonight? This is Sam up in the hills. Radio's on if you're listening.
+...Hello? Anybody monitoring tonight? This is Sam out on the Peninsula. Channel's been dead all evening.
+...Hello? Anybody awake out there tonight? Sam up on the peninsula, listening through the rain if someone's on frequency.
+Hello? Anybody monitoring tonight? This is Sam up on the west side. Channel's been dead all evening.
+...You out there tonight? This is Sam up on the west side. Channel's been dead all day. If anybody's monitoring, go ahead.
+You out there tonight? This is Sam up on the peninsula. Radio's awake, cabin's still standing, and I'm getting tired of listening to rain by myself.
+Uh, anybody monitoring tonight? Sam out at the cabin here. Channel's been dead all day.
+Uh, hello? Anybody awake out there tonight? This is Sam up on the peninsula, just seeing if the repeater's still got a pulse.
+...Anybody awake out there tonight? This is Sam at the cabin. Radio's on if you feel like talking.
+Hello, hello... anybody awake out there tonight? This is Sam up in the wet end of nowhere, giving the radio one more chance before I start talking to the stove.
