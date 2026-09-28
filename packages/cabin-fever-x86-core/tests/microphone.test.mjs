@@ -182,9 +182,13 @@ test("recording levels become dots, then the transcript replaces the same row", 
   await ui.run("keyDown()");
   const line = ui.$("log").children[0];
   ui.level(0);
-  assert.equal(line.textContent, "▁▁▁▁▁");
+  assert.equal(line.textContent, "▯▯▯▯▯▯▯");
+  ui.level(10 ** (-38 / 20));
+  assert.equal(line.textContent, "▮▮▮▯▯▯▯");
   ui.level(0.5);
-  assert.equal(line.textContent, "▁▁▁▁█");
+  assert.equal(line.textContent, "▮▮▮▮▮▮▮");
+  ui.level(0);
+  assert.equal(line.textContent, "▯▯▯▯▯▯▯");
   ui.run("keyUp()");
   assert.equal(line.textContent, "...");
   assert.equal(line.classes.has("take-dots"), true);
@@ -199,24 +203,27 @@ test("recording levels become dots, then the transcript replaces the same row", 
   assert.equal(line.attributes.size, 0);
 });
 
-test("meter scales to the glyph count and keeps Unicode glyphs intact", async () => {
+test("meter fills left to right with swappable glyphs and clears on silence", async () => {
   for (const [glyphs, middle] of [
     [["·", "●"], "●"],
     [["🔈", "🔉", "🔊"], "🔉"],
-    [["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"], "G"],
+    [["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"], "H"],
     [["⣿"], "⣿"],
   ]) {
     const ui = page(async () => stream());
     ui.run(`METER_GLYPHS.splice(0, METER_GLYPHS.length, ...${JSON.stringify(glyphs)})`);
     await ui.run("keyDown()");
     const line = ui.$("log").children[0];
-    assert.equal(line.textContent, glyphs[0].repeat(5));
+    assert.equal(line.textContent, glyphs[0].repeat(7));
+    const segments = line.children[0].children;
+    assert.equal(segments.length, 7);
+    ui.level(10 ** (-35 / 20)); // Three full segments and a partially filled fourth.
+    assert.equal(line.textContent, glyphs.at(-1).repeat(3) + middle + glyphs[0].repeat(3));
+    ui.level(1);
+    assert.equal(line.textContent, glyphs.at(-1).repeat(7));
     ui.level(0);
-    assert.equal(line.textContent, glyphs[0].repeat(5));
-    ui.level(10 ** (-36 / 20)); // Midpoint of the configured decibel range.
-    assert.equal(line.textContent, glyphs[0].repeat(4) + middle);
-    for (let i = 0; i < 5; i++) ui.level(1);
-    assert.equal(line.textContent, glyphs.at(-1).repeat(5));
+    assert.equal(line.textContent, glyphs[0].repeat(7));
+    assert.equal(line.children[0].children, segments);
     ui.run("keyUp()");
   }
 });
@@ -313,7 +320,7 @@ test("meter setup failure still allows recording and transcription", async () =>
   ui.run('audioCtx.createAnalyser = () => { throw new Error("meter unavailable"); }');
   await ui.run("keyDown()");
   assert.equal(ui.recordings[0].state, "recording");
-  assert.equal(ui.$("log").children[0].textContent, "▁▁▁▁▁");
+  assert.equal(ui.$("log").children[0].textContent, "▯▯▯▯▯▯▯");
   assert.equal(ui.nodes[0].disconnected, true);
   ui.run("keyUp()");
   await new Promise(resolve => setImmediate(resolve));
