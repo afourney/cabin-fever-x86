@@ -90,7 +90,47 @@
   }
   #auth-panel button { margin-top: .7rem; width: 100%; }
   #auth-error { color: #edb2a3; }
-  #logout { top: 3.5rem; z-index: 20; }
+  #logout { top: 6rem; z-index: 20; }
+  #audio-settings-open { top: 3.5rem; z-index: 20; }
+  #audio-settings {
+    box-sizing: border-box; width: min(42rem, calc(100% - 1.5rem));
+    max-height: calc(100dvh - 2rem); overflow-y: auto; padding: clamp(1.1rem, 4vw, 2rem);
+    border: 1px solid #635a43; border-radius: .8rem; color: #d9e4d9;
+    background: linear-gradient(145deg, #18221c, #0c110e 70%);
+    box-shadow: 0 1.5rem 6rem #000a;
+  }
+  #audio-settings::backdrop { background: #030806bb; backdrop-filter: blur(5px); }
+  .audio-heading { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
+  .audio-heading h2 { margin: .25rem 0; font: normal 1.9rem Georgia, serif; color: #f0e2c0; }
+  .audio-eyebrow { color: #8fb89b; font-size: .7rem; letter-spacing: .18em; text-transform: uppercase; }
+  .audio-intro, .audio-description { color: #a8b7ac; font-size: .8rem; }
+  .audio-intro { margin: .6rem 0 1.25rem; }
+  #audio-settings button { touch-action: manipulation; padding: .5rem .8rem; font-size: .75rem; }
+  #audio-settings-close { font-size: 1.3rem !important; line-height: 1; }
+  .audio-channel { margin: .8rem 0; padding: 1rem; border: 1px solid #35463a; border-radius: .5rem; background: #101912; }
+  .audio-channel legend { padding: 0 .5rem; color: #f0e2c0; font-size: .9rem; }
+  .audio-channel .audio-description { margin: 0 0 .8rem; }
+  .audio-channel label { display: block; margin-bottom: .35rem; font-size: .75rem; color: #b7c6ba; }
+  .audio-channel select { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; font-size: .85rem;
+    padding: .65rem; border: 1px solid #4a5f50; border-radius: .25rem; background: #09100c; color: #d9e4d9; }
+  .audio-channel select:disabled { opacity: .6; }
+  .audio-controls { display: flex; align-items: center; gap: .8rem; margin-top: .85rem; flex-wrap: wrap; }
+  .audio-controls label { margin: 0; }
+  .audio-controls input { flex: 1; min-width: 5rem; width: 6rem; accent-color: #91b89b; }
+  .audio-controls output { min-width: 4ch; font-size: .75rem; color: #c5d6c7; text-align: right; }
+  #microphone-level { flex: 1; min-width: 6rem; height: .7rem; accent-color: #91b89b; }
+  #audio-output-help, #audio-settings-status { font-size: .75rem; color: #c6b890; }
+  #audio-settings-status { min-height: 2.8em; margin-bottom: .5rem; }
+  .audio-footer { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  .audio-footer small { color: #91a697; font-size: .7rem; }
+  @media (max-width: 520px) {
+    .audio-controls button { margin-left: auto; }
+    #radio { padding-top: 2.2rem; box-sizing: border-box; }
+    #weather, #audio-settings-open, #logout { top: .5rem; font-size: .65rem; }
+    #logout { right: .5rem; }
+    #audio-settings-open { right: 6.5rem; }
+    #weather { right: 13rem; }
+  }
   #radio {
     display: flex; flex-direction: column; align-items: center;
     gap: clamp(.5rem, 1.8vh, 1rem); width: 100%; min-height: 22rem;
@@ -206,9 +246,54 @@
   <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
   </main>
   <button id="weather" class="quiet" hidden title="Rain on the roof">rain: off</button>
+  <button id="audio-settings-open" class="quiet" aria-haspopup="dialog">Audio settings</button>
   <button id="logout" class="quiet" hidden>Sign out</button>
 
+  <dialog id="audio-settings" aria-labelledby="audio-settings-title" aria-describedby="audio-settings-intro">
+    <div class="audio-heading">
+      <div><span class="audio-eyebrow">Tune your setup</span><h2 id="audio-settings-title">Sound in the cabin</h2></div>
+      <button id="audio-settings-close" type="button" aria-label="Close audio settings">×</button>
+    </div>
+    <p id="audio-settings-intro" class="audio-intro">Your voice, Sam’s radio, and the world outside. Choose where each belongs.</p>
+    <fieldset class="audio-channel">
+      <legend>Your microphone</legend>
+      <p class="audio-description">The input used when you hold to talk.</p>
+      <label for="microphone-device">Input device</label>
+      <select id="microphone-device"><option value="">System default</option></select>
+      <div class="audio-controls">
+        <button id="microphone-test" type="button">Test microphone</button>
+        <meter id="microphone-level" min="0" max="1" value="0" aria-label="Microphone input level"></meter>
+      </div>
+    </fieldset>
+    <fieldset class="audio-channel">
+      <legend>Sam’s radio</legend>
+      <p class="audio-description">Sam’s voice, static, and the click of the radio.</p>
+      <label for="radio-device">Output device</label>
+      <select id="radio-device"><option value="">System default</option></select>
+      <div class="audio-controls">
+        <label for="radio-volume">Volume</label><input id="radio-volume" type="range" min="0" max="100" value="100">
+        <output id="radio-volume-value" for="radio-volume">100%</output>
+        <button id="radio-test" type="button">Test radio</button>
+      </div>
+    </fieldset>
+    <fieldset class="audio-channel">
+      <legend>Cabin ambience</legend>
+      <p class="audio-description">Rain on the roof. Still softens while either of you transmits.</p>
+      <label for="ambience-device">Output device</label>
+      <select id="ambience-device"><option value="">System default</option></select>
+      <div class="audio-controls">
+        <label for="ambience-volume">Volume</label><input id="ambience-volume" type="range" min="0" max="100" value="100">
+        <output id="ambience-volume-value" for="ambience-volume">100%</output>
+        <button id="ambience-test" type="button">Test ambience</button>
+      </div>
+    </fieldset>
+    <p id="audio-output-help" hidden>This browser uses the system’s default speakers. Separate speaker selection is available in desktop Chrome and Edge; both volume controls still work here.</p>
+    <p id="audio-settings-status" role="status" aria-live="polite">Test your microphone to allow access and reveal device names.</p>
+    <div class="audio-footer"><button id="audio-refresh" type="button">Refresh devices</button><small>Changes apply immediately · saved on this browser</small></div>
+  </dialog>
+
 <script type="module">
+import { AudioSettings } from "/audio-settings.js";
 import { PCMPlayer } from "/pcm-player.js";
 import { BrowserAuthController } from "/browser-auth.js";
 import { SessionPickerController } from "/session-picker.js";
@@ -218,9 +303,18 @@ const log = $("log"), status = $("status"), sessionLabel = $("session");
 
 let ws = null, audioCtx = null, recorder = null, chunks = [], sessionId = null;
 let playing = null, keyed = false, queue = Promise.resolve();
-let rain = null;
+let rain = null, weatherCtx = null, weatherPending = null;
 let reconnectTimer = null, reconnectDelay = 1000, pingChannel = null;
 let ownerToken = null, connectionId = null, resumeRequired = false;
+const audioSettings = new AudioSettings({
+  document,
+  onOpen: () => keyUp(),
+  onInputChange: () => {
+    if (keyed || recorderStopping || micPending) throw new Error("Wait for the current microphone operation to finish, then choose a device.");
+    recorder?.stream.getTracks().forEach(track => track.stop());
+    recorder = null;
+  },
+});
 const streams = new Map();
 let playbackGeneration = 0;
 const browserAuth = new BrowserAuthController({
@@ -312,7 +406,7 @@ function synthesiseRain(ctx, out) {
 async function startRain(ctx) {
   const out = ctx.createGain();
   out.gain.value = 0;
-  out.connect(ctx.destination);
+  out.connect(audioSettings.channels.ambience.gain);
 
   let recorded = null;
   try {
@@ -340,8 +434,8 @@ function appliedRain(level) {
 
 function rainLevel(level) {
   rainTarget = level;
-  if (!rain || !audioCtx) return;
-  rain.gain.setTargetAtTime(appliedRain(level), audioCtx.currentTime, 0.7);
+  if (!rain || !weatherCtx) return;
+  rain.gain.setTargetAtTime(appliedRain(level), weatherCtx.currentTime, 0.7);
 }
 
 // --- the radio ------------------------------------------------------------
@@ -488,7 +582,7 @@ function squelchTail(ctx, destination, at) {
 async function playTransmission(stream = null) {
   if (!audioCtx || keyed || stream?.cancelled) { stream?.stop(); return; }
   const output = audioCtx.createGain();
-  output.connect(audioCtx.destination);
+  output.connect(audioSettings.channels.radio.gain);
   const input = stream ? radioChain(audioCtx, output) : null;
   let noise = null, tail = null;
   const playback = {
@@ -601,7 +695,7 @@ $("resume-radio").onclick = async () => {
   if (ws || !browserAuth.authenticated || !sessionId) return;
   $("resume-radio").disabled = true;
   try {
-    await audioCtx?.resume();
+    await audioSettings.resume();
     await connect(sessionId);
   } catch (error) { say("error", error.message); }
   finally { $("resume-radio").disabled = false; }
@@ -864,7 +958,8 @@ async function startMic() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Microphone access requires HTTPS and a browser that supports audio recording");
   }
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const stream = await audioSettings.getMicrophoneStream();
+  void audioSettings.refreshDevices();
   try {
     const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]
       .find(t => MediaRecorder.isTypeSupported(t)) || "";
@@ -913,7 +1008,7 @@ async function send() {
 }
 
 async function keyDown() {
-  if ($("talk").disabled || talkHeld || keyed) return;
+  if ($("audio-settings").open || $("talk").disabled || talkHeld || keyed) return;
   talkHeld = true;
   return startHeldTake();
 }
@@ -975,12 +1070,17 @@ let turningOn = false;
 // a page you have used before they often let it run — and then the rain is
 // already falling when the splash appears.
 async function openWeather() {
-  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-  if (!rain) {
-    rain = await startRain(audioCtx);
-    rain.gain.setTargetAtTime(appliedRain(RAIN_LOUD), audioCtx.currentTime, 1.5);
+  const resumed = audioSettings.resume();
+  audioCtx = audioSettings.channels.radio.context;
+  weatherCtx = audioSettings.channels.ambience.context;
+  if (!weatherPending) {
+    weatherPending = audioSettings.ready.then(async () => {
+      rain = await startRain(weatherCtx);
+      rain.gain.setTargetAtTime(appliedRain(rainTarget), weatherCtx.currentTime, 1.5);
+    });
   }
-  try { await audioCtx.resume(); } catch { /* waits for the click */ }
+  await weatherPending;
+  try { await resumed; } catch { /* waits for the click */ }
 }
 openWeather();
 
@@ -1038,13 +1138,14 @@ talk.addEventListener("pointerleave", keyUp);
 const isTalkKey = (e) => e.code === "Space" || e.code === "F13" || e.key === "F13";
 
 addEventListener("keydown", (e) => {
-  if (!isTalkKey(e) || e.repeat || $("talk").disabled) return;
+  if (!isTalkKey(e) || e.repeat || $("talk").disabled || $("audio-settings").open ||
+      (e.code === "Space" && e.target?.closest?.("input, select, textarea, button:not(#talk), [contenteditable]"))) return;
   e.preventDefault();
   keyDown();
 });
 addEventListener("keyup", (e) => {
   if (!isTalkKey(e)) return;
-  e.preventDefault();
+  if (talkHeld || keyed) e.preventDefault();
   keyUp();
 });
 addEventListener("blur", keyUp);   // never leave the mic keyed open

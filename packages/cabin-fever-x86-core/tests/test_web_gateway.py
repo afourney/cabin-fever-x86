@@ -233,6 +233,7 @@ def test_websocket_serves_pcm_and_saved_recording(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "stream_speech", audio)
     with TestClient(web.create_app("ws://game", "test"), base_url="http://localhost") as client:
         assert client.get("/pcm-player.js").status_code == 200
+        assert client.get("/audio-settings.js").status_code == 200
         assert "ElevenLabs" not in client.get("/").text
         with client.websocket_connect(
             "ws://localhost/ws", headers={"origin": "http://localhost"}

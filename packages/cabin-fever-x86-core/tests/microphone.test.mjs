@@ -29,6 +29,10 @@ function page(getUserMedia) {
   const context = vm.createContext({
     $, log: $("log"), status: $("status"), Blob,
     document: { createElement: element },
+    audioSettings: {
+      getMicrophoneStream: () => { requests++; return getUserMedia(); },
+      refreshDevices: async () => {},
+    },
     navigator: { mediaDevices: { getUserMedia: () => { requests++; return getUserMedia(); } } },
     setInterval(callback) { timers.set(++nextTimer, callback); return nextTimer; },
     clearInterval(id) { timers.delete(id); },
