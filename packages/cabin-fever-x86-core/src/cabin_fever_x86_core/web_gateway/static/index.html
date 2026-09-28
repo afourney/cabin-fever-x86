@@ -745,7 +745,8 @@ let micPending = null, talkHeld = false;
 let recordingTake = null, recorderStopping = false;
 const pendingTakes = new Set();
 // Quietest to loudest; edit this list to change the meter style.
-const METER_GLYPHS = ["⣀", "⣤", "⣶", "⣿"];
+// const METER_GLYPHS = ["⣀", "⣤", "⣶", "⣿"];
+const METER_GLYPHS = ["░", "▒", "▓", "█"];
 const METER_HISTORY_LENGTH = 5;
 const METER_MIN_DB = -60, METER_MAX_DB = -12;
 

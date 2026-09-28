@@ -182,9 +182,9 @@ test("recording levels become dots, then the transcript replaces the same row", 
   await ui.run("keyDown()");
   const line = ui.$("log").children[0];
   ui.level(0);
-  assert.equal(line.textContent, "⣀⣀⣀⣀⣀");
+  assert.equal(line.textContent, "░░░░░");
   ui.level(0.5);
-  assert.equal(line.textContent, "⣀⣀⣀⣀⣿");
+  assert.equal(line.textContent, "░░░░█");
   ui.run("keyUp()");
   assert.equal(line.textContent, "...");
   assert.equal(line.classes.has("take-dots"), true);
@@ -313,7 +313,7 @@ test("meter setup failure still allows recording and transcription", async () =>
   ui.run('audioCtx.createAnalyser = () => { throw new Error("meter unavailable"); }');
   await ui.run("keyDown()");
   assert.equal(ui.recordings[0].state, "recording");
-  assert.equal(ui.$("log").children[0].textContent, "⣀⣀⣀⣀⣀");
+  assert.equal(ui.$("log").children[0].textContent, "░░░░░");
   assert.equal(ui.nodes[0].disconnected, true);
   ui.run("keyUp()");
   await new Promise(resolve => setImmediate(resolve));
