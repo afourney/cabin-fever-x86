@@ -11,9 +11,13 @@ function page() {
   const elements = new Map(), timers = new Map(), listeners = new Map();
   const sockets = [];
   let nextTimer = 0, reloads = 0;
-  const element = () => ({ textContent: "", disabled: false, children: [],
+  const element = () => ({ disabled: false, children: [],
+    get textContent() { return this.children.length ? this.children.map(child => child.textContent).join("") : this.text || ""; },
+    set textContent(text) { this.text = text; this.children = []; },
+    setAttribute() {}, removeAttribute() {},
     classList: { add() {}, remove() {} }, addEventListener() {},
-    append(child) { this.children.push(child); } });
+    append(child) { this.children.push(child); child.parent = this; },
+    remove() { this.parent.children = this.parent.children.filter(child => child !== this); } });
   const addEventListener = (name, callback) => listeners.set(name, callback);
   const document = { visibilityState: "visible", addEventListener, createElement: element,
     getElementById(id) {
@@ -298,4 +302,35 @@ test("takes carry ownership and connection IDs outside the URL", async () => {
   assert.equal(p.run("upload.url"), "/takes/saved-session");
   assert.equal(p.run('upload.options.headers["X-CF86-Owner-Token"]'), "test-owner-token");
   assert.equal(p.run('upload.options.headers["X-CF86-Connection"]'), "test-connection");
+});
+
+test("disconnect clears recording and waiting rows and late uploads stay discarded", async () => {
+  const p = page(), socket = await p.start();
+  p.run(`recorder = { mimeType: "audio/webm", stream: { getTracks: () => [] } };
+    recordingTake = startTakeIndicator(); waitForTake(recordingTake);
+    chunks = [new Blob(["voice"])];
+    fetch = () => new Promise(resolve => { globalThis.finishUpload = resolve; });`);
+  const upload = p.run("send()");
+  p.run("recordingTake = startTakeIndicator()");
+  assert.equal(p.element("log").children.length, 2);
+  socket.closed();
+  assert.equal(p.element("log").children.length, 0);
+  assert.equal(p.run("pendingTakes.size"), 0);
+  p.run('finishUpload({ ok: true, json: async () => ({ text: "Late transcript" }) })');
+  await upload;
+  assert.equal(p.element("log").children.length, 0);
+});
+
+test("the user WebSocket echo does not duplicate a take's HTTP transcript", async () => {
+  const p = page(), socket = await p.start();
+  for (const echoFirst of [true, false]) {
+    const echo = () => socket.message(JSON.stringify({ type: "user", text: "Hello" }));
+    p.run(`recorder = { mimeType: "audio/webm" }; chunks = [new Blob(["voice"])];
+      recordingTake = startTakeIndicator(); waitForTake(recordingTake);
+      fetch = async () => ({ ok: true, json: async () => ({ text: "Hello" }) });`);
+    if (echoFirst) echo();
+    await p.run("send()");
+    if (!echoFirst) echo();
+  }
+  assert.deepEqual(p.element("log").children.map(line => line.textContent), ["Hello", "Hello"]);
 });
