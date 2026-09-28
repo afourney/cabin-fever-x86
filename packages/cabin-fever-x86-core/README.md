@@ -79,6 +79,12 @@ you have none. Microphone access and the game connection start after you confirm
 your choice. A `?resume=<session-id>` link preselects that session when it belongs
 to the signed-in user, while still showing the picker.
 
+New sessions select their first greeting at random from `server/openings.txt`
+without making a model request. The greeting runs through the normal radio and
+voice path and is recorded as an ordinary `transmit` tool call and result, so the
+model sees it in context when the player answers. Resumed sessions still ask the
+model for a greeting. If the openings file is missing or empty, new sessions do too.
+
 Add browser identities alongside the platform identities for a user's shared games:
 
 ```yaml

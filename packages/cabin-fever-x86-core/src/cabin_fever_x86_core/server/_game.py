@@ -114,6 +114,7 @@ INTERRUPTION_FILES: dict[str, Path] = {
     CABIN_EVENT: Path(__file__).with_name("cabin_events.txt"),
     STAGE_DIRECTION: Path(__file__).with_name("stage_direction.txt"),
 }
+OPENINGS_FILE = Path(__file__).with_name("openings.txt")
 
 # Every session opens with this one, so the cabin speaks first. It is not part
 # of the deck: it fires once, at the start, and is never drawn again.
@@ -472,6 +473,35 @@ class Game:
         """
         await self.stage_direction(self.opening_direction())
 
+    def _cached_opening(
+        self, message: UserMessage | Interruption
+    ) -> ResponseFunctionToolCall | None:
+        """Stand in for the first model call with an ordinary transmission.
+
+        The opening direction, call, and tool result use the same journal and
+        execution path as a model-generated greeting. Nothing about the cache
+        enters the conversation. Returning None leaves generation to the model.
+        """
+        if (
+            self._resumed
+            or self._messages
+            or not isinstance(message, Interruption)
+            or message.kind != STAGE_DIRECTION
+            or message.text != OPENING_DIRECTION
+        ):
+            return None
+        openings = _read_lines(OPENINGS_FILE)
+        if not openings:
+            return None
+        return ResponseFunctionToolCall(
+            type="function_call",
+            id=f"fc_{uuid4().hex}",
+            call_id=f"call_{uuid4().hex}",
+            name=TransmitTool.name,
+            arguments=json.dumps({"message": random.choice(openings)}),
+            status="completed",
+        )
+
     async def compact(self) -> None:
         """Queue compaction behind any in-flight turns and wait for it to finish."""
         if self._worker is None:
@@ -727,6 +757,9 @@ class Game:
         if self._client is None:
             raise RuntimeError("Game is not running")
 
+        # Check before appending the direction: only an untouched conversation
+        # may use the cache, and even then only for the opening model round.
+        opening = self._cached_opening(message)
         # A cabin event may be let pass; a stage direction may not, so the
         # tools for shrugging one off are kept out of reach on every other turn.
         cabin_turn = isinstance(message, Interruption) and message.kind == CABIN_EVENT
@@ -741,39 +774,47 @@ class Game:
         compacted = False
         for model_round in range(MAX_MODEL_ROUNDS + 1):
             final_round = model_round == MAX_MODEL_ROUNDS
-            try:
-                response = await self._client.responses.create(
-                    model=self._model,
-                    prompt_cache_key=str(self._session_id),
-                    instructions=SYSTEM_PROMPT,
-                    input=self._messages,
-                    tools=tools,
-                    tool_choice=(
-                        {"type": "function", "name": TransmitTool.name}
-                        if final_round
-                        else self._allowed_tool_choice(cabin_turn)
-                    ),
-                    parallel_tool_calls=False,
-                    reasoning={"effort": "medium"},
-                    # Zero data retention: nothing is kept server-side between
-                    # turns, so the reasoning has to travel with us, encrypted.
-                    store=False,
-                    include=["reasoning.encrypted_content"],
-                )
-                self._account(
-                    response,
-                    turn_type=turn_type,
-                    turn_id=message.id,
-                    model_round=model_round,
-                )
-            except OpenAIError as exc:
-                logger.exception("Response failed for %s", message.id)
-                await self._transmit(f"[model error: {exc}]")
-                return
+            if model_round == 0 and opening is not None:
+                output = [opening]
+                output_text = ""
+                used = 0
+            else:
+                try:
+                    response = await self._client.responses.create(
+                        model=self._model,
+                        prompt_cache_key=str(self._session_id),
+                        instructions=SYSTEM_PROMPT,
+                        input=self._messages,
+                        tools=tools,
+                        tool_choice=(
+                            {"type": "function", "name": TransmitTool.name}
+                            if final_round
+                            else self._allowed_tool_choice(cabin_turn)
+                        ),
+                        parallel_tool_calls=False,
+                        reasoning={"effort": "medium"},
+                        # Zero data retention: nothing is kept server-side between
+                        # turns, so the reasoning has to travel with us, encrypted.
+                        store=False,
+                        include=["reasoning.encrypted_content"],
+                    )
+                    self._account(
+                        response,
+                        turn_type=turn_type,
+                        turn_id=message.id,
+                        model_round=model_round,
+                    )
+                except OpenAIError as exc:
+                    logger.exception("Response failed for %s", message.id)
+                    await self._transmit(f"[model error: {exc}]")
+                    return
+                output = response.output
+                output_text = response.output_text
+                used = response.usage.total_tokens if response.usage else 0
 
             calls: list[ResponseFunctionToolCall] = []
             tail: list[dict[str, Any]] = []
-            for item in response.output:
+            for item in output:
                 stored = item.model_dump(exclude_none=True)
                 tail.append(stored)
                 self._append(stored)
@@ -785,14 +826,13 @@ class Game:
             # decided on still gets answered on the other side. Once per
             # transmission, however long the night gets — a summary that is
             # itself over the threshold is a problem to log, not to loop on.
-            used = response.usage.total_tokens if response.usage else 0
             if used >= self._config.compaction_threshold and not compacted:
                 compacted = True
                 await self._compact(tail, used, tools, parent_turn_id=message.id)
 
             if not calls:
                 # Nothing called: whatever it said in plain text is the transmission.
-                text = response.output_text.strip()
+                text = output_text.strip()
                 await self._transmit(text)
                 return
 
