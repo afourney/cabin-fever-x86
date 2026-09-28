@@ -798,10 +798,12 @@ function finishTake(take, text) {
   if (!take || !pendingTakes.delete(take)) return;
   stopTakeMeter(take);
   if (text) {
+    const followBottom = log.scrollHeight - log.clientHeight - log.scrollTop <= 2;
     take.line.classList.remove("take-dots");
     take.line.removeAttribute("role");
     take.line.removeAttribute("aria-label");
     take.line.textContent = text;
+    if (followBottom) log.scrollTop = log.scrollHeight;
   } else {
     take.line.remove();
   }
@@ -861,10 +863,12 @@ async function startMic() {
 async function send() {
   const take = recordingTake;
   recordingTake = null;
-  recorderStopping = false;
   const socket = ws;
   const blob = new Blob(chunks, { type: recorder.mimeType });
   chunks = [];
+  recorderStopping = false;
+  // The previous take is captured; a held press can now start its own recording.
+  if (talkHeld) void startHeldTake();
   if (!blob.size || !sessionId) { finishTake(take); return; }
 
   setStatus("DECODING");
@@ -887,13 +891,18 @@ async function send() {
     if (ws === socket) say("error", `transmission failed: ${err}`);
   } finally {
     finishTake(take);
-    if (ws === socket && socket) setStatus(playing ? "RECEIVING" : "");
+    if (ws === socket && socket && !keyed) setStatus(playing ? "RECEIVING" : "");
   }
 }
 
 async function keyDown() {
-  if ($("talk").disabled || talkHeld || keyed || recorderStopping) return;
+  if ($("talk").disabled || talkHeld || keyed) return;
   talkHeld = true;
+  return startHeldTake();
+}
+
+async function startHeldTake() {
+  if (!talkHeld || $("talk").disabled || keyed || recorderStopping) return;
   if (!await ensureMic() || !talkHeld || $("talk").disabled || keyed || recorderStopping) return;
   try {
     chunks = [];

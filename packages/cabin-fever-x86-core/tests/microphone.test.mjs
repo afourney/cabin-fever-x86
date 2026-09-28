@@ -27,7 +27,7 @@ function page(getUserMedia) {
   const errors = [], recordings = [];
   let requests = 0, connections = 0;
   const context = vm.createContext({
-    $, status: $("status"), Blob,
+    $, log: $("log"), status: $("status"), Blob,
     document: { createElement: element },
     navigator: { mediaDevices: { getUserMedia: () => { requests++; return getUserMedia(); } } },
     setInterval(callback) { timers.set(++nextTimer, callback); return nextTimer; },
@@ -237,17 +237,53 @@ test("empty audio, no speech, and upload failures remove the pending indicator",
   }
 });
 
-test("a press before the previous recorder stop event cannot overwrite its take", async () => {
+test("a held repress starts after the stop event without waiting for the upload", async () => {
   const ui = page(async () => stream());
+  ui.run('globalThis.uploads = []; fetch = (url, options) => new Promise(resolve => uploads.push({ options, resolve }))');
   await ui.run("keyDown()");
   ui.recordings[0].stop = function () { this.state = "inactive"; };
   ui.run("keyUp()");
   await ui.run("keyDown()");
   assert.equal(ui.$("log").children.length, 1);
   assert.equal(ui.recordings[0].state, "inactive");
-  await ui.run("send()");
-  await ui.run("keyDown()");
+  ui.run('chunks = [new Blob(["first take"])]; globalThis.upload = send()');
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(ui.recordings[0].state, "recording");
+  assert.equal(ui.run("talkHeld"), true);
+  assert.equal(ui.$("log").children.length, 2);
+  assert.equal(ui.$("log").children[0].textContent, "...");
+  assert.equal(await ui.run("uploads[0].options.body.text()"), "first take");
+  assert.equal(ui.run("chunks.length"), 0);
+  ui.run('uploads[0].resolve({ ok: true, json: async () => ({ text: "First take" }) })');
+  await ui.run("upload");
+  assert.equal(ui.$("log").children[0].textContent, "First take");
+  assert.equal(ui.$("status").textContent, "TRANSMITTING");
+});
+
+test("releasing or disabling the radio cancels a queued repress", async () => {
+  for (const cancel of ['keyUp()', '$("talk").disabled = true; keyUp(); clearTakeIndicators()']) {
+    const ui = page(async () => stream());
+    await ui.run("keyDown()");
+    ui.recordings[0].stop = function () { this.state = "inactive"; };
+    ui.run("keyUp()");
+    await ui.run("keyDown()");
+    ui.run(cancel);
+    await ui.run("send()");
+    assert.equal(ui.recordings[0].state, "inactive");
+    assert.equal(ui.run("talkHeld"), false);
+    assert.equal(ui.run("pendingTakes.size"), 0);
+  }
+});
+
+test("an empty previous recording still starts the queued held press", async () => {
+  const ui = page(async () => stream());
+  await ui.run("keyDown()");
+  ui.recordings[0].stop = function () { this.state = "inactive"; };
+  ui.run("keyUp()");
+  await ui.run("keyDown()");
+  await ui.run("send()");
+  assert.equal(ui.recordings[0].state, "recording");
+  assert.equal(ui.$("log").children.length, 1);
 });
 
 test("meter setup failure still allows recording and transcription", async () => {
