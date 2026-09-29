@@ -255,6 +255,11 @@ def create_app(upstream_uri: str, api_key: str | None, config: Config | None = N
         """Serve the provider-independent streaming audio player."""
         return FileResponse(STATIC_DIR / "pcm-player.js", media_type="text/javascript")
 
+    @app.get("/audio-settings.js")
+    async def audio_settings_script() -> FileResponse:
+        """Serve the browser's audio device and volume controls."""
+        return FileResponse(STATIC_DIR / "audio-settings.js", media_type="text/javascript")
+
     @app.get("/browser-auth.js")
     async def browser_auth_script() -> FileResponse:
         """Serve the browser's sign-in controller."""

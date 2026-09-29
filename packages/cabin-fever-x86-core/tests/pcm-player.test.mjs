@@ -133,6 +133,7 @@ function page() {
   const scope = vm.createContext({ PCMPlayer, Uint8Array, ArrayBuffer, DataView,
     BrowserAuthController: class { authenticated = true; state = { implicit_guest: true }; async initialize() {} },
     SessionPickerController: class {},
+    AudioSettings: class { channels = { radio: { gain: {} } }; },
     Float32Array, URLSearchParams, console, setTimeout: () => 1, clearTimeout() {},
     setInterval: () => 1, clearInterval() {}, addEventListener() {},
     document: { getElementById(id) {

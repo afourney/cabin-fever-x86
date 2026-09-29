@@ -59,6 +59,26 @@ cf86-web --web-host 0.0.0.0
 Set `web_gateway.public_origin` as described below; remote HTTP access is rejected.
 Review your firewall and network trust before binding a service beyond localhost.
 
+### Browser audio settings
+
+Open **Audio settings** from the sign-in, session picker, or radio screen to
+choose a microphone and separate outputs for **Sam’s radio** and **Cabin ambience**.
+For a USB speaker mic, send Sam’s voice, static, and radio clicks to the handset,
+and rain to the computer speakers. Each output has its own volume slider and
+test tone. Cabin ambience also has a mute control, backed by the existing persisted rain on/off setting, and still softens during transmissions.
+
+Before microphone permission is granted, browsers may show only default devices.
+Opening **Audio settings** checks access and requests microphone permission when
+needed to reveal the full list. The microphone is released immediately; nothing
+is recorded or sent. Access that is already allowed does not open the microphone
+again. The page refreshes devices when permission changes and shows a blocked
+status when access must be allowed in browser settings.
+The microphone test also requests permission and shows a local level meter.
+Settings are saved in this browser. A missing saved device falls back to the
+system default. Audio-device access requires HTTPS or localhost. Separate output
+selection requires `AudioContext.setSinkId` (for example, desktop Chrome or Edge);
+unsupported browsers retain independent volume controls on the default speakers.
+
 ### Browser callsigns and passwords
 
 With just one user, `user_id: guest` **and** a `type: guest` identity keep the
@@ -75,8 +95,8 @@ The text client remains a trusted, anonymous guest adapter.
 After signing in (or clicking through as guest), the next screen introduces Sam
 and the cabin and lets you choose **New Session** or a saved session. Saved
 sessions show when you last played, newest first; only New Session appears if
-you have none. Microphone access and the game connection start after you confirm
-your choice. A `?resume=<session-id>` link preselects that session when it belongs
+you have none. The game connection and normal microphone capture start after you confirm
+your choice; you can also test your microphone beforehand in Audio settings. A `?resume=<session-id>` link preselects that session when it belongs
 to the signed-in user, while still showing the picker.
 
 New sessions select their first greeting at random from `server/openings.txt`

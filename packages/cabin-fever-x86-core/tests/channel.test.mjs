@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { AudioSettings } from "../src/cabin_fever_x86_core/web_gateway/static/audio-settings.js";
 
 const html = readFileSync(new URL("../src/cabin_fever_x86_core/web_gateway/static/index.html", import.meta.url), "utf8");
 const source = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
@@ -9,6 +10,9 @@ const source = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
 
 function page() {
   const elements = new Map(), timers = new Map(), listeners = new Map();
+  const saved = new Map();
+  const localStorage = { getItem: key => saved.get(key) ?? null,
+    setItem: (key, value) => saved.set(key, value) };
   const sockets = [];
   let nextTimer = 0, reloads = 0;
   const element = () => ({ disabled: false, children: [],
@@ -28,7 +32,7 @@ function page() {
     timers.set(++nextTimer, { callback, delay, repeat });
     return nextTimer;
   };
-  const scope = vm.createContext({ document, URLSearchParams, ArrayBuffer, Blob, console,
+  const scope = vm.createContext({ document, URLSearchParams, ArrayBuffer, Blob, console, localStorage,
     location: { search: "", protocol: "https:", host: "radio.example", reload() { reloads++; } },
     BrowserAuthController: class {
       authenticated = true;
@@ -37,6 +41,10 @@ function page() {
       async initialize() {}
     },
     SessionPickerController: class {},
+    AudioSettings: class extends AudioSettings {
+      constructor(options) { super({ ...options, storage: () => localStorage }); }
+      async resume() {}
+    },
     WebSocket: class {
       readyState = 0;
       sent = [];
@@ -71,7 +79,7 @@ function page() {
   };
   return { sockets, timers, run, tick, document,
     element: id => document.getElementById(id),
-    event: name => listeners.get(name)(), reloads: () => reloads,
+    event: (name, event) => listeners.get(name)(event), reloads: () => reloads,
     async start(id) {
       const ready = run("connect()");
       sockets.at(-1).session(id);
@@ -79,6 +87,23 @@ function page() {
       return sockets.at(-1);
     } };
 }
+
+test("page startup initializes ambience mute before constructing audio settings", () => {
+  const p = page();
+  assert.equal(p.element("ambience-mute").textContent, "Mute");
+  assert.equal(p.run("audioSettings.getAmbienceMuted()"), false);
+  assert.equal(p.run("appliedRain(RAIN_LOUD)"), 0.30);
+
+  p.element("ambience-mute").onclick();
+  assert.equal(p.element("ambience-mute").textContent, "Unmute");
+  assert.equal(p.run("appliedRain(RAIN_LOUD)"), 0);
+  assert.equal(p.run('localStorage.getItem("cf86-rain")'), "off");
+
+  p.element("ambience-mute").onclick();
+  assert.equal(p.element("ambience-mute").textContent, "Mute");
+  assert.equal(p.run("appliedRain(RAIN_LOUD)"), 0.30);
+  assert.equal(p.run('localStorage.getItem("cf86-rain")'), "on");
+});
 
 test("a dropped socket resumes the confirmed session and keeps the transcript", async () => {
   const p = page(), socket = await p.start("session / with spaces");
@@ -266,7 +291,7 @@ test("displacement stops retries and wake events until Resume here is clicked", 
   p.event("online"); p.event("visibilitychange");
   assert.equal(p.sockets.length, 1);
   const resume = p.element("resume-radio").onclick();
-  await Promise.resolve();
+  await new Promise(resolve => setImmediate(resolve));
   const replacement = p.sockets.at(-1);
   replacement.open();
   assert.deepEqual(JSON.parse(replacement.sent[0]), { type: "open", resume: "saved-session",
@@ -333,4 +358,32 @@ test("the user WebSocket echo does not duplicate a take's HTTP transcript", asyn
     if (!echoFirst) echo();
   }
   assert.deepEqual(p.element("log").children.map(line => line.textContent), ["Hello", "Hello"]);
+});
+
+
+test("settings keep Space and F13 from transmitting, but F13 works after closing", () => {
+  const p = page();
+  p.run("globalThis.presses = 0; keyDown = () => { presses++; }");
+  const event = code => ({ code, preventDefault() {}, target: { closest: () => true } });
+  p.element("audio-settings").open = true;
+  p.event("keydown", event("Space"));
+  p.event("keydown", event("F13"));
+  assert.equal(p.run("presses"), 0);
+  p.element("audio-settings").open = false;
+  p.event("keydown", event("Space"));
+  assert.equal(p.run("presses"), 0, "Space retains normal button and form behavior");
+  p.event("keydown", event("F13"));
+  assert.equal(p.run("presses"), 1, "the handset still works when the settings button has focus");
+});
+
+test("microphone switching waits for recorder data before releasing the old stream", () => {
+  const p = page();
+  p.run(`globalThis.stopped = false;
+    recorder = { stream: { getTracks: () => [{ stop() { stopped = true; } }] } };
+    recorderStopping = true;`);
+  assert.throws(() => p.run("audioSettings.onInputChange()"), /Wait/);
+  assert.equal(p.run("stopped"), false);
+  p.run("recorderStopping = false; audioSettings.onInputChange()");
+  assert.equal(p.run("stopped"), true);
+  assert.equal(p.run("recorder"), null);
 });
