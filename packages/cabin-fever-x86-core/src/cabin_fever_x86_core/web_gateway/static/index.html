@@ -126,10 +126,9 @@
   @media (max-width: 520px) {
     .audio-controls button { margin-left: auto; }
     #radio { padding-top: 2.2rem; box-sizing: border-box; }
-    #weather, #audio-settings-open, #logout { top: .5rem; font-size: .65rem; }
+    #audio-settings-open, #logout { top: .5rem; font-size: .65rem; }
     #logout { right: .5rem; }
     #audio-settings-open { right: 6.5rem; }
-    #weather { right: 13rem; }
   }
   #radio {
     display: flex; flex-direction: column; align-items: center;
@@ -245,7 +244,6 @@
   <button id="resume-radio" hidden>Resume here</button>
   <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
   </main>
-  <button id="weather" class="quiet" hidden title="Rain on the roof">rain: off</button>
   <button id="audio-settings-open" class="quiet" aria-haspopup="dialog">Audio settings</button>
   <button id="logout" class="quiet" hidden>Sign out</button>
 
@@ -284,6 +282,7 @@
       <div class="audio-controls">
         <label for="ambience-volume">Volume</label><input id="ambience-volume" type="range" min="0" max="100" value="100">
         <output id="ambience-volume-value" for="ambience-volume">100%</output>
+        <button id="ambience-mute" type="button" aria-pressed="false">Mute</button>
         <button id="ambience-test" type="button">Test ambience</button>
       </div>
     </fieldset>
@@ -309,6 +308,8 @@ let ownerToken = null, connectionId = null, resumeRequired = false;
 const audioSettings = new AudioSettings({
   document,
   onOpen: () => keyUp(),
+  getAmbienceMuted: () => muted,
+  onAmbienceMute: value => setRainMuted(value),
   onInputChange: () => {
     if (keyed || recorderStopping || micPending) throw new Error("Wait for the current microphone operation to finish, then choose a device.");
     recorder?.stream.getTracks().forEach(track => track.stop());
@@ -1056,12 +1057,12 @@ function rememberedMute() {
   return localStorage.getItem("cf86-rain") !== "on";
 }
 
-$("weather").onclick = () => {
-  muted = !muted;
+function setRainMuted(value) {
+  muted = value;
   localStorage.setItem("cf86-rain", muted ? "off" : "on");
-  $("weather").textContent = `rain: ${muted ? "off" : "on"}`;
   rainLevel(rainTarget);
-};
+  return muted;
+}
 
 const splash = $("splash");
 let turningOn = false;
@@ -1108,9 +1109,7 @@ async function turnOn(resume) {
     $("talk").focus();
 
     muted = rememberedMute();
-    $("weather").textContent = `rain: ${muted ? "off" : "on"}`;
     rainLevel(RAIN_UNDER);
-    $("weather").hidden = false;
     // Permission can remain unanswered indefinitely; keep the chat usable.
     void ensureMic();
   } catch (error) {
