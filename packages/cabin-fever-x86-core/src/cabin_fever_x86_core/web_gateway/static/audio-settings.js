@@ -5,13 +5,16 @@ const CHANNELS = ["radio", "ambience"];
 export class AudioSettings {
   constructor({ document, mediaDevices = globalThis.navigator?.mediaDevices,
     createContext = () => new (globalThis.AudioContext || globalThis.webkitAudioContext)(),
-    storage = () => globalThis.localStorage, onOpen = () => {}, onInputChange = () => {} }) {
+    storage = () => globalThis.localStorage, onOpen = () => {}, onInputChange = () => {},
+    getAmbienceMuted = () => false, onAmbienceMute = () => {} }) {
     this.document = document;
     this.mediaDevices = mediaDevices;
     this.createContext = createContext;
     this.storage = storage;
     this.onOpen = onOpen;
     this.onInputChange = onInputChange;
+    this.getAmbienceMuted = getAmbienceMuted;
+    this.onAmbienceMute = onAmbienceMute;
     this.channels = {};
     this.preferences = { microphone: "", radio: "", ambience: "", radioVolume: 1, ambienceVolume: 1 };
     this.preview = null;
@@ -61,10 +64,22 @@ export class AudioSettings {
       slider.oninput = () => this.setVolume(name, Number(slider.value) / 100);
       $(`${name}-test`).onclick = () => this.testOutput(name);
     }
+    $("ambience-mute").onclick = () => {
+      this.onAmbienceMute(!this.getAmbienceMuted());
+      this.updateAmbienceMute();
+    };
+    this.updateAmbienceMute();
     this.mediaDevices?.addEventListener?.("devicechange", () => this.refreshDevices(true));
   }
 
   message(text) { this.$("audio-settings-status").textContent = text; }
+
+  updateAmbienceMute() {
+    const muted = this.getAmbienceMuted();
+    const button = this.$("ambience-mute");
+    button.textContent = muted ? "Unmute" : "Mute";
+    button.setAttribute?.("aria-pressed", String(muted));
+  }
 
   save() {
     try { this.storage().setItem(STORAGE_KEY, JSON.stringify(this.preferences)); }
@@ -104,6 +119,7 @@ export class AudioSettings {
 
   async open() {
     this.onOpen();
+    this.updateAmbienceMute();
     this.$("audio-settings").showModal();
     try { await this.resume(); }
     catch { this.message("Audio could not start. Check your browser's audio permissions."); }
