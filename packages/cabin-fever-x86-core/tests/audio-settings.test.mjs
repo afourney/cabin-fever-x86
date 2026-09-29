@@ -11,7 +11,7 @@ function deferred() {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
-function page({ saved = null, supported = true, blockedStorage = false, onInputChange } = {}) {
+function page({ saved = null, supported = true, blockedStorage = false, onInputChange, ambienceMuted = false } = {}) {
   const elements = new Map(), contexts = [], requests = [];
   let devices = [
     { kind: "audioinput", deviceId: "mic", label: "USB microphone" },
@@ -37,6 +37,8 @@ function page({ saved = null, supported = true, blockedStorage = false, onInputC
     getUserMedia: async constraints => { requests.push(constraints); return stream(); },
   };
   const settings = new AudioSettings({ document, mediaDevices, onInputChange,
+    getAmbienceMuted: () => ambienceMuted,
+    onAmbienceMute: value => { ambienceMuted = value; },
     storage: () => { if (blockedStorage) throw new Error("blocked"); return storage; },
     createContext: () => {
       const context = { sinkId: "", currentTime: 0, destination: {}, resumes: 0,
@@ -200,4 +202,15 @@ test("blocked storage and invalid saved preferences do not prevent audio", async
     assert.equal(p.settings.channels.radio.gain.gain.value, 0.3);
     assert.equal(p.settings.preferences.radio, "");
   }
+});
+
+
+test("ambience mute reflects and updates the existing rain setting", () => {
+  const p = page({ ambienceMuted: true });
+  assert.equal(p.$("ambience-mute").textContent, "Unmute");
+  assert.equal(p.$("ambience-mute").events?.click, undefined);
+  p.$("ambience-mute").onclick();
+  assert.equal(p.$("ambience-mute").textContent, "Mute");
+  p.$("ambience-mute").onclick();
+  assert.equal(p.$("ambience-mute").textContent, "Unmute");
 });
