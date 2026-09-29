@@ -289,6 +289,54 @@ test("unplugged known output falls back without treating hidden devices as unplu
   assert.match(p.$("audio-settings-status").textContent, /disconnected/);
 });
 
+for (const latestFirst of [false, true]) {
+  test(`overlapping refreshes recover unplugged speakers when the ${latestFirst ? "latest" : "older"} enumeration finishes first`, async () => {
+    const p = page({ saved: JSON.stringify({ radio: "handset", ambience: "speakers" }) });
+    await p.settings.initialize();
+    await p.settings.refreshDevices();
+    const older = deferred(), latest = deferred();
+    const enumerate = p.mediaDevices.enumerateDevices;
+    const pending = [older.promise, latest.promise];
+    p.mediaDevices.enumerateDevices = () => pending.shift() ?? enumerate();
+    p.setDevices([]);
+    const disconnected = p.mediaDevices.events.devicechange();
+    const refreshed = p.$("audio-refresh").onclick();
+    if (latestFirst) {
+      latest.resolve([]);
+      await refreshed;
+      older.resolve([]);
+      await disconnected;
+    } else {
+      older.resolve([]);
+      await disconnected;
+      latest.resolve([]);
+      await refreshed;
+    }
+    for (const [index, name] of ["radio", "ambience"].entries()) {
+      assert.equal(p.contexts[index].sinkId, "");
+      assert.equal(p.settings.preferences[name], "");
+      assert.equal(p.saved()[name], "");
+      assert.equal(p.$(`${name}-device`).value, "");
+    }
+    assert.match(p.$("audio-settings-status").textContent, /disconnected/);
+  });
+}
+
+test("a failed enumeration leaves disconnect recovery pending for the next refresh", async () => {
+  const p = page();
+  await p.settings.initialize();
+  await p.settings.changeOutput("radio", "handset");
+  const enumerate = p.mediaDevices.enumerateDevices;
+  p.mediaDevices.enumerateDevices = async () => { throw new Error("Device discovery failed"); };
+  await p.mediaDevices.events.devicechange();
+  assert.equal(p.settings.preferences.radio, "handset");
+  p.mediaDevices.enumerateDevices = enumerate;
+  p.setDevices([]);
+  await p.$("audio-refresh").onclick();
+  assert.equal(p.contexts[0].sinkId, "");
+  assert.equal(p.saved().radio, "");
+});
+
 test("microphone selection uses exact constraints and missing devices fall back", async () => {
   const p = page({ saved: JSON.stringify({ microphone: "mic" }) });
   await p.settings.getMicrophoneStream();
@@ -302,6 +350,59 @@ test("microphone selection uses exact constraints and missing devices fall back"
   assert.equal(await p.settings.getMicrophoneStream(), fallback);
   assert.deepEqual(calls[1], { audio: true });
   assert.equal(p.settings.preferences.microphone, "");
+  assert.equal(p.saved().microphone, "");
+});
+
+for (const action of ["select another microphone", "close settings"]) {
+  test(`a pending preview fallback cannot change preferences after ${action}`, async () => {
+    const p = page({ saved: JSON.stringify({ microphone: "missing" }) });
+    const pending = deferred(), requested = deferred(), microphone = stream();
+    p.mediaDevices.getUserMedia = async constraints => {
+      if (constraints.audio !== true) throw Object.assign(new Error(), { name: "NotFoundError" });
+      requested.resolve();
+      return pending.promise;
+    };
+    const preview = p.settings.togglePreview();
+    await requested.promise;
+    if (action === "select another microphone") {
+      p.$("microphone-device").value = "new-mic";
+      p.$("microphone-device").onchange();
+    } else {
+      p.$("audio-settings").close();
+    }
+    const expected = action === "select another microphone" ? "new-mic" : "missing";
+    const message = p.$("audio-settings-status").textContent;
+    pending.resolve(microphone);
+    await preview;
+    assert.equal(p.settings.preferences.microphone, expected);
+    assert.equal(p.saved().microphone, expected);
+    assert.equal(p.$("audio-settings-status").textContent, message);
+    assert.equal(microphone.track.stopped, true);
+    assert.equal(p.settings.preview, null);
+    assert.equal(p.$("microphone-test").textContent, "Test microphone");
+  });
+}
+
+test("microphone fallback outside a preview also preserves a newer selection", async () => {
+  const p = page({ saved: JSON.stringify({ microphone: "missing" }) });
+  const pending = deferred(), requested = deferred(), microphone = stream();
+  p.mediaDevices.getUserMedia = async constraints => {
+    if (constraints.audio !== true) throw Object.assign(new Error(), { name: "OverconstrainedError" });
+    requested.resolve();
+    return pending.promise;
+  };
+  const capturing = p.settings.getMicrophoneStream();
+  await requested.promise;
+  p.$("microphone-device").value = "new-mic";
+  p.$("microphone-device").onchange();
+  const message = p.$("audio-settings-status").textContent;
+  pending.resolve(microphone);
+  const result = await capturing;
+  result.getTracks().forEach(track => track.stop());
+  assert.equal(result, microphone);
+  assert.equal(p.settings.preferences.microphone, "new-mic");
+  assert.equal(p.saved().microphone, "new-mic");
+  assert.equal(p.$("audio-settings-status").textContent, message);
 });
 
 test("permission denial is surfaced without repeatedly requesting another microphone", async () => {

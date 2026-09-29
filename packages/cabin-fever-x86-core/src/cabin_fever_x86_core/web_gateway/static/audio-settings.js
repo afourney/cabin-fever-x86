@@ -23,6 +23,7 @@ export class AudioSettings {
     this.previewGeneration = 0;
     this.devices = [];
     this.refreshGeneration = 0;
+    this.disconnectCheckPending = false;
     try {
       const saved = JSON.parse(this.storage().getItem(STORAGE_KEY));
       for (const key of ["microphone", ...CHANNELS]) {
@@ -162,6 +163,7 @@ export class AudioSettings {
   }
 
   async refreshDevices(checkDisconnected = false) {
+    this.disconnectCheckPending ||= checkDisconnected;
     const generation = ++this.refreshGeneration;
     if (!this.mediaDevices?.enumerateDevices) {
       this.message("Device selection requires HTTPS or localhost and a browser with audio-device support.");
@@ -174,6 +176,9 @@ export class AudioSettings {
         this.mediaDevices.enumerateDevices(), this.microphonePermission(),
       ]);
       if (generation !== this.refreshGeneration) return;
+      // Only the winning enumeration consumes a pending device-change check.
+      checkDisconnected = this.disconnectCheckPending;
+      this.disconnectCheckPending = false;
       const previous = this.devices;
       this.devices = devices;
       // Device names are only a fallback when the Permissions API is unavailable.
@@ -252,7 +257,7 @@ export class AudioSettings {
     this.save();
   }
 
-  async getMicrophoneStream() {
+  async getMicrophoneStream(isCurrent = () => true) {
     if (!this.mediaDevices?.getUserMedia) throw new Error("Microphone access requires HTTPS or localhost and a supported browser");
     const deviceId = this.preferences.microphone;
     try {
@@ -261,9 +266,12 @@ export class AudioSettings {
       if (!deviceId || !["NotFoundError", "OverconstrainedError"].includes(error.name)) throw error;
       // USB headsets disappear and saved device IDs can expire between visits.
       const stream = await this.mediaDevices.getUserMedia({ audio: true });
-      this.preferences.microphone = "";
-      this.save();
-      this.message("The saved microphone is unavailable. Using your system-default microphone.");
+      // A cancelled preview or a newer selection must retain its preferences.
+      if (isCurrent() && this.preferences.microphone === deviceId) {
+        this.preferences.microphone = "";
+        this.save();
+        this.message("The saved microphone is unavailable. Using your system-default microphone.");
+      }
       return stream;
     }
   }
@@ -278,7 +286,7 @@ export class AudioSettings {
     try {
       await this.resume();
       if (generation !== this.previewGeneration) return;
-      stream = await this.getMicrophoneStream();
+      stream = await this.getMicrophoneStream(() => generation === this.previewGeneration);
       if (generation !== this.previewGeneration) { stream.getTracks().forEach(track => track.stop()); return; }
       const context = this.channels.radio.context;
       const source = context.createMediaStreamSource(stream);
