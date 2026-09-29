@@ -65,7 +65,7 @@ Open **Audio settings** from the sign-in, session picker, or radio screen to
 choose a microphone and separate outputs for **Sam’s radio** and **Cabin ambience**.
 For a USB speaker mic, send Sam’s voice, static, and radio clicks to the handset,
 and rain to the computer speakers. Each output has its own volume slider and
-test tone. Rain still follows the rain on/off button and softens during transmissions.
+test tone. Cabin ambience also has a mute control, backed by the existing persisted rain on/off setting, and still softens during transmissions.
 
 The microphone test shows a local level meter without recording or sending audio;
 it also requests permission so the browser can show device names. Settings are
