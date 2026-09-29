@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { AudioSettings } from "../src/cabin_fever_x86_core/web_gateway/static/audio-settings.js";
 
 const html = readFileSync(new URL("../src/cabin_fever_x86_core/web_gateway/static/index.html", import.meta.url), "utf8");
 const source = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
@@ -9,6 +10,9 @@ const source = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
 
 function page() {
   const elements = new Map(), timers = new Map(), listeners = new Map();
+  const saved = new Map();
+  const localStorage = { getItem: key => saved.get(key) ?? null,
+    setItem: (key, value) => saved.set(key, value) };
   const sockets = [];
   let nextTimer = 0, reloads = 0;
   const element = () => ({ disabled: false, children: [],
@@ -28,7 +32,7 @@ function page() {
     timers.set(++nextTimer, { callback, delay, repeat });
     return nextTimer;
   };
-  const scope = vm.createContext({ document, URLSearchParams, ArrayBuffer, Blob, console,
+  const scope = vm.createContext({ document, URLSearchParams, ArrayBuffer, Blob, console, localStorage,
     location: { search: "", protocol: "https:", host: "radio.example", reload() { reloads++; } },
     BrowserAuthController: class {
       authenticated = true;
@@ -37,8 +41,8 @@ function page() {
       async initialize() {}
     },
     SessionPickerController: class {},
-    AudioSettings: class {
-      constructor(options) { Object.assign(this, options); }
+    AudioSettings: class extends AudioSettings {
+      constructor(options) { super({ ...options, storage: () => localStorage }); }
       async resume() {}
     },
     WebSocket: class {
@@ -83,6 +87,23 @@ function page() {
       return sockets.at(-1);
     } };
 }
+
+test("page startup initializes ambience mute before constructing audio settings", () => {
+  const p = page();
+  assert.equal(p.element("ambience-mute").textContent, "Mute");
+  assert.equal(p.run("audioSettings.getAmbienceMuted()"), false);
+  assert.equal(p.run("appliedRain(RAIN_LOUD)"), 0.30);
+
+  p.element("ambience-mute").onclick();
+  assert.equal(p.element("ambience-mute").textContent, "Unmute");
+  assert.equal(p.run("appliedRain(RAIN_LOUD)"), 0);
+  assert.equal(p.run('localStorage.getItem("cf86-rain")'), "off");
+
+  p.element("ambience-mute").onclick();
+  assert.equal(p.element("ambience-mute").textContent, "Mute");
+  assert.equal(p.run("appliedRain(RAIN_LOUD)"), 0.30);
+  assert.equal(p.run('localStorage.getItem("cf86-rain")'), "on");
+});
 
 test("a dropped socket resumes the confirmed session and keeps the transcript", async () => {
   const p = page(), socket = await p.start("session / with spaces");

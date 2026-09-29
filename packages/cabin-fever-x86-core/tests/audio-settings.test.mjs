@@ -11,7 +11,8 @@ function deferred() {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
-function page({ saved = null, supported = true, blockedStorage = false, onInputChange, ambienceMuted = false } = {}) {
+function page({ saved = null, supported = true, blockedStorage = false, onInputChange,
+  ambienceMuted = false, permissions } = {}) {
   const elements = new Map(), contexts = [], requests = [];
   let devices = [
     { kind: "audioinput", deviceId: "mic", label: "USB microphone" },
@@ -36,7 +37,7 @@ function page({ saved = null, supported = true, blockedStorage = false, onInputC
     enumerateDevices: async () => devices,
     getUserMedia: async constraints => { requests.push(constraints); return stream(); },
   };
-  const settings = new AudioSettings({ document, mediaDevices, onInputChange,
+  const settings = new AudioSettings({ document, mediaDevices, permissions, onInputChange,
     getAmbienceMuted: () => ambienceMuted,
     onAmbienceMute: value => { ambienceMuted = value; },
     storage: () => { if (blockedStorage) throw new Error("blocked"); return storage; },
@@ -80,6 +81,161 @@ test("resumes both contexts synchronously before waiting for a saved sink", asyn
   assert.deepEqual(p.contexts.map(ctx => ctx.resumes), [1, 1]);
   pending.resolve();
   await resumed;
+});
+
+test("the settings click requests device access, shares a pending prompt, and releases a late stream", async () => {
+  const p = page();
+  const available = await p.mediaDevices.enumerateDevices();
+  p.setDevices([{ kind: "audiooutput", deviceId: "default", label: "" }]);
+  await p.settings.refreshDevices();
+  assert.equal(p.requests.length, 0, "background device discovery never requests microphone access");
+  assert.equal(p.$("ambience-device").children.length, 1);
+  const permission = deferred(), requested = deferred(), microphone = stream();
+  let calls = 0;
+  p.mediaDevices.getUserMedia = async constraints => {
+    calls++;
+    assert.deepEqual(constraints, { audio: true });
+    requested.resolve();
+    await permission.promise;
+    p.setDevices(available);
+    return microphone;
+  };
+  const opened = p.$("audio-settings-open").onclick();
+  assert.equal(p.$("audio-settings").open, true);
+  await requested.promise;
+  p.$("audio-settings").close();
+  const reopened = p.$("audio-settings-open").onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 1, "reopening shares the pending permission request");
+  p.$("audio-settings").close();
+  permission.resolve();
+  await Promise.all([opened, reopened]);
+  assert.equal(microphone.track.stopped, true, "late approval after closing also releases the microphone");
+  assert.equal(p.settings.preview, null);
+  assert.deepEqual(p.$("ambience-device").children.map(option => option.value), ["", "handset", "speakers"]);
+  assert.deepEqual(p.$("radio-device").children.map(option => option.value), ["", "handset", "speakers"]);
+});
+
+test("opening settings requests permission without waiting for audio playback", async () => {
+  const p = page(), playback = deferred(), requested = deferred(), microphone = stream();
+  const available = await p.mediaDevices.enumerateDevices();
+  p.setDevices([]);
+  p.settings.resume = () => playback.promise;
+  p.mediaDevices.getUserMedia = async () => {
+    p.setDevices(available);
+    requested.resolve();
+    return microphone;
+  };
+  const opened = p.$("audio-settings-open").onclick();
+  await requested.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(microphone.track.stopped, true);
+  assert.equal(p.$("audio-settings").open, true);
+  playback.resolve();
+  await opened;
+});
+
+test("denied device access stays retryable and preserves the chosen outputs", async () => {
+  const p = page({ saved: JSON.stringify({ radio: "handset", ambience: "speakers" }) });
+  p.setDevices([]);
+  p.mediaDevices.getUserMedia = async () => { throw new Error("Not allowed"); };
+  await p.$("audio-settings-open").onclick();
+  assert.equal(p.$("audio-settings").open, true);
+  assert.match(p.$("audio-settings-status").textContent, /Allow microphone access/);
+  assert.equal(p.settings.preferences.radio, "handset");
+  assert.equal(p.settings.preferences.ambience, "speakers");
+  const microphone = stream();
+  p.mediaDevices.getUserMedia = async () => microphone;
+  p.$("audio-settings").close();
+  await p.$("audio-settings-open").onclick();
+  assert.equal(microphone.track.stopped, true);
+});
+
+test("opening settings with granted permission never opens the microphone", async () => {
+  let queries = 0;
+  const p = page({ permissions: { async query(descriptor) {
+    assert.deepEqual(descriptor, { name: "microphone" });
+    queries++;
+    return { state: "granted", addEventListener() {} };
+  } } });
+  p.setDevices([{ kind: "audioinput", deviceId: "default", label: "" }]);
+  await p.settings.open();
+  assert.equal(p.$("audio-device-access").textContent, "Microphone access is allowed.");
+  assert.equal(p.requests.length, 0, "checking permission never opens a microphone");
+  await p.settings.open();
+  assert.equal(queries, 1);
+  assert.equal(p.requests.length, 0);
+});
+
+test("permission changes refresh devices and access status without overwriting operation messages", async () => {
+  let onChange, listeners = 0;
+  const permission = { state: "prompt", addEventListener(event, callback) {
+    assert.equal(event, "change");
+    listeners++;
+    onChange = callback;
+  } };
+  const p = page({ permissions: { query: async () => permission } });
+  const available = await p.mediaDevices.enumerateDevices();
+  await p.settings.initialize();
+  await p.settings.refreshDevices();
+  assert.match(p.$("audio-device-access").textContent, /Allow microphone access/, "permission takes precedence over cached labels");
+  p.setDevices([]);
+  await p.settings.refreshDevices();
+  assert.equal(p.$("ambience-device").children.length, 1);
+  p.setDevices(available);
+  permission.state = "granted";
+  await onChange();
+  assert.match(p.$("audio-device-access").textContent, /access is allowed/);
+  assert.equal(p.$("ambience-device").children.length, 3);
+  await p.settings.changeOutput("ambience", "speakers");
+  const message = p.$("audio-settings-status").textContent;
+  permission.state = "denied";
+  await onChange();
+  assert.match(p.$("audio-device-access").textContent, /blocked.*site settings/);
+  assert.equal(p.settings.preferences.ambience, "speakers");
+  assert.equal(p.$("audio-settings-status").textContent, message);
+  permission.state = "prompt";
+  await onChange();
+  assert.match(p.$("audio-device-access").textContent, /Allow microphone access/);
+  assert.equal(listeners, 1);
+  assert.equal(p.requests.length, 0);
+});
+
+test("denied permission is not requested again until browser settings change", async () => {
+  let onChange;
+  const permission = { state: "prompt", addEventListener(_, callback) { onChange = callback; } };
+  const p = page({ permissions: { query: async () => permission } });
+  let requests = 0;
+  p.mediaDevices.getUserMedia = async () => {
+    requests++;
+    permission.state = "denied";
+    await onChange();
+    throw new Error("Permission denied");
+  };
+  await p.$("audio-settings-open").onclick();
+  p.$("audio-settings").close();
+  await p.$("audio-settings-open").onclick();
+  assert.equal(requests, 1);
+  assert.match(p.$("audio-device-access").textContent, /blocked/);
+  permission.state = "prompt";
+  await onChange();
+  const microphone = stream();
+  p.mediaDevices.getUserMedia = async () => { requests++; permission.state = "granted"; return microphone; };
+  p.$("audio-settings").close();
+  await p.$("audio-settings-open").onclick();
+  assert.equal(requests, 2);
+  assert.equal(microphone.track.stopped, true);
+  assert.match(p.$("audio-device-access").textContent, /access is allowed/);
+});
+
+test("unsupported permission queries fall back to device names without capturing audio", async () => {
+  const p = page({ permissions: { query: async () => { throw new TypeError("Unsupported"); } } });
+  await p.settings.open();
+  assert.match(p.$("audio-device-access").textContent, /names are available/);
+  p.setDevices([]);
+  await p.settings.refreshDevices();
+  assert.match(p.$("audio-device-access").textContent, /Allow microphone access/);
+  assert.equal(p.requests.length, 0);
 });
 
 test("unsupported output selection keeps independent volume controls working", async () => {

@@ -67,12 +67,17 @@ For a USB speaker mic, send Sam’s voice, static, and radio clicks to the hands
 and rain to the computer speakers. Each output has its own volume slider and
 test tone. Cabin ambience also has a mute control, backed by the existing persisted rain on/off setting, and still softens during transmissions.
 
-The microphone test shows a local level meter without recording or sending audio;
-it also requests permission so the browser can show device names. Settings are
-saved in this browser. A missing saved device falls back to the system default.
-Audio-device access requires HTTPS or localhost. Separate output selection requires
-`AudioContext.setSinkId` (for example, desktop Chrome or Edge); unsupported browsers
-retain independent volume controls on the system-default speakers.
+Before microphone permission is granted, browsers may show only default devices.
+Opening **Audio settings** checks access and requests microphone permission when
+needed to reveal the full list. The microphone is released immediately; nothing
+is recorded or sent. Access that is already allowed does not open the microphone
+again. The page refreshes devices when permission changes and shows a blocked
+status when access must be allowed in browser settings.
+The microphone test also requests permission and shows a local level meter.
+Settings are saved in this browser. A missing saved device falls back to the
+system default. Audio-device access requires HTTPS or localhost. Separate output
+selection requires `AudioContext.setSinkId` (for example, desktop Chrome or Edge);
+unsupported browsers retain independent volume controls on the default speakers.
 
 ### Browser callsigns and passwords
 

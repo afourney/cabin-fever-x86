@@ -4,11 +4,13 @@ const CHANNELS = ["radio", "ambience"];
 
 export class AudioSettings {
   constructor({ document, mediaDevices = globalThis.navigator?.mediaDevices,
+    permissions = globalThis.navigator?.permissions,
     createContext = () => new (globalThis.AudioContext || globalThis.webkitAudioContext)(),
     storage = () => globalThis.localStorage, onOpen = () => {}, onInputChange = () => {},
     getAmbienceMuted = () => false, onAmbienceMute = () => {} }) {
     this.document = document;
     this.mediaDevices = mediaDevices;
+    this.permissions = permissions;
     this.createContext = createContext;
     this.storage = storage;
     this.onOpen = onOpen;
@@ -121,9 +123,42 @@ export class AudioSettings {
     this.onOpen();
     this.updateAmbienceMute();
     this.$("audio-settings").showModal();
-    try { await this.resume(); }
-    catch { this.message("Audio could not start. Check your browser's audio permissions."); }
-    await this.refreshDevices();
+    // Unlock playback from the click, and request device access without waiting
+    // for playback to start. The dialog remains usable while permission is pending.
+    const playback = this.resume().catch(() => {
+      this.message("Audio could not start. Check your browser's audio permissions.");
+    });
+    await Promise.all([playback, this.ensureDeviceAccess()]);
+  }
+
+  ensureDeviceAccess() {
+    if (this.deviceAccessPending) return this.deviceAccessPending;
+    this.deviceAccessPending = (async () => {
+      await this.refreshDevices();
+      const permission = await this.microphonePermission();
+      if (!this.mediaDevices?.getUserMedia || permission === "granted" || permission === "denied" ||
+          (permission === null && this.devices.some(device => device.kind === "audioinput" && device.label))) return;
+      this.$("audio-device-access").textContent = "Allow microphone access to reveal all audio devices. Nothing is recorded or sent.";
+      try {
+        const stream = await this.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+      } catch {
+        this.message("Could not access audio devices. Allow microphone access in your browser's site settings, then reopen Audio settings.");
+      }
+      await this.refreshDevices();
+    })().finally(() => { this.deviceAccessPending = null; });
+    return this.deviceAccessPending;
+  }
+
+  async microphonePermission() {
+    this.permissionReady ??= (async () => {
+      try {
+        const permission = await this.permissions?.query({ name: "microphone" });
+        permission?.addEventListener("change", () => this.refreshDevices());
+        return permission;
+      } catch { /* Some browsers cannot query microphone permission. */ }
+    })();
+    return (await this.permissionReady)?.state ?? null;
   }
 
   async refreshDevices(checkDisconnected = false) {
@@ -131,13 +166,25 @@ export class AudioSettings {
     if (!this.mediaDevices?.enumerateDevices) {
       this.message("Device selection requires HTTPS or localhost and a browser with audio-device support.");
       for (const name of ["microphone", ...CHANNELS]) this.$(`${name}-device`).disabled = true;
+      this.$("audio-device-access").textContent = "";
       return;
     }
     try {
-      const devices = await this.mediaDevices.enumerateDevices();
+      const [devices, permission] = await Promise.all([
+        this.mediaDevices.enumerateDevices(), this.microphonePermission(),
+      ]);
       if (generation !== this.refreshGeneration) return;
       const previous = this.devices;
       this.devices = devices;
+      // Device names are only a fallback when the Permissions API is unavailable.
+      const accessAllowed = permission === "granted" || (permission === null &&
+        devices.some(device => device.kind === "audioinput" && device.label));
+      this.$("audio-device-access").textContent = permission === "granted"
+        ? "Microphone access is allowed."
+        : permission === "denied"
+          ? "Microphone access is blocked. Allow it in your browser's site settings to see all audio devices."
+          : accessAllowed ? "Audio device names are available."
+            : "Allow microphone access to see all microphones and speakers.";
       for (const name of ["microphone", ...CHANNELS]) {
         const select = this.$(`${name}-device`);
         const output = name !== "microphone";
