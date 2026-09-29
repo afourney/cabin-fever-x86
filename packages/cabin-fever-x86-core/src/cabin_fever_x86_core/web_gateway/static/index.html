@@ -48,7 +48,7 @@
   #talk.hot { background: #7a2f26; border-color: #b4483a; color: #fff; }
   .hint { font-size: .75rem; color: #46586e; }
   .quiet {
-    position: fixed; top: 1rem; right: 1rem; padding: .35rem .7rem;
+    padding: .35rem .7rem;
     font-size: .7rem; letter-spacing: .1em; opacity: .55;
   }
   .quiet:hover { opacity: 1; }
@@ -90,8 +90,11 @@
   }
   #auth-panel button { margin-top: .7rem; width: 100%; }
   #auth-error { color: #edb2a3; }
-  #logout { top: 6rem; z-index: 20; }
-  #audio-settings-open { top: 3.5rem; z-index: 20; }
+  #page-actions {
+    position: fixed; top: 3.5rem; right: 1rem; z-index: 20;
+    display: flex; flex-direction: column; align-items: flex-end; gap: .5rem;
+    max-width: calc(100% - 2rem);
+  }
   #audio-settings {
     box-sizing: border-box; width: min(42rem, calc(100% - 1.5rem));
     max-height: calc(100dvh - 2rem); overflow-y: auto; padding: clamp(1.1rem, 4vw, 2rem);
@@ -126,9 +129,11 @@
   @media (max-width: 520px) {
     .audio-controls button { margin-left: auto; }
     #radio { padding-top: 2.2rem; box-sizing: border-box; }
-    #audio-settings-open, #logout { top: .5rem; font-size: .65rem; }
-    #logout { right: .5rem; }
-    #audio-settings-open { right: 6.5rem; }
+    #page-actions {
+      top: .5rem; right: .5rem; max-width: calc(100% - 1rem);
+      flex-direction: row; flex-wrap: wrap; justify-content: flex-end;
+    }
+    #page-actions .quiet { font-size: .65rem; }
   }
   #radio {
     display: flex; flex-direction: column; align-items: center;
@@ -244,8 +249,10 @@
   <button id="resume-radio" hidden>Resume here</button>
   <div class="hint" id="hint">hold <kbd>space</kbd> or the button</div>
   </main>
-  <button id="audio-settings-open" class="quiet" aria-haspopup="dialog">Audio settings</button>
-  <button id="logout" class="quiet" hidden>Sign out</button>
+  <div id="page-actions">
+    <button id="audio-settings-open" class="quiet" aria-haspopup="dialog">Audio settings</button>
+    <button id="logout" class="quiet" hidden>Sign out</button>
+  </div>
 
   <dialog id="audio-settings" aria-labelledby="audio-settings-title" aria-describedby="audio-settings-intro">
     <div class="audio-heading">
