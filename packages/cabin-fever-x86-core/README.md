@@ -339,15 +339,23 @@ shared in `data/games/`. No data migration is performed.
 
 When `cf86-server` runs directly, it looks for Z-machine game files in `data/games/` relative to its working directory. If that directory contains nothing playable, the server downloads the [z-machine-games](https://github.com/BYU-PCCL/z-machine-games) archive and unpacks only the 57 games in its `jericho-game-suite` folder.
 
-Fernz 0.0.3 runs V3, V4, V5, and V8 stories; support is determined by the story header, not its filename extension. Some Z-machine features and story-specific metadata are not implemented. When a score limit or room location is unavailable, the server omits it.
+The integration targets Fernz 0.0.4 and runs V3, V4, V5, and V8 stories; support is determined by the story header, not its filename extension. Some Z-machine features and story-specific metadata are not implemented. When a score limit or room location is unavailable, the server omits it.
 
 Add other games by copying them into `data/games/` before starting the server. Only use game files you have the right to run.
 
 ### Save compatibility
 
 Fernz saves use `CFX86SAVE3`, including the complete checkpoint, last screen,
-and personal map. Autosave and session resume work with this format. The Fernz
-dependency is pinned to 0.0.3 because the checkpoint codec targets its schema 5.
+and personal map. Below Cabin Fever's metadata and map records, the payload is
+Fernz's public JSON checkpoint from `GameState.to_json()`; only its RAM field is
+Base64-encoded. `GameState.from_json(..., story=...)` validates the checkpoint
+against the matching story before restore. Autosave and session resume use the
+same format. The earlier unpublished `CFX86SAVE3` layout is not supported.
+
+Fernz 0.0.4 supplies the public checkpoint codec, `initialized` and
+`awaiting_character` queries, and construction from an already-loaded `Story`.
+Restore candidates reuse the live story when available and remain separate from
+the running interpreter until validation succeeds.
 
 As a fallback, Fernz's built-in save and restore callbacks use one Quetzal file
 per ROM at `data/users/<user_id>/sessions/<session_id>/server/saves/<romname>.qzl`.

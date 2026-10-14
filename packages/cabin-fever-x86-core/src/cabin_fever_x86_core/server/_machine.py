@@ -17,8 +17,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from fernz import FernzEnv
-from fernz._state import StoredInputRequest
+from fernz import FernzEnv, Story
 
 from cabin_fever_x86_core.hints import has_hints
 from cabin_fever_x86_core.server._game_memories import (
@@ -231,10 +230,10 @@ class Machine:
         logger.info("Loaded %s", path.stem)
         return self.screen()
 
-    def _create_env(self, path: Path) -> FernzEnv:
+    def _create_env(self, path: Path, story: Story | None = None) -> FernzEnv:
         """Create an interpreter with session-local storage, without running it."""
         return FernzEnv(
-            str(path),
+            story if story is not None else Story.from_file(path),
             seed=_fresh_seed(),
             save_handler=partial(self._saves.write_quetzal, path.stem) if self._saves else None,
             restore_handler=partial(self._saves.read_quetzal, path.stem) if self._saves else None,
@@ -266,8 +265,7 @@ class Machine:
         original_text = text
         text = text.strip()
         if not text:
-            request = self._env.get_state().input_request if self._env and not self._done else None
-            if not isinstance(request, StoredInputRequest) or not request.character:
+            if self._env is None or self._done or not self._env.awaiting_character:
                 return self.screen(), None
             # A literal space is a key; line endings/control whitespace mean
             # Enter, represented by an empty action in Fernz's edited-input API.
@@ -291,9 +289,7 @@ class Machine:
             observation, _reward, done, info = await asyncio.to_thread(self._env.step, text)
         except Exception as exc:
             logger.exception("%r failed on %s", text, self._game)
-            try:
-                self._env.get_state()
-            except RuntimeError:
+            if not self._env.initialized:
                 # Execution errors invalidate Fernz's machine. Drop that dead
                 # environment without touching the last successful autosave.
                 self.reboot()
@@ -391,7 +387,7 @@ class Machine:
             return "This machine has no disk to read saves from.", False
 
         try:
-            snapshot = await asyncio.to_thread(self._saves.read, name)
+            info = await asyncio.to_thread(self._saves.info, name)
             # What it is actually called, so a save asked for by number is
             # reported back the way the listing shows it.
             filed = await asyncio.to_thread(self._saves.path, name)
@@ -399,19 +395,24 @@ class Machine:
             return f"That save will not load: {exc}", False
         name = filed.stem
 
-        path = self._find(snapshot.game)
+        path = self._find(info.game)
         if path is None:
-            return f"{name} is a save of {snapshot.game}, which is not on the disk.", False
+            return f"{name} is a save of {info.game}, which is not on the disk.", False
         try:
-            env = await asyncio.to_thread(self._create_env, path)
+            story = self._env.story if self._env is not None and self._game == info.game else None
+            env = await asyncio.to_thread(self._create_env, path, story)
         except Exception as exc:
             logger.exception("Could not open the story for %s", name)
             return f"The machine will not come up to load {name}: {exc}", False
 
         # Prepare a separate interpreter. Do not boot a fresh game or change
         # the live machine until the complete checkpoint has been accepted.
-        legacy = isinstance(snapshot.state, tuple)
         try:
+            try:
+                snapshot = await asyncio.to_thread(self._saves.read, name, story=env.story)
+            except SaveError as exc:
+                return f"That save will not load: {exc}", False
+            legacy = isinstance(snapshot.state, tuple)
             if legacy:
                 try:
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
-from fernz import GameState
+from fernz import GameState, Story
 
 from cabin_fever_x86_core.server._machine import Machine
 from cabin_fever_x86_core.server._saves import AUTOSAVE, LEGACY_MAGIC, MAGIC, SaveError, SaveStore
@@ -71,7 +71,7 @@ async def test_captured_legacy_saves_continue_like_jericho(
         assert path.read_bytes() == original
         assert original.startswith(LEGACY_MAGIC + b"\n")
         assert store.path(AUTOSAVE).read_bytes().startswith(MAGIC + b"\n")
-        imported = store.read(AUTOSAVE)
+        imported = store.read(AUTOSAVE, story=machine._env.story)
         assert isinstance(imported.state, GameState)
         if expected["rng"][1]:
             assert imported.state.rng.period == expected["rng"][1]
@@ -200,7 +200,6 @@ def test_truncated_legacy_save_is_refused(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("case", [case for case in CASES if not case.endswith("_untimed")])
 def test_copied_bridge_round_trip_preserves_input_and_frames(tmp_path: Path, case: str) -> None:
-    from fernz import Story
 
     from cabin_fever_x86_core.server._state_bridge import StateBridge
 
@@ -229,7 +228,7 @@ async def test_legacy_active_timer_is_rejected_before_boot(tmp_path: Path, versi
 
 @pytest.mark.parametrize("case", LATER_CASES)
 def test_later_frames_and_read_result_are_preserved(tmp_path: Path, case: str) -> None:
-    from fernz import FernzEnv, Story
+    from fernz import FernzEnv
     from fernz._state import StoredInputRequest
 
     from cabin_fever_x86_core.server._state_bridge import StateBridge
@@ -260,7 +259,6 @@ def test_later_frames_and_read_result_are_preserved(tmp_path: Path, case: str) -
 @pytest.mark.parametrize("version", (4, 5, 8))
 @pytest.mark.parametrize("flags", (0x2000, 0x0008))
 def test_unmeasured_frame_flags_are_rejected(tmp_path: Path, version: int, flags: int) -> None:
-    from fernz import Story
 
     from cabin_fever_x86_core.server._state_bridge import StateBridge
 
@@ -283,12 +281,13 @@ async def test_invalid_legacy_instruction_is_reported_without_losing_live_game(
     screen = machine.screen()
     state = machine._env.get_state()
     autosave = store.path(AUTOSAVE).read_bytes()
-    source = store.path("probe_0001").read_bytes()
-    native = store.read("probe_0001").state
-    path = games / "probe.z3"
-    rom = bytearray(path.read_bytes())
-    rom[native[2]] = 0xFF  # Zero operands on sread raises Fernz ExecutionError.
-    path.write_bytes(rom)
+    path = store.path("probe_0001")
+    envelope, body = path.read_bytes().split(b"CFX86DATA\n", 1)
+    body = bytearray(body)
+    body[0x2E0:0x2E2] = b"\xe4\xff"  # sread with no operands in dynamic RAM.
+    path.write_bytes(envelope + b"CFX86DATA\n" + body)
+    rewrite_header(path, pc=0x2E1)
+    source = path.read_bytes()
     assert "cannot be converted" in await machine.load("probe_0001")
     assert machine.screen() == screen
     assert machine._env.get_state() == state
@@ -304,8 +303,6 @@ def test_legacy_layout_is_independent_of_reader_platform(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str, byteorder: str
 ) -> None:
     import sys
-
-    from fernz import Story
 
     from cabin_fever_x86_core.server._state_bridge import StateBridge
 

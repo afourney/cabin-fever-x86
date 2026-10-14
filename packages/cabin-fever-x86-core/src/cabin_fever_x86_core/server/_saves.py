@@ -1,16 +1,15 @@
 """Saved games for the machine in the corner.
 
-Fernz checkpoints are immutable dataclasses. We store their execution fields
-as JSON and dynamic memory as a byte run, without pickle or executable data::
+Fernz owns the checkpoint's public JSON format, including its RAM encoding::
 
     CFX86SAVE3
-    {"type": "metadata", "game": "zork1", "checkpoint": {...}, ...}
+    {"type": "metadata", "game": "zork1", ...}
     {"type": "personal_map", "edges": [...]}
     CFX86DATA
-    <ram bytes>
+    <Fernz checkpoint JSON>
 
-The format is tied to Fernz's schema-5 checkpoint. Jericho's CFX86SAVE2 files
-can be imported at supported V3 line-input boundaries.
+Jericho's CFX86SAVE2 files can be imported at supported V3/V4/V5/V8 line-input
+boundaries. The unpublished, earlier CFX86SAVE3 layout is not supported.
 
 The header also carries the screen as it was left. ``set_state`` restores the
 interpreter but tells us nothing about what was last printed, and a machine
@@ -34,14 +33,13 @@ import json
 import logging
 import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 
 import numpy as np
-from fernz import GameState
-from fernz._state import FrameState, InputRequest, OutputState, RandomState, StoredInputRequest
+from fernz import GameState, Story
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +64,6 @@ _SAFE_GAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # format we no longer read — is refused before anything is made of its bytes.
 MAGIC = b"CFX86SAVE3"
 LEGACY_MAGIC = b"CFX86SAVE2"
-CHECKPOINT_VERSION = 5
 DATA_SENTINEL = b"CFX86DATA"
 METADATA = "metadata"
 PERSONAL_MAP = "personal_map"
@@ -280,9 +277,9 @@ class SaveStore:
         save cannot leave a half-written autosave where a good one used to be.
         """
         path = self.path(name)
-        metadata, body = _encode_state(snapshot.state)
+        body = _encode_state(snapshot.state)
         comment = _comment(snapshot.comment)
-        metadata |= {
+        metadata = {
             "type": METADATA,
             "game": snapshot.game,
             "score": snapshot.score,
@@ -314,8 +311,12 @@ class SaveStore:
             raise SaveError(f"could not write {path.name}: {exc}") from exc
         return path.stem
 
-    def read(self, name: str) -> Snapshot:
-        """Read one save back, screen and all."""
+    def read(self, name: str, *, story: Story | None = None) -> Snapshot:
+        """Read a save; Fernz checkpoints require the matching story for validation.
+
+        Legacy snapshots are returned as native tuples for later conversion.
+        Listings and metadata inspection do not require a story.
+        """
         path = self.path(name)
         try:
             with path.open("rb") as handle:
@@ -323,7 +324,7 @@ class SaveStore:
                 state = (
                     _decode_legacy_state(metadata, handle, path)
                     if magic == LEGACY_MAGIC
-                    else _decode_state(metadata, handle, path)
+                    else _decode_state(handle, path, story)
                 )
         except FileNotFoundError as exc:
             raise SaveError(f"there is no save called {path.stem!r}") from exc
@@ -377,65 +378,28 @@ class SaveStore:
         return found
 
 
-def _encode_state(state: GameState) -> tuple[dict[str, Any], bytes]:
-    """Flatten the pinned Fernz checkpoint schema without executable serialization."""
-    if not isinstance(state, GameState) or state.format_version != CHECKPOINT_VERSION:
-        raise SaveError("expected a Fernz schema-5 checkpoint")
-    checkpoint = asdict(state)
-    ram = checkpoint.pop("ram")
-    return {"checkpoint": checkpoint, "ram_size": len(ram)}, ram
-
-
-def _decode_state(header: dict[str, Any], handle: BinaryIO, path: Path) -> GameState:
-    """Rebuild immutable checkpoint records; Fernz validates them against the story."""
+def _encode_state(state: GameState) -> bytes:
+    """Let Fernz serialize its complete checkpoint using its public codec."""
+    if not isinstance(state, GameState):
+        raise SaveError("expected a Fernz checkpoint")
     try:
-        size = header["ram_size"]
-        checkpoint = dict(header["checkpoint"])
-        if type(size) is not int or size < 0:
-            raise ValueError("invalid RAM size")
-        if checkpoint["format_version"] != CHECKPOINT_VERSION:
-            raise ValueError("unsupported Fernz checkpoint version")
-        ram = handle.read(size)
-        if len(ram) != size:
-            raise SaveError(f"{path.name} is truncated: it stops partway through the state")
-        if handle.read(1):
-            raise ValueError("unexpected bytes after the checkpoint")
-        frames = tuple(
-            FrameState(
-                **(frame | {"locals": tuple(frame["locals"]), "stack": tuple(frame["stack"])})
-            )
-            for frame in checkpoint.pop("frames")
-        )
-        rng = checkpoint.pop("rng")
-        if rng["python_state"] is not None:
-            version, words, gaussian = rng["python_state"]
-            rng["python_state"] = (version, tuple(words), gaussian)
-        request = checkpoint.pop("input_request")
-        if request is not None:
-            request = (
-                StoredInputRequest(**request) if "store" in request else InputRequest(**request)
-            )
-        output = checkpoint.pop("output")
-        for key in ("cursors", "colours", "memory_streams"):
-            output[key] = tuple(tuple(pair) for pair in output[key])
-        for key in ("fonts", "styles"):
-            output[key] = tuple(output[key])
-        return GameState(
-            **checkpoint,
-            ram=ram,
-            frames=frames,
-            rng=RandomState(**rng),
-            input_request=request,
-            output=OutputState(**output),
-        )
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        raise SaveError(
-            f"{path.name} is missing part of its machine state or is invalid: {exc}"
-        ) from exc
+        return state.to_json().encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise SaveError(f"could not encode the Fernz checkpoint: {exc}") from exc
+
+
+def _decode_state(handle: BinaryIO, path: Path, story: Story | None) -> GameState:
+    """Let Fernz validate and reconstruct its checkpoint against the story."""
+    if story is None:
+        raise SaveError("the matching story is required to read a Fernz checkpoint")
+    try:
+        return GameState.from_json(handle.read().decode("utf-8"), story=story)
+    except (TypeError, ValueError) as exc:
+        raise SaveError(f"{path.name} has an invalid Fernz checkpoint: {exc}") from exc
 
 
 def _decode_legacy_state(header: dict[str, Any], handle: BinaryIO, path: Path) -> tuple[Any, ...]:
-    """Read the original CFX86SAVE2 tuple for the measured V3 converter."""
+    """Read the original CFX86SAVE2 tuple for the legacy converter."""
     try:
         scalars = [header[key] for key in ("pc", "sp", "fp", "frame_count", "opcode")]
         rng = tuple(header["rng"])

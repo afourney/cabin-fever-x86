@@ -78,7 +78,7 @@ async def test_failed_resume_cannot_leave_a_fresh_game_or_overwrite_autosave(
 ) -> None:
     machine, store = probe(tmp_path)
     await machine.new_game("probe")
-    snapshot = store.read(AUTOSAVE)
+    snapshot = store.read(AUTOSAVE, story=machine._env.story)
     if damage == "hash":
         snapshot = replace(snapshot, state=replace(snapshot.state, story_sha256="0" * 64))
     else:
@@ -100,7 +100,7 @@ async def test_failed_cross_game_restore_keeps_the_running_game(tmp_path: Path) 
     other = machine._games_dir / "other.z5"
     other.write_bytes((machine._games_dir / "probe.z5").read_bytes())
     await machine.new_game("probe")
-    snapshot = store.read(AUTOSAVE)
+    snapshot = store.read(AUTOSAVE, story=machine._env.story)
     store.write(
         "other_0001",
         replace(snapshot, game="other", state=replace(snapshot.state, story_sha256="0" * 64)),
@@ -149,5 +149,51 @@ async def test_unreadable_location_does_not_prevent_play_or_restore(
     machine.reboot()
     assert "Restored probe" in (await machine.resume() or "")
     assert machine.screen() == screen
-    assert store.read(AUTOSAVE).location is None
+    assert store.read(AUTOSAVE, story=machine._env.story).location is None
+    machine.reboot()
+
+
+async def test_input_and_failure_status_use_public_queries_without_checkpointing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Character input, then line input, then a fatal stack underflow.
+    program = bytes.fromhex("f6 7f 01 10 e4 0f 02 80 02 a0 1e e6 bf 00 ba")
+    machine, _store = probe(tmp_path, program)
+    await machine.new_game("probe")
+    machine._saves = None  # Status checks must not create checkpoints; autosaves do.
+
+    def unexpected_checkpoint(_env):
+        pytest.fail("Input mode and failure status must use Fernz's public properties")
+
+    monkeypatch.setattr(FernzEnv, "get_state", unexpected_checkpoint)
+    await machine.type_text("\n")
+    assert machine._env.initialized and not machine._env.awaiting_character
+    assert (await machine.type_text("\n"))[0] == machine.screen()
+    assert "could not accept" in (await machine.type_text("bad\x01input"))[0]
+    assert machine._env.initialized
+    assert "machine stopped" in (await machine.type_text("look"))[0]
+    assert machine.screen() == NO_GAME
+
+
+async def test_restore_reuses_the_live_story_without_reopening_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fernz import Story
+
+    machine, _store = probe(tmp_path)
+    await machine.new_game("probe")
+    original = machine._env
+    screen = machine.screen()
+
+    def unexpected_read(*args):
+        pytest.fail("Restore should reuse the loaded Story")
+
+    monkeypatch.setattr(Story, "from_file", unexpected_read)
+    assert "Restored probe" in await machine.load(AUTOSAVE)
+    assert machine._env is not original
+    assert machine._env.story is original.story
+    assert machine.screen() == screen
+    assert "R=" in (await machine.type_text("look"))[0]
     machine.reboot()

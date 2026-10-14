@@ -30,8 +30,8 @@ dependencies = [
     "pyyaml",
     "uvicorn",
     "websockets",
-    # Checkpoint serialization targets Fernz schema 5 in this release.
-    "fernz==0.0.3",
+    # Public checkpoint/lifecycle APIs introduced by Fernz PR #77.
+    "fernz==0.0.4",
     "argon2-cffi>=25.1.0",
     "itsdangerous>=2.2.0",
 ]

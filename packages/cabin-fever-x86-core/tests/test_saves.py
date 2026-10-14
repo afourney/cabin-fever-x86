@@ -12,10 +12,11 @@ import json
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
-from fernz import GameState, Observation
-from fernz._state import FrameState, InputRequest, OutputState, RandomState, StoredInputRequest
+from fernz import FernzEnv, GameState, Observation, Story
+from fernz._state import OutputState, RandomState, StoredInputRequest
 
 from cabin_fever_x86_core.server._game_memories import RELOAD_REASONS_FILE, GameMemoryStore
 from cabin_fever_x86_core.server._machine import GAMES_DIR, NO_GAME, USE_THE_TOOLS, Machine
@@ -43,16 +44,12 @@ from cabin_fever_x86_core.server._tools import (
     TypeTool,
 )
 
-FAKE_STATE = GameState(
-    story_sha256="a" * 64,
-    ram=b"\x01\x02\x03\x04",
-    pc=22797,
-    frames=(FrameState((), (), None, None), FrameState((1, 2), (3,), 1234, 16, 1)),
-    rng=RandomState(host_seed=42, state=12345, period=0, position=0),
-    input_request=InputRequest(text=100, parse=200, instruction_address=22790),
-    screen_enabled=True,
-    halted=False,
-)
+with ZipFile(Path(__file__).parent / "fixtures" / "legacy_later_states.zip") as archive:
+    TEST_STORY = Story(archive.read("v5_constant.z5"))
+_test_env = FernzEnv(TEST_STORY, seed=42)
+_test_env.reset()
+FAKE_STATE = _test_env.get_state()
+_test_env.close()
 FAKE_SIGNATURE = StorySignature(release=88, serial="840726", checksum=0x1234)
 
 
@@ -92,13 +89,13 @@ async def test_a_game_boots_with_a_fresh_random_seed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     game = tmp_path / "zork1.z5"
-    game.touch()
+    game.write_bytes(TEST_STORY.data)
     called_with: dict[str, object] = {}
 
     class FakeEnv:
         def __init__(
             self,
-            story_file: str,
+            story_file: Story,
             *,
             seed: int,
             save_handler: object = None,
@@ -135,7 +132,8 @@ async def test_a_game_boots_with_a_fresh_random_seed(
     machine = Machine(games_dir=tmp_path)
     await machine.new_game("zork1")
 
-    assert called_with == {"story_file": str(game), "seed": 123456789}
+    assert called_with["story_file"].data == TEST_STORY.data
+    assert called_with["seed"] == 123456789
 
 
 def test_a_name_is_forgiven_its_spelling() -> None:
@@ -175,7 +173,7 @@ def test_a_save_round_trips(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     assert store.write("zork1_0001", snapshot()) == "zork1_0001"
 
-    read = store.read("ZORK1_1.bin")  # and the sloppy spelling still finds it
+    read = store.read("ZORK1_1.bin", story=TEST_STORY)  # and the sloppy spelling still finds it
     assert read.game == "zork1"
     assert read.observation.startswith("West of House")
     assert (read.score, read.moves, read.done) == (10, 3, False)
@@ -191,14 +189,14 @@ def test_a_story_signature_is_optional_and_round_trips_when_present(tmp_path: Pa
     store.write("zork1_0001", snapshot())
     store.write("zork1_0002", replace(snapshot(), story_signature=FAKE_SIGNATURE))
 
-    assert store.read("zork1_0001").story_signature is None
-    assert store.read("zork1_0002").story_signature == FAKE_SIGNATURE
+    assert store.read("zork1_0001", story=TEST_STORY).story_signature is None
+    assert store.read("zork1_0002", story=TEST_STORY).story_signature == FAKE_SIGNATURE
 
 
 def test_a_state_of_the_wrong_shape_is_refused_on_the_way_in(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     bad = Snapshot(game="zork1", state=(b"", b"", 1), observation="", score=0, moves=0, done=False)
-    with pytest.raises(SaveError, match="Fernz schema-5 checkpoint"):
+    with pytest.raises(SaveError, match="Fernz checkpoint"):
         store.write("zork1_0001", bad)
 
 
@@ -210,8 +208,8 @@ def test_a_truncated_save_is_refused(tmp_path: Path) -> None:
     whole = path.read_bytes()
     path.write_bytes(whole[:-3])  # the state stops partway through
 
-    with pytest.raises(SaveError, match="truncated"):
-        store.read("zork1_0001")
+    with pytest.raises(SaveError, match="invalid Fernz checkpoint"):
+        store.read("zork1_0001", story=TEST_STORY)
 
 
 def test_a_header_missing_the_state_is_refused(tmp_path: Path) -> None:
@@ -223,8 +221,8 @@ def test_a_header_missing_the_state_is_refused(tmp_path: Path) -> None:
 
     # The listing still manages, since a header is all it ever wanted.
     assert [save.name for save in store.list()] == ["zork1_0001"]
-    with pytest.raises(SaveError, match="missing part of its machine state"):
-        store.read("zork1_0001")
+    with pytest.raises(SaveError, match="invalid Fernz checkpoint"):
+        store.read("zork1_0001", story=TEST_STORY)
 
 
 def test_the_folder_is_made_on_the_first_write_and_not_before(tmp_path: Path) -> None:
@@ -250,16 +248,15 @@ def test_a_save_starts_with_listing_metadata_and_typed_records(tmp_path: Path) -
     assert header["type"] == "metadata"
     assert header["game"] == "zork1"
     assert header["moves"] == 3
-    assert header["checkpoint"]["pc"] == FAKE_STATE.pc
-    assert header["checkpoint"]["rng"]["state"] == FAKE_STATE.rng.state
-    assert header["ram_size"] == len(FAKE_STATE.ram)
+    assert "checkpoint" not in header
+    assert "ram_size" not in header
     assert "saved_at" in header
     assert header["location"] == "West of House"
     assert header["comment"] == "about to do something dumb"
     assert map_record["type"] == "personal_map"
     assert map_record["edges"][0]["command"] == "north"
 
-    assert path.read_bytes().endswith(FAKE_STATE.ram)
+    assert path.read_bytes().endswith(FAKE_STATE.to_json().encode("utf-8"))
 
 
 def test_a_signed_save_adds_only_optional_header_metadata(tmp_path: Path) -> None:
@@ -275,7 +272,7 @@ def test_a_signed_save_adds_only_optional_header_metadata(tmp_path: Path) -> Non
 
     assert header["story_signature"] == FAKE_SIGNATURE.as_record()
     assert map_record["type"] == "personal_map"
-    assert path.read_bytes().endswith(FAKE_STATE.ram)
+    assert path.read_bytes().endswith(FAKE_STATE.to_json().encode("utf-8"))
 
 
 def test_a_finished_save_leaves_no_working_file(tmp_path: Path) -> None:
@@ -284,7 +281,7 @@ def test_a_finished_save_leaves_no_working_file(tmp_path: Path) -> None:
     store.write(AUTOSAVE, snapshot(moves=4))  # overwritten in place
 
     assert sorted(p.name for p in store.dir.iterdir()) == [f"{AUTOSAVE}{SUFFIX}"]
-    assert store.read(AUTOSAVE).moves == 4
+    assert store.read(AUTOSAVE, story=TEST_STORY).moves == 4
 
 
 def test_slots_count_up_from_the_highest_on_disk(tmp_path: Path) -> None:
@@ -348,9 +345,9 @@ def test_two_games_each_have_their_own_0001(tmp_path: Path) -> None:
     store.write(store.next_name("zork1"), snapshot())
     store.write(store.next_name("advent"), snapshot(game="advent"))
 
-    assert store.read("zork1_0001").game == "zork1"
-    assert store.read("advent_0001").game == "advent"
-    assert store.read("ADVENT_1.bin").game == "advent"  # however it is spelled
+    assert store.read("zork1_0001", story=TEST_STORY).game == "zork1"
+    assert store.read("advent_0001", story=TEST_STORY).game == "advent"
+    assert store.read("ADVENT_1.bin", story=TEST_STORY).game == "advent"  # however it is spelled
 
 
 def test_a_listing_says_the_game_once(tmp_path: Path) -> None:
@@ -392,7 +389,7 @@ def test_an_unknown_typed_record_is_skipped(tmp_path: Path) -> None:
     contents = contents.replace(marker, b'{"type":"future_thing","answer":42}\n' + marker)
     path.write_bytes(contents)
 
-    assert store.read("zork1_0001").game == "zork1"
+    assert store.read("zork1_0001", story=TEST_STORY).game == "zork1"
 
 
 def test_the_autosave_is_reachable_by_name_but_never_listed(tmp_path: Path) -> None:
@@ -400,7 +397,7 @@ def test_the_autosave_is_reachable_by_name_but_never_listed(tmp_path: Path) -> N
     store.write(AUTOSAVE, snapshot())
 
     assert store.list() == []
-    assert store.read(AUTOSAVE).game == "zork1"  # the resume point, still there
+    assert store.read(AUTOSAVE, story=TEST_STORY).game == "zork1"  # the resume point, still there
     assert store.info(AUTOSAVE).moves == 3
 
 
@@ -410,12 +407,12 @@ def test_a_file_that_is_not_ours_is_refused_before_it_is_read(tmp_path: Path) ->
     (store.dir / f"zork1_0001{SUFFIX}").write_bytes(b"SOMETHING-ELSE-ENTIRELY\n")
 
     with pytest.raises(SaveError, match="not a save from this machine"):
-        store.read("zork1_0001")
+        store.read("zork1_0001", story=TEST_STORY)
 
 
 def test_a_save_that_is_not_there(tmp_path: Path) -> None:
     with pytest.raises(SaveError, match="no save called"):
-        SaveStore(tmp_path / "saves").read("zork1_0500")
+        SaveStore(tmp_path / "saves").read("zork1_0500", story=TEST_STORY)
 
 
 # --- with a real interpreter behind it ------------------------------------
@@ -456,11 +453,13 @@ async def test_the_autosave_keeps_up_with_the_screen(machine: Machine, store: Sa
     rom("zork1")
     await machine.type_text("zork1")
 
-    assert store.read(AUTOSAVE).moves == 0  # a restore point at move zero
+    assert (
+        store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).moves == 0
+    )  # a restore point at move zero
 
     await machine.type_text("north")
     await machine.type_text("north")
-    assert store.read(AUTOSAVE).moves == 2
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).moves == 2
 
 
 async def test_a_save_comes_back_where_it_was_left(machine: Machine) -> None:
@@ -485,14 +484,16 @@ async def test_a_fernz_save_without_listing_signature_still_loads(
 ) -> None:
     rom("zork1")
     await machine.type_text("zork1")
-    legacy = replace(store.read(AUTOSAVE), story_signature=None)
+    legacy = replace(
+        store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))), story_signature=None
+    )
     store.write("zork1_0001", legacy)
     before = store.path("zork1_0001").read_bytes()
 
     assert "Restored zork1" in await machine.load("zork1_0001")
     assert store.path("zork1_0001").read_bytes() == before
-    assert store.read("zork1_0001").story_signature is None
-    assert store.read(AUTOSAVE).story_signature is not None
+    assert store.read("zork1_0001", story=Story.from_file(rom("zork1"))).story_signature is None
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).story_signature is not None
 
 
 async def test_a_signed_save_for_another_story_build_is_refused(
@@ -500,7 +501,7 @@ async def test_a_signed_save_for_another_story_build_is_refused(
 ) -> None:
     rom("zork1")
     await machine.type_text("zork1")
-    current = store.read(AUTOSAVE)
+    current = store.read(AUTOSAVE, story=Story.from_file(rom("zork1")))
     assert current.story_signature is not None
     wrong = replace(
         current,
@@ -522,13 +523,13 @@ async def test_loading_an_ordinary_rng_state_gives_it_a_fresh_future(
     rom("zork1")
     await machine.type_text("zork1")
     await machine.save()
-    saved_rng = store.read("zork1_0001").state.rng
+    saved_rng = store.read("zork1_0001", story=Story.from_file(rom("zork1"))).state.rng
     assert saved_rng.period == 0
     monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_seed", lambda: 123456789)
 
     await machine.load("zork1_0001")
 
-    assert store.read(AUTOSAVE).state.rng == replace(
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).state.rng == replace(
         saved_rng, host_seed=123456789, state=123456789
     )
 
@@ -538,7 +539,7 @@ async def test_loading_a_predictable_rng_state_preserves_it(
 ) -> None:
     rom("zork1")
     await machine.type_text("zork1")
-    original = store.read(AUTOSAVE)
+    original = store.read(AUTOSAVE, story=Story.from_file(rom("zork1")))
     predictable_rng = replace(original.state.rng, period=12, position=4)
     state = replace(original.state, rng=predictable_rng)
     store.write("zork1_0001", replace(original, state=state))
@@ -546,7 +547,7 @@ async def test_loading_a_predictable_rng_state_preserves_it(
 
     await machine.load("zork1_0001")
 
-    assert store.read(AUTOSAVE).state.rng == predictable_rng
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).state.rng == predictable_rng
 
 
 async def test_the_personal_map_appears_only_after_moving_to_a_known_room(
@@ -595,7 +596,7 @@ async def test_loading_an_older_run_keeps_routes_known_from_later_play(
     await machine.type_text("north")
     await machine.type_text("east")
 
-    signature = store.read(AUTOSAVE).story_signature
+    signature = store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).story_signature
     assert signature is not None
     assert any(
         command == "east"
@@ -611,7 +612,7 @@ async def test_loading_an_older_run_keeps_routes_known_from_later_play(
     assert "'east'" in (remarks or "")
     assert "'Behind House'" in (remarks or "")
     assert "(earlier run only)" in (remarks or "")
-    run_map = store.read(AUTOSAVE).personal_map or {}
+    run_map = store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).personal_map or {}
     assert not any(command == "east" for routes in run_map.values() for command in routes.values())
 
 
@@ -630,7 +631,7 @@ async def test_load_tool_remembers_a_reason_without_recalling_it_immediately(
         }
     )
 
-    signature = store.read(AUTOSAVE).story_signature
+    signature = store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).story_signature
     assert signature is not None
     assert game_memories.recall_reload_reasons("zork1", signature) == [
         {
@@ -789,7 +790,7 @@ async def test_a_known_map_survives_reconstructing_the_machine(
 
     second = Machine(saves=store, game_memories=game_memories)
     await second.new_game("zork1")
-    assert store.read(AUTOSAVE).personal_map == {}
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).personal_map == {}
     _screen, remarks = await second.type_text("north")
     second.reboot()
 
@@ -805,13 +806,15 @@ async def test_loading_a_legacy_save_imports_its_map_into_the_known_map(
     await source.type_text("zork1")
     await source.type_text("north")
     await source.type_text("east")
-    legacy = replace(store.read(AUTOSAVE), story_signature=None)
+    legacy = replace(
+        store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))), story_signature=None
+    )
     store.write("zork1_0001", legacy)
     source.reboot()
 
     restored = Machine(saves=store, game_memories=game_memories)
     assert "Restored zork1" in await restored.load("zork1_0001")
-    signature = store.read(AUTOSAVE).story_signature
+    signature = store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).story_signature
     restored.reboot()
 
     assert signature is not None
@@ -1074,8 +1077,8 @@ async def test_a_new_game_leaves_a_restore_point_at_move_zero(
     rom("zork1")
     await machine.new_game("zork1")
 
-    assert store.read(AUTOSAVE).game == "zork1"
-    assert store.read(AUTOSAVE).moves == 0
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).game == "zork1"
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).moves == 0
 
 
 async def test_a_second_machine_resumes_where_the_first_left_off(store: SaveStore) -> None:
@@ -1134,8 +1137,16 @@ async def test_nothing_to_save_is_said_rather_than_raised(machine: Machine) -> N
 @pytest.mark.parametrize(
     "state",
     [
-        replace(FAKE_STATE, input_request=StoredInputRequest(100, 200, 22790, 16)),
-        replace(FAKE_STATE, input_request=StoredInputRequest(0, 0, 22790, 16, True)),
+        replace(
+            FAKE_STATE,
+            input_request=replace(FAKE_STATE.input_request, text=100, parse=200, store=16),
+        ),
+        replace(
+            FAKE_STATE,
+            input_request=replace(
+                FAKE_STATE.input_request, text=0, parse=0, store=16, character=True
+            ),
+        ),
         replace(FAKE_STATE, input_request=None, halted=True, game_over=True, victory=True),
         replace(
             FAKE_STATE,
@@ -1155,7 +1166,7 @@ async def test_nothing_to_save_is_said_rather_than_raised(machine: Machine) -> N
 def test_checkpoint_continuations_round_trip(tmp_path: Path, state: GameState) -> None:
     store = SaveStore(tmp_path)
     store.write(AUTOSAVE, replace(snapshot(), state=state))
-    assert store.read(AUTOSAVE).state == state
+    assert store.read(AUTOSAVE, story=TEST_STORY).state == state
 
 
 def test_python_rng_checkpoint_round_trips(tmp_path: Path) -> None:
@@ -1164,24 +1175,26 @@ def test_python_rng_checkpoint_round_trips(tmp_path: Path) -> None:
     rng = RandomState(None, 0, 0, 0, Random(42).getstate())
     store = SaveStore(tmp_path)
     store.write(AUTOSAVE, replace(snapshot(), state=replace(FAKE_STATE, rng=rng)))
-    restored = store.read(AUTOSAVE).state.rng
+    restored = store.read(AUTOSAVE, story=TEST_STORY).state.rng
     assert restored == rng
     generator = Random()
     generator.setstate(restored.python_state)
     assert generator.random() == Random(42).random()
 
 
-@pytest.mark.parametrize("field,value", [("ram_size", -1), ("ram_size", "4"), ("checkpoint", [])])
-def test_invalid_checkpoint_metadata_is_refused(tmp_path: Path, field: str, value: object) -> None:
+@pytest.mark.parametrize(
+    "field,value", [("ram_base64", "!"), ("format_version", 99), ("frames", [])]
+)
+def test_invalid_checkpoint_payload_is_refused(tmp_path: Path, field: str, value: object) -> None:
     store = SaveStore(tmp_path)
     store.write(AUTOSAVE, snapshot())
     path = store.path(AUTOSAVE)
-    magic, header, rest = path.read_bytes().split(b"\n", 2)
-    metadata = json.loads(header)
-    metadata[field] = value
-    path.write_bytes(magic + b"\n" + json.dumps(metadata).encode() + b"\n" + rest)
-    with pytest.raises(SaveError):
-        store.read(AUTOSAVE)
+    envelope, payload = path.read_bytes().split(DATA_SENTINEL + b"\n", 1)
+    checkpoint = json.loads(payload)
+    checkpoint[field] = value
+    path.write_bytes(envelope + DATA_SENTINEL + b"\n" + json.dumps(checkpoint).encode())
+    with pytest.raises(SaveError, match="invalid Fernz checkpoint"):
+        store.read(AUTOSAVE, story=TEST_STORY)
 
 
 async def test_malformed_jericho_saves_are_listable_but_refused_without_changing_the_machine(
@@ -1199,7 +1212,8 @@ async def test_malformed_jericho_saves_are_listable_but_refused_without_changing
     old_save = b"CFX86SAVE2\n" + json.dumps(header).encode() + b"\nCFX86DATA\nold state"
     path.write_bytes(old_save)
     assert store.list()[0].moves == 4
-    machine = Machine(saves=store)
+    (tmp_path / "zork1.z5").write_bytes(TEST_STORY.data)
+    machine = Machine(games_dir=tmp_path, saves=store)
     assert "invalid legacy machine state" in await machine.load("zork1_0001")
     assert machine.screen() == NO_GAME
     assert path.read_bytes() == old_save
@@ -1218,7 +1232,7 @@ async def test_real_checkpoints_restore_and_continue_across_story_versions(
         assert first.game == game
         # These stories may pause at a title screen for character input.
         for _ in range(4):
-            request = store.read(AUTOSAVE).state.input_request
+            request = store.read(AUTOSAVE, story=Story.from_file(rom(game))).state.input_request
             if not isinstance(request, StoredInputRequest) or not request.character:
                 break
             await first.type_text(" ")
@@ -1228,7 +1242,7 @@ async def test_real_checkpoints_restore_and_continue_across_story_versions(
         assert second.screen() == expected
         result, _ = await second.type_text("look")
         assert "locks up" not in result
-        assert store.read(AUTOSAVE).observation
+        assert store.read(AUTOSAVE, story=Story.from_file(rom(game))).observation
     finally:
         first.reboot()
         second.reboot()
@@ -1255,7 +1269,7 @@ async def test_unprofiled_stories_can_play_save_and_resume(
         assert first.screen() == second.screen()
         result, _ = await second.type_text("look")
         assert "locks up" not in result
-        assert store.read(AUTOSAVE).observation
+        assert store.read(AUTOSAVE, story=Story.from_file(tmp_path / f"{game}.z5")).observation
     finally:
         first.reboot()
         second.reboot()
@@ -1267,7 +1281,7 @@ async def test_fernz_story_hash_rejects_another_build_without_listing_signature(
 ) -> None:
     rom("zork1")
     await machine.new_game("zork1")
-    original = store.read(AUTOSAVE)
+    original = store.read(AUTOSAVE, story=Story.from_file(rom("zork1")))
     store.write(
         "zork1_0001",
         replace(
@@ -1277,7 +1291,7 @@ async def test_fernz_story_hash_rejects_another_build_without_listing_signature(
     was = machine.screen()
     assert "different story image" in await machine.load("zork1_0001")
     assert machine.screen() == was
-    assert store.read(AUTOSAVE) == original
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))) == original
     assert "North of House" in (await machine.type_text("north"))[0]
 
 
@@ -1287,13 +1301,13 @@ async def test_a_halted_checkpoint_stays_finished_after_resume(
 ) -> None:
     rom("zork1")
     await machine.new_game("zork1")
-    original = store.read(AUTOSAVE)
+    original = store.read(AUTOSAVE, story=Story.from_file(rom("zork1")))
     store.write(
         "zork1_0001",
         replace(original, state=replace(original.state, input_request=None, halted=True)),
     )
     assert "The game has ended" in await machine.load("zork1_0001")
-    assert store.read(AUTOSAVE).done
+    assert store.read(AUTOSAVE, story=Story.from_file(rom("zork1"))).done
     was = machine.screen()
     assert (await machine.type_text("north"))[0] == was
 
@@ -1351,7 +1365,7 @@ async def test_builtin_quetzal_callbacks_restore_gameplay_across_reboot(
     rom(game)
     await machine.new_game(game)
     for _ in range(4):
-        request = store.read(AUTOSAVE).state.input_request
+        request = store.read(AUTOSAVE, story=Story.from_file(rom(game))).state.input_request
         if not isinstance(request, StoredInputRequest) or not request.character:
             break
         await machine.type_text(" ")
@@ -1370,7 +1384,7 @@ async def test_builtin_quetzal_callbacks_restore_gameplay_across_reboot(
     machine.reboot()
     await machine.new_game(game)
     for _ in range(4):
-        request = store.read(AUTOSAVE).state.input_request
+        request = store.read(AUTOSAVE, story=Story.from_file(rom(game))).state.input_request
         if not isinstance(request, StoredInputRequest) or not request.character:
             break
         await machine.type_text(" ")
@@ -1379,7 +1393,7 @@ async def test_builtin_quetzal_callbacks_restore_gameplay_across_reboot(
     assert machine._env.get_moves() == saved_moves
     screen, _ = await machine.type_text("look")
     assert "locks up" not in screen
-    assert store.read(AUTOSAVE).moves == saved_moves + 1
+    assert store.read(AUTOSAVE, story=Story.from_file(rom(game))).moves == saved_moves + 1
     assert path.read_bytes() == data
 
 
@@ -1410,3 +1424,13 @@ async def test_fresh_game_recalls_jericho_room_names_without_loading_a_legacy_sa
     assert "first time you've entered this room in the current run" in remarks
     assert "'east' previously led to 'Behind House'" in remarks
     assert game_memories.read_map("zork1", signature) == machine._known_map
+
+
+def test_reading_a_fernz_checkpoint_requires_a_story_but_listing_does_not(tmp_path: Path) -> None:
+    store = SaveStore(tmp_path)
+    store.write("zork1_0001", snapshot())
+    assert store.info("zork1_0001").game == "zork1"
+    assert len(store.list()) == 1
+    with pytest.raises(SaveError, match="matching story is required"):
+        store.read("zork1_0001")
+    assert store.read("zork1_0001", story=TEST_STORY).state == FAKE_STATE
