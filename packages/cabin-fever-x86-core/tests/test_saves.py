@@ -1099,6 +1099,40 @@ async def test_a_second_machine_resumes_where_the_first_left_off(store: SaveStor
     second.reboot()
 
 
+async def test_a_requested_reboot_resumes_at_the_prompt(store: SaveStore) -> None:
+    """The companion quit the game, so a reopened session must not bring it back."""
+    rom("zork1")
+    first = Machine(saves=store)
+    await first.new_game("zork1")
+    await first.type_text("north")
+    await first.save()
+
+    assert await RebootTool(first).execute({}) == ToolOutput(NO_GAME)
+    assert first.game is None
+
+    second = Machine(saves=store)
+    assert await second.resume() is None
+    assert second.game is None
+    assert [save.name for save in second.list_saves()] == ["zork1_0001"]  # only the autosave goes
+
+
+async def test_a_shutdown_reboot_keeps_the_autosave(store: SaveStore) -> None:
+    rom("zork1")
+    first = Machine(saves=store)
+    await first.new_game("zork1")
+    first.reboot()  # what closing a session does
+
+    assert store.info(AUTOSAVE).game == "zork1"
+
+
+def test_discarding_a_save_that_is_not_there(store: SaveStore) -> None:
+    store.discard(AUTOSAVE)  # nothing to remove is not an error
+    store.write(AUTOSAVE, snapshot())
+    store.discard(AUTOSAVE)
+    with pytest.raises(SaveError):
+        store.info(AUTOSAVE)
+
+
 async def test_resuming_a_session_that_never_played_anything(machine: Machine) -> None:
     assert await machine.resume() is None
     assert machine.game is None  # still at the prompt, and that is not an error

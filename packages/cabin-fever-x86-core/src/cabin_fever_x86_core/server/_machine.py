@@ -631,8 +631,19 @@ class Machine:
         except Exception:
             logger.exception("Could not autosave %s", self._game)
 
-    def reboot(self) -> str:
-        """Drop whatever is running and come back up at the prompt."""
+    def reboot(self, *, discard_autosave: bool = False) -> str:
+        """Drop whatever is running and come back up at the prompt.
+
+        The autosave is kept by default, since this is also how a session shuts
+        down and the resume point must survive it. Pass *discard_autosave* when
+        the reboot was asked for, so a resume does not bring back the game that
+        was quit.
+        """
+        if discard_autosave and self._saves is not None:
+            try:
+                self._saves.discard(AUTOSAVE)
+            except SaveError:
+                logger.exception("Could not discard the autosave after a reboot")
         was = self._game
         if self._env is not None:
             try:

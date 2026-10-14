@@ -101,7 +101,7 @@ To put a different game on, use `new_game`. Typing its name only starts a game w
 
 Never type `save` or `restore` at a game. The game's own save reaches for a floppy that is not in the drive, so it is held back before it gets there and nothing happens. Saving is what `save_game` is for.
 
-Never type `quit`, `q`, `restart`, or `die` either. Those stop the game to ask whether you are sure, and nothing here can answer the question. To stop playing or to start a game over, use `reboot` and type a game in at the DOS prompt. To go back to an earlier point rather than lose it, use `load_game`.
+Never type `quit`, `q`, `restart`, or `die` either. Those stop the game to ask whether you are sure, and nothing here can answer the question. To start a game over, or to start a different one, use `new_game`. To stop playing altogether, use `reboot`. To go back to an earlier point rather than lose it, use `load_game`.
 
 Save before anything likely to get you killed, and mention a save the way anyone would: offhand, not as a system message.
 

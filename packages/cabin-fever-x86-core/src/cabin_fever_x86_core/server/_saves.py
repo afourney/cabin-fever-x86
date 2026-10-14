@@ -311,6 +311,14 @@ class SaveStore:
             raise SaveError(f"could not write {path.name}: {exc}") from exc
         return path.stem
 
+    def discard(self, name: str) -> None:
+        """Remove one save, if it is there. A missing save is already discarded."""
+        path = self.path(name)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise SaveError(f"could not remove {path.name}: {exc}") from exc
+
     def read(self, name: str, *, story: Story | None = None) -> Snapshot:
         """Read a save; Fernz checkpoints require the matching story for validation.
 
