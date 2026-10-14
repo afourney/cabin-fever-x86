@@ -1,6 +1,7 @@
-"""Convert the measured Jericho 3.3.1 Linux V3 checkpoint layout to Fernz.
+"""Convert the measured Jericho 3.3.1 Linux checkpoint layout to Fernz.
 
-Copied from Fernz's tests/state_bridge.py (commit e44e7f5). The conversion is
+Adapted from Fernz's V3 tests/state_bridge.py (commit e44e7f5), with locally
+measured V4/V5/V8 frames, input results, and interpreter headers. Conversion is
 based on public API measurements, not interpreter implementation source.
 Only line-input boundaries with screen output enabled are supported. The
 original export path is retained for round-trip checks. Legacy files supply
@@ -38,7 +39,7 @@ from operator import index
 from fernz import GameState, Memory
 from fernz._instruction import OperandType, decode
 from fernz._profiles import profile_for
-from fernz._state import FrameState, InputRequest, OutputState, RandomState
+from fernz._state import FrameState, InputRequest, OutputState, RandomState, StoredInputRequest
 
 STACK_WORDS = 1024
 READ_OPCODE = 0xE4
@@ -74,8 +75,8 @@ class StateBridge:
         """Bind a story, native header template, and explicit host-seed policy."""
         if sys.platform != "linux" or sys.byteorder != "little":
             raise ValueError("The measured adapter supports little-endian Linux only")
-        if story.header.version != 3:
-            raise ValueError("State interchange currently supports V3 only")
+        if story.header.version not in (3, 4, 5, 8):
+            raise ValueError("State interchange supports V3, V4, V5, and V8")
         self.story = story
         self.seed = integer(seed, 0, 2**31 - 1, "host seed")
         ram, *_ = self._parts(template)
@@ -93,7 +94,7 @@ class StateBridge:
         fp = integer(fp, sp, STACK_WORDS, "native frame pointer")
         count = integer(count, 0, STACK_WORDS // 4, "native frame count")
         if opcode != READ_OPCODE:
-            raise ValueError("State interchange requires a pending V3 read")
+            raise ValueError("State interchange requires pending line input")
         if type(rng) is not tuple or len(rng) != 3 or type(narrative) is not bytes:
             raise ValueError("Invalid RNG or narrative in the native snapshot")
         a, period, counter = rng
@@ -108,25 +109,42 @@ class StateBridge:
 
     def _import_memory(self, ram):
         memory = Memory(self.story)
-        memory._configure_v3_header()
+        memory._configure_header()
         data = bytearray(ram)
-        # Standard §11: capabilities and advertised Standard version belong to
-        # the destination interpreter. Retain gameplay bits of Flags 2.
-        data[1] = (data[1] & ~0x70) | (memory.read_byte(1) & 0x70)
-        # Bit 4 of Flags 2 has no V3 meaning. The reference clears it in the
-        # retained Lurking Horror image; Fernz preserves the original value.
-        data[0x11] = (data[0x11] & ~0x10) | (memory.read_byte(0x11) & 0x10)
-        data[0x32:0x34] = memory.read_bytes(0x32, 2)
+        self._interpreter_header(data, memory.read_bytes(0, 64))
         memory.write_bytes(0, data)
         return memory
+
+    def _interpreter_header(self, data, header):
+        # Standard §11: reset only interpreter-owned fields. Story identity and
+        # gameplay flags still pass Memory's protected-header validation.
+        version = self.story.header.version
+        mask = 0x70 if version == 3 else 0x9C if version == 4 else 0x9D
+        data[1] = (data[1] & ~mask) | (header[1] & mask)
+        if version == 3:
+            # This reserved bit differs in the retained Lurking Horror image.
+            data[0x11] = (data[0x11] & ~0x10) | (header[0x11] & 0x10)
+        else:
+            end = 0x22 if version == 4 else 0x28
+            data[0x1E:end] = header[0x1E:end]
+            if version >= 5:
+                data[0x2C:0x2E] = header[0x2C:0x2E]
+                # Unsupported graphics, sound, mouse, undo and menu capabilities.
+                flags = int.from_bytes(data[0x10:0x12], "big")
+                host = int.from_bytes(header[0x10:0x12], "big")
+                data[0x10:0x12] = ((flags & ~0x01B8) | (host & 0x01B8)).to_bytes(2, "big")
+        data[0x32:0x34] = header[0x32:0x34]
 
     @staticmethod
     def _read(memory, address):
         if memory.read_byte(address) != READ_OPCODE:
-            raise ValueError("The saved read address does not point to sread")
+            raise ValueError("The saved read address does not point to line input")
         instruction = decode(memory, address)
-        if instruction.opcode.name != "sread" or len(instruction.operands) != 2:
-            raise ValueError("Expected a two-operand V3 sread")
+        if (
+            instruction.opcode.name not in ("sread", "aread")
+            or not 2 <= len(instruction.operands) <= 4
+        ):
+            raise ValueError("Expected a line-input instruction")
         return instruction
 
     @staticmethod
@@ -159,8 +177,16 @@ class StateBridge:
             if fp + 4 > STACK_WORDS:
                 raise ValueError("Native frame header is outside the stack")
             flags, parent, low, high = words[fp : fp + 4]
-            locals_count, arguments = flags >> 8, flags & 255
-            if locals_count > 15 or arguments > 3 or low > 511 or high > 255:
+            locals_count, arguments = (flags >> 8) & 15, flags & 255
+            discard = bool(flags & 0x1000)
+            version = self.story.header.version
+            if (
+                flags & ~0x1FFF
+                or arguments > (3 if version == 3 else 7)
+                or (discard and version < 5)
+                or low > 511
+                or high > (255 if version == 3 else 511 if version in (4, 5) else 1023)
+            ):
                 raise ValueError("Unsupported native frame metadata")
             if sp > fp - locals_count:
                 raise ValueError("Native locals overlap the evaluation stack")
@@ -168,8 +194,8 @@ class StateBridge:
             frame = FrameState(
                 locals=tuple(words[fp - 1 - i] for i in range(locals_count)),
                 stack=tuple(reversed(words[sp : fp - locals_count])),
-                return_address=store_address + 1,
-                store=memory.read_byte(store_address),
+                return_address=store_address if discard else store_address + 1,
+                store=None if discard else memory.read_byte(store_address),
                 argument_count=arguments,
             )
             frames.append(frame)
@@ -184,6 +210,13 @@ class StateBridge:
         # decoded the operands; perform their stack pops exactly once here.
         instruction = self._read(memory, pc - 1)
         values, frames[-1] = self._resolve_read(memory, frames[-1], instruction)
+        if len(values) == 4 and all(values[2:]):
+            raise ValueError("Timed input is not supported")
+        request = InputRequest(*values[:2], instruction_address=instruction.address)
+        if instruction.store is not None:
+            request = StoredInputRequest(
+                *values[:2], instruction_address=instruction.address, store=instruction.store
+            )
         profile = profile_for(self.story)
         game_over, victory = (
             profile.outcomes(native[8].decode("cp1252", errors="replace"))
@@ -196,7 +229,7 @@ class StateBridge:
             pc=instruction.next_address,
             frames=tuple(frames),
             rng=rng,
-            input_request=InputRequest(*values, instruction_address=instruction.address),
+            input_request=request,
             screen_enabled=True,
             halted=False,
             game_over=game_over,
@@ -221,7 +254,13 @@ class StateBridge:
         memory = Memory(self.story)
         memory._restore_dynamic(state.ram)
         request = state.input_request
+        if isinstance(request, StoredInputRequest) and request.character:
+            raise ValueError("State interchange requires pending line input")
         instruction = self._read(memory, request.instruction_address)
+        if len(instruction.operands) != 2:
+            raise ValueError("Export requires a two-operand line read")
+        if instruction.store != getattr(request, "store", None):
+            raise ValueError("Saved input result variable does not match the read instruction")
         if instruction.next_address != state.pc:
             raise ValueError("Saved PC does not match the pending read instruction")
         # Restore any operands popped while Fernz entered the pending read.
@@ -250,20 +289,22 @@ class StateBridge:
         for value in frames[0].stack:
             push(value)
         for frame in frames[1:]:
-            store_address = frame.return_address - 1
-            if memory.read_byte(store_address) != frame.store:
+            store_address = frame.return_address - (frame.store is not None)
+            if frame.store is not None and memory.read_byte(store_address) != frame.store:
                 raise ValueError("Return store byte changed since the routine was called")
             push(store_address >> 9)
             push(store_address & 511)
             push(fp - 1)
-            push((len(frame.locals) << 8) | frame.argument_count)
+            push(
+                (len(frame.locals) << 8)
+                | frame.argument_count
+                | (0x1000 if frame.store is None else 0)
+            )
             fp = sp
             for value in (*frame.locals, *frame.stack):
                 push(value)
         ram = bytearray(state.ram)
-        ram[1] = (ram[1] & ~0x70) | (self._native_header[1] & 0x70)
-        ram[0x11] = (ram[0x11] & ~0x10) | (self._native_header[0x11] & 0x10)
-        ram[0x32:0x34] = self._native_header[0x32:0x34]
+        self._interpreter_header(ram, self._native_header)
         return (
             np.frombuffer(bytes(ram), dtype=np.uint8).copy(),
             np.frombuffer(struct.pack("<1024H", *words), dtype=np.uint8).copy(),

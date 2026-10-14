@@ -26,3 +26,22 @@ only, with no Jericho or Fernz source-checkout dependency.
 
 The copied converter in server/_state_bridge.py includes the upstream MIT
 license and retains the reverse conversion for round-trip validation.
+
+Later story versions
+
+legacy_later_states.zip adds 25 independently assembled V4/V5/V8 stories and
+real Jericho 3.3.1 CFX86SAVE2 checkpoints, captured with the same public API and
+old codec. Its manifest includes the story version and three-command reference
+continuation through termination. No commercial game data is included.
+
+These extend the same probe structure: a root routine calls an outer routine,
+which calls a 15-local inner routine. Each pauses at line input, prints tagged
+numbers, and returns. Cases cover constant/local/global/stack read operands,
+seven-argument calls (call_vs2), high return addresses above 128K (V4/V5) and
+256K (V8), and four-operand reads with disabled timers. V5/V8 also exercise
+call_vn/call_vn2 discarded results and print the line-read result (13).
+
+Every captured initial checkpoint was compared with a fresh Fernz execution
+(frames, RAM, PC and pending input), and all three reference continuations were
+compared before adding the fixtures. The tests repeat these checks without
+Jericho installed. Counting-mode RNG state is preserved throughout.

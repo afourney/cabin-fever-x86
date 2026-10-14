@@ -358,7 +358,8 @@ saves and autosave. Typed `save` and `restore` commands still direct the compani
 to the normal tools; the callbacks cover other routes to the story's save/restore
 opcodes.
 
-Old `CFX86SAVE2` saves can be imported for **V3 stories at line-input boundaries**
+Old `CFX86SAVE2` saves can be imported for **V3, V4, V5, and V8 stories at line-input
+boundaries**
 using the measured Jericho 3.3.1 little-endian Linux layout. The converter is
 included in core; importing requires no Jericho installation. It preserves the
 saved screen and route commands, updates legacy room names to Fernz's names,
@@ -374,7 +375,7 @@ period and position. The original host-seed policy and display state were not
 stored: imports choose a fresh host seed and use the converter's default display
 state.
 
-V4/V5/V8 legacy saves, character-input or halted checkpoints, and unsupported or
+Character-input, active timed-input, or halted checkpoints, and unsupported or
 malformed layouts remain unsupported. The measured converter currently runs on
 little-endian Linux and assumes screen output was enabled. Conversion failures
 leave the running game and source save untouched. Use the previous Jericho-based
