@@ -5,8 +5,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
-from fernz import FernzEnv
-from fernz._memory import MemoryAccessError
+from fernz import FernzEnv, MemoryAccessError
 
 from cabin_fever_x86_core.server._machine import NO_GAME, NOTHING_TO_SAVE, Machine
 from cabin_fever_x86_core.server._saves import AUTOSAVE, SaveStore
@@ -64,10 +63,10 @@ async def test_character_prompt_accepts_enter_and_space(
     program = bytes.fromhex("f6 7f 01 10 e6 bf 10 bb e4 0f 02 80 02 a0 1e ba")
     machine, _store = probe(tmp_path, program)
     await machine.new_game("probe")
-    assert machine._env.get_state().input_request.character
+    assert machine._env.awaiting_character
     screen, _ = await machine.type_text(text)
     assert str(code) in screen
-    assert not machine._env.get_state().input_request.character
+    assert not machine._env.awaiting_character
     assert "The game has ended" in (await machine.type_text("look"))[0]
     machine.reboot()
 
@@ -187,6 +186,13 @@ async def test_restore_reuses_the_live_story_without_reopening_it(
     original = machine._env
     screen = machine.screen()
 
+    # A replaced ROM on disk must not change the identity of the live Story.
+    path = machine._games_dir / "probe.z5"
+    replacement = bytearray(path.read_bytes())
+    replacement[0x12:0x18] = b"999999"
+    path.write_bytes(replacement)
+    signature = machine._story_signature
+
     def unexpected_read(*args):
         pytest.fail("Restore should reuse the loaded Story")
 
@@ -194,6 +200,7 @@ async def test_restore_reuses_the_live_story_without_reopening_it(
     assert "Restored probe" in await machine.load(AUTOSAVE)
     assert machine._env is not original
     assert machine._env.story is original.story
+    assert machine._story_signature == signature
     assert machine.screen() == screen
     assert "R=" in (await machine.type_text("look"))[0]
     machine.reboot()

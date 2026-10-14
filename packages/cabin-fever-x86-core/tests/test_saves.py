@@ -16,7 +16,6 @@ from zipfile import ZipFile
 
 import pytest
 from fernz import FernzEnv, GameState, Observation, Story
-from fernz._state import OutputState, RandomState, StoredInputRequest
 
 from cabin_fever_x86_core.server._game_memories import RELOAD_REASONS_FILE, GameMemoryStore
 from cabin_fever_x86_core.server._machine import GAMES_DIR, NO_GAME, USE_THE_TOOLS, Machine
@@ -101,6 +100,7 @@ async def test_a_game_boots_with_a_fresh_random_seed(
             save_handler: object = None,
             restore_handler: object = None,
         ) -> None:
+            self.story = story_file
             called_with.update(story_file=story_file, seed=seed)
 
         done = False
@@ -1150,7 +1150,8 @@ async def test_nothing_to_save_is_said_rather_than_raised(machine: Machine) -> N
         replace(FAKE_STATE, input_request=None, halted=True, game_over=True, victory=True),
         replace(
             FAKE_STATE,
-            output=OutputState(
+            output=replace(
+                FAKE_STATE.output,
                 window=1,
                 split_lines=2,
                 cursors=((3, 4), (1, 2)),
@@ -1172,7 +1173,14 @@ def test_checkpoint_continuations_round_trip(tmp_path: Path, state: GameState) -
 def test_python_rng_checkpoint_round_trips(tmp_path: Path) -> None:
     from random import Random
 
-    rng = RandomState(None, 0, 0, 0, Random(42).getstate())
+    rng = replace(
+        FAKE_STATE.rng,
+        host_seed=None,
+        state=0,
+        period=0,
+        position=0,
+        python_state=Random(42).getstate(),
+    )
     store = SaveStore(tmp_path)
     store.write(AUTOSAVE, replace(snapshot(), state=replace(FAKE_STATE, rng=rng)))
     restored = store.read(AUTOSAVE, story=TEST_STORY).state.rng
@@ -1232,8 +1240,7 @@ async def test_real_checkpoints_restore_and_continue_across_story_versions(
         assert first.game == game
         # These stories may pause at a title screen for character input.
         for _ in range(4):
-            request = store.read(AUTOSAVE, story=Story.from_file(rom(game))).state.input_request
-            if not isinstance(request, StoredInputRequest) or not request.character:
+            if not first._env.awaiting_character:
                 break
             await first.type_text(" ")
         await first.type_text("look")
@@ -1365,8 +1372,7 @@ async def test_builtin_quetzal_callbacks_restore_gameplay_across_reboot(
     rom(game)
     await machine.new_game(game)
     for _ in range(4):
-        request = store.read(AUTOSAVE, story=Story.from_file(rom(game))).state.input_request
-        if not isinstance(request, StoredInputRequest) or not request.character:
+        if not machine._env.awaiting_character:
             break
         await machine.type_text(" ")
     await machine.type_text("look")
@@ -1384,8 +1390,7 @@ async def test_builtin_quetzal_callbacks_restore_gameplay_across_reboot(
     machine.reboot()
     await machine.new_game(game)
     for _ in range(4):
-        request = store.read(AUTOSAVE, story=Story.from_file(rom(game))).state.input_request
-        if not isinstance(request, StoredInputRequest) or not request.character:
+        if not machine._env.awaiting_character:
             break
         await machine.type_text(" ")
     assert machine._env is not None

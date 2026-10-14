@@ -30,7 +30,7 @@ dependencies = [
     "pyyaml",
     "uvicorn",
     "websockets",
-    # Public checkpoint/lifecycle APIs introduced by Fernz PR #77.
+    # Public checkpoint/lifecycle APIs require Fernz 0.0.4.
     "fernz==0.0.4",
     "argon2-cffi>=25.1.0",
     "itsdangerous>=2.2.0",

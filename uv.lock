@@ -200,7 +200,7 @@ requires-dist = [
     { name = "azure-identity", marker = "extra == 'azure'" },
     { name = "elevenlabs" },
     { name = "fastapi" },
-    { name = "fernz", specifier = "==0.0.3" },
+    { name = "fernz", specifier = "==0.0.4" },
     { name = "httpx" },
     { name = "itsdangerous", specifier = ">=2.2.0" },
     { name = "numpy" },
@@ -503,11 +503,11 @@ wheels = [
 
 [[package]]
 name = "fernz"
-version = "0.0.3"
+version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1d/fa/7e9eec0d2aab717e928a0d352bcd7a6d9c4cf18b0aebfcc29e533b85f129/fernz-0.0.3.tar.gz", hash = "sha256:dafd422f1c8027dc9ef9468ae82fb4111b4f7d5084742fc33fd6c9826ac0f0b5", size = 65107, upload-time = "2026-10-13T00:21:35.174Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/2a/187f45accd82b1165747decd8f566abcb37523a50ae6d128978a10f1eaaf/fernz-0.0.4.tar.gz", hash = "sha256:353b38a8175aa4e8601a91040215f537d405f78394533c33d0021e67c7e7d0b9", size = 67454, upload-time = "2026-10-14T02:55:38.261Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/c1/2c16c553b0f5fa51c1cd171abd4e235bb19a9002cd4aaa1001e402b684de/fernz-0.0.3-py3-none-any.whl", hash = "sha256:8e849691912dac97de56fab80d31a7bb098623bae4667d4b3207c42b835e9302", size = 73606, upload-time = "2026-10-13T00:21:34.06Z" },
+    { url = "https://files.pythonhosted.org/packages/84/57/9ca483e0e78009e2568499a7c949a259c880b00ad7f258bc5dde9cf05b5f/fernz-0.0.4-py3-none-any.whl", hash = "sha256:6697358aaf8a34c033055023c417c9ee175285d436b4e13d08ac2f28d3631217", size = 76457, upload-time = "2026-10-14T02:55:36.906Z" },
 ]
 
 [[package]]

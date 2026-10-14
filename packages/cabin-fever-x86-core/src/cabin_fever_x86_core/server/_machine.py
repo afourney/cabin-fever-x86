@@ -52,10 +52,8 @@ GAMES_DIR = Path("data/games")
 
 # Fixed fields in every Z-machine story-file header. Together these are the
 # conventional identity used by Quetzal saves to distinguish story builds.
-_RELEASE = slice(0x02, 0x04)
 _SERIAL = slice(0x12, 0x18)
 _CHECKSUM = slice(0x1C, 0x1E)
-_HEADER_NEEDED = 0x1E
 
 
 class VisitKind(Enum):
@@ -202,9 +200,8 @@ class Machine:
     async def _boot(self, name: str) -> str:
         """Load a game and return its opening screen.
 
-        The primitive the public ways in are built from: it power-cycles the
-        machine but leaves no restore point, so :meth:`load` can bring a game up
-        without the autosave following it there.
+        Power-cycle the machine without writing an autosave. Restores use a
+        separate candidate interpreter and never execute this opening path.
         """
         path = self._find(name)
         if path is None:
@@ -220,7 +217,7 @@ class Machine:
             return f"The machine refuses to load {path.stem}: {exc}"
 
         self._env, self._game = env, path.stem
-        self._story_signature = _story_signature(path)
+        self._story_signature = _story_signature(env.story)
         self._observation, self._info = observation.text, dict(info)
         self._done = _episode_done(env)
         self._location = _player_location(env)
@@ -426,7 +423,7 @@ class Machine:
                     logger.warning("Could not convert legacy save %s: %s", name, exc)
                     return f"That legacy save cannot be converted: {exc}", False
 
-            signature = await asyncio.to_thread(_story_signature, path)
+            signature = _story_signature(env.story)
             if snapshot.story_signature is not None and snapshot.story_signature != signature:
                 logger.warning(
                     "Save %s belongs to story %r, loaded %r",
@@ -706,21 +703,14 @@ def _player_location(env: FernzEnv) -> Location | None:
     return location.num, location.name
 
 
-def _story_signature(path: Path) -> StorySignature | None:
-    """Read the conventional identity fields from a Z-machine story header."""
-    try:
-        with path.open("rb") as handle:
-            header = handle.read(_HEADER_NEEDED)
-    except OSError:
-        logger.exception("Could not read the story header from %s", path)
-        return None
-    if len(header) < _HEADER_NEEDED:
-        logger.warning("Story file %s is too short to carry a signature", path)
-        return None
+def _story_signature(story: Story) -> StorySignature:
+    """Identify the loaded image, keeping the existing save/map signature encoding."""
+    # Preserve Latin-1 serials and the raw checksum even for early V3 stories
+    # whose parsed header reports no checksum. Existing saves use these bytes.
     return StorySignature(
-        release=int.from_bytes(header[_RELEASE], "big"),
-        serial=header[_SERIAL].decode("latin-1"),
-        checksum=int.from_bytes(header[_CHECKSUM], "big"),
+        release=story.header.release,
+        serial=story.data[_SERIAL].decode("latin-1"),
+        checksum=int.from_bytes(story.data[_CHECKSUM], "big"),
     )
 
 
