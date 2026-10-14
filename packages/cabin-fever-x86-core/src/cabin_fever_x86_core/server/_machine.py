@@ -17,7 +17,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from fernz import FernzEnv
+from fernz import FernzEnv, Story
 from fernz._state import StoredInputRequest
 
 from cabin_fever_x86_core.hints import has_hints
@@ -37,6 +37,7 @@ from cabin_fever_x86_core.server._saves import (
     Snapshot,
     StorySignature,
 )
+from cabin_fever_x86_core.server._state_bridge import StateBridge
 from cabin_fever_x86_core.server._tools import (
     ListGamesTool,
     ListSavedGamesTool,
@@ -381,6 +382,20 @@ class Machine:
             return f"That save will not load: {exc}", False
         name = filed.stem
 
+        legacy = isinstance(snapshot.state, tuple)
+        if legacy:
+            path = self._find(snapshot.game)
+            if path is None:
+                return f"{name} is a save of {snapshot.game}, which is not on the disk.", False
+            try:
+                story = await asyncio.to_thread(Story.from_file, path)
+                bridge = StateBridge(story, snapshot.state, seed=_fresh_seed())
+                state = await asyncio.to_thread(bridge.from_jericho, snapshot.state)
+                snapshot = replace(snapshot, state=state)
+            except (OSError, ValueError, TypeError, IndexError, NotImplementedError) as exc:
+                logger.warning("Could not convert legacy save %s: %s", name, exc)
+                return f"That legacy save cannot be converted: {exc}", False
+
         # The state only means anything to the game it came out of, and handing
         # one game's RAM to another would corrupt the interpreter outright.
         if snapshot.game != self._game:
@@ -435,7 +450,12 @@ class Machine:
         self._done = _episode_done(env)
         self._location = _player_location(env)
         self._run_map = snapshot.personal_map or {}
-        if merge_maps(self._known_map, self._run_map):
+        if legacy:
+            # Jericho shortened some display names (e.g. "West House"). Keep
+            # the saved routes attached to the same room objects in Fernz.
+            self._run_map = _rename_legacy_rooms(env, self._run_map)
+            self._known_map = _rename_legacy_rooms(env, self._known_map)
+        if merge_maps(self._known_map, self._run_map) or legacy:
             await self._persist_known_map()
         logger.info("Restored %s from %s", self._game, name)
 
@@ -502,8 +522,8 @@ class Machine:
         except SaveError:
             return None  # no autosave, which is the ordinary case
 
-        screen = await self.load(AUTOSAVE)
-        if self._game is None:
+        screen, loaded = await self._load(AUTOSAVE)
+        if not loaded:
             logger.warning("Nothing came back from the autosave: %s", screen)
             return None
         return screen
@@ -625,6 +645,24 @@ def _episode_done(env: FernzEnv) -> bool:
         return env.game_over() or env.victory()
     except NotImplementedError:
         return False  # Unknown stories still support the interpreter's quit flag.
+
+
+def _rename_legacy_rooms(env: FernzEnv, route_map: RunMap) -> RunMap:
+    """Preserve legacy route commands while adopting Fernz's room display names."""
+
+    def location(old: Location) -> Location:
+        try:
+            room = env.get_object(old[0])
+        except (ValueError, RuntimeError):
+            room = None
+        return (old[0], room.name) if room is not None else old
+
+    renamed: RunMap = {}
+    for origin, routes in route_map.items():
+        renamed.setdefault(location(origin), {}).update(
+            (location(target), command) for target, command in routes.items()
+        )
+    return renamed
 
 
 def _player_location(env: FernzEnv) -> Location | None:

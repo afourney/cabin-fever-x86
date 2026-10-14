@@ -1184,7 +1184,7 @@ def test_invalid_checkpoint_metadata_is_refused(tmp_path: Path, field: str, valu
         store.read(AUTOSAVE)
 
 
-async def test_jericho_saves_are_listable_but_refused_without_changing_the_machine(
+async def test_malformed_jericho_saves_are_listable_but_refused_without_changing_the_machine(
     tmp_path: Path,
 ) -> None:
     store = SaveStore(tmp_path)
@@ -1200,7 +1200,7 @@ async def test_jericho_saves_are_listable_but_refused_without_changing_the_machi
     path.write_bytes(old_save)
     assert store.list()[0].moves == 4
     machine = Machine(saves=store)
-    assert "Jericho save and cannot be loaded by Fernz" in await machine.load("zork1_0001")
+    assert "invalid legacy machine state" in await machine.load("zork1_0001")
     assert machine.screen() == NO_GAME
     assert path.read_bytes() == old_save
 

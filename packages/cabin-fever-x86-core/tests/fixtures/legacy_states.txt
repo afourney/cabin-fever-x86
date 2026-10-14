@@ -1,0 +1,28 @@
+Legacy checkpoint fixtures
+
+legacy_states.zip contains nine synthetic V3 stories, CFX86SAVE2 saves, and a
+manifest of reference continuations. It contains no commercial game data.
+
+The hand-assembled stories come from the probe_story cases in Fernz's
+MIT-licensed tests/test_state_bridge.py at commit
+e44e7f51d84a58941915349cbb0b4326d153cdb3 (Copyright 2026 Adam Fourney).
+They exercise nested frames, local/global/stack input operands, large return
+addresses, counting/affine/host-seeded RNG modes, and returns to parent/root
+contexts.
+
+Captured on little-endian Linux using Jericho 3.3.1's public reset, step,
+get_state, and set_state methods, with host seed 42. The files were written by
+Cabin Fever's original SaveStore at commit b4933c8. All snapshots are at line
+input boundaries; parent_frame and root_frame follow one and two look commands,
+respectively, and the other cases are captured immediately after reset.
+
+The manifest records the remaining look commands through termination. Before
+continuing an ordinary-mode checkpoint, the reference's public set_state was
+used to select RNG state (42, 0, 0), matching Cabin Fever's reseeding-on-reload
+policy. Counting-mode checkpoints retain their saved RNG unchanged. Generated
+stories print tagged numeric results; reference-only status-line presentation
+is excluded from comparison. CI runs the importer and continuation with Fernz
+only, with no Jericho or Fernz source-checkout dependency.
+
+The copied converter in server/_state_bridge.py includes the upstream MIT
+license and retains the reverse conversion for round-trip validation.

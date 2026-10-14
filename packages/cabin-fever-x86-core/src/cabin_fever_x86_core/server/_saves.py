@@ -10,7 +10,7 @@ as JSON and dynamic memory as a byte run, without pickle or executable data::
     <ram bytes>
 
 The format is tied to Fernz's schema-5 checkpoint. Jericho's CFX86SAVE2 files
-remain listable, but cannot be restored by this interpreter.
+can be imported at supported V3 line-input boundaries.
 
 The header also carries the screen as it was left. ``set_state`` restores the
 interpreter but tells us nothing about what was last printed, and a machine
@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 
+import numpy as np
 from fernz import GameState
 from fernz._state import FrameState, InputRequest, OutputState, RandomState, StoredInputRequest
 
@@ -117,7 +118,7 @@ class Snapshot:
     """One moment on the machine: the interpreter's state, and the screen with it."""
 
     game: str
-    state: GameState
+    state: GameState | tuple[Any, ...]
     observation: str
     score: int | None
     moves: int | None
@@ -318,8 +319,12 @@ class SaveStore:
         path = self.path(name)
         try:
             with path.open("rb") as handle:
-                metadata, records = _read_records(handle, path)
-                state = _decode_state(metadata, handle, path)
+                magic, metadata, records = _read_records(handle, path)
+                state = (
+                    _decode_legacy_state(metadata, handle, path)
+                    if magic == LEGACY_MAGIC
+                    else _decode_state(metadata, handle, path)
+                )
         except FileNotFoundError as exc:
             raise SaveError(f"there is no save called {path.stem!r}") from exc
         except OSError as exc:
@@ -343,7 +348,7 @@ class SaveStore:
         path = self.path(name)
         try:
             with path.open("rb") as handle:
-                metadata = _read_metadata(handle, path)
+                _magic, metadata = _read_metadata(handle, path)
         except FileNotFoundError as exc:
             raise SaveError(f"there is no save called {path.stem!r}") from exc
         except OSError as exc:
@@ -429,32 +434,51 @@ def _decode_state(header: dict[str, Any], handle: BinaryIO, path: Path) -> GameS
         ) from exc
 
 
-def _read_metadata(handle: BinaryIO, path: Path, *, allow_legacy: bool = True) -> dict[str, Any]:
-    """Read the magic and first, listing-friendly metadata record."""
+def _decode_legacy_state(header: dict[str, Any], handle: BinaryIO, path: Path) -> tuple[Any, ...]:
+    """Read the original CFX86SAVE2 tuple for the measured V3 converter."""
+    try:
+        scalars = [header[key] for key in ("pc", "sp", "fp", "frame_count", "opcode")]
+        rng = tuple(header["rng"])
+        sizes = [header[key] for key in ("ram_size", "stack_size", "narrative_size")]
+        if any(type(value) is not int for value in (*scalars, *rng, *sizes)):
+            raise ValueError("state fields must be integers")
+        if len(rng) != 3 or any(size < 0 for size in sizes):
+            raise ValueError("invalid RNG or buffer lengths")
+        body = handle.read()
+        if len(body) != sum(sizes):
+            raise ValueError("truncated state or unexpected trailing bytes")
+        ram_size, stack_size, _ = sizes
+        ram = np.frombuffer(body[:ram_size], dtype=np.uint8).copy()
+        stack = np.frombuffer(body[ram_size : ram_size + stack_size], dtype=np.uint8).copy()
+        narrative = body[ram_size + stack_size :]
+        return ram, stack, *scalars, rng, narrative
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SaveError(f"{path.name} has an invalid legacy machine state: {exc}") from exc
+
+
+def _read_metadata(handle: BinaryIO, path: Path) -> tuple[bytes, dict[str, Any]]:
+    """Read the format magic and first, listing-friendly metadata record."""
     magic = handle.readline().rstrip(b"\n")
-    if magic == LEGACY_MAGIC and not allow_legacy:
-        raise SaveError(
-            f"{path.name} is a Jericho save and cannot be loaded by Fernz; "
-            "use the previous Jericho-based release to continue that game"
-        )
     if magic not in (MAGIC, LEGACY_MAGIC):
         raise SaveError(f"{path.name} is not a save from this machine")
     record = _read_json_record(handle.readline(), path)
     if record.get("type") != METADATA:
         raise SaveError(f"{path.name} has no metadata record")
-    return record
+    return magic, record
 
 
-def _read_records(handle: BinaryIO, path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+def _read_records(
+    handle: BinaryIO, path: Path
+) -> tuple[bytes, dict[str, Any], dict[str, dict[str, Any]]]:
     """Read typed records through the data sentinel, skipping unknown types."""
-    metadata = _read_metadata(handle, path, allow_legacy=False)
+    magic, metadata = _read_metadata(handle, path)
     records = {METADATA: metadata}
     while True:
         line = handle.readline()
         if not line:
             raise SaveError(f"{path.name} has no {DATA_SENTINEL.decode()} marker")
         if line.rstrip(b"\n") == DATA_SENTINEL:
-            return metadata, records
+            return magic, metadata, records
         record = _read_json_record(line, path)
         record_type = record.get("type")
         if not isinstance(record_type, str):
