@@ -376,9 +376,10 @@ stored: imports choose a fresh host seed and use the converter's default display
 state.
 
 Character-input, active timed-input, or halted checkpoints, and unsupported or
-malformed layouts remain unsupported. The measured converter currently runs on
-little-endian Linux and assumes screen output was enabled. Conversion failures
-leave the running game and source save untouched. Use the previous Jericho-based
+malformed layouts remain unsupported. The converter reads the measured
+little-endian Linux save layout independently of the reader's OS and byte order,
+and assumes screen output was enabled. Failed restores leave the running game,
+source save, and autosave untouched. Use the previous Jericho-based
 release to continue unsupported saves.
 
 ## Development

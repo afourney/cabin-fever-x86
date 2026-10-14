@@ -1381,3 +1381,32 @@ async def test_builtin_quetzal_callbacks_restore_gameplay_across_reboot(
     assert "locks up" not in screen
     assert store.read(AUTOSAVE).moves == saved_moves + 1
     assert path.read_bytes() == data
+
+
+async def test_fresh_game_recalls_jericho_room_names_without_loading_a_legacy_save(
+    machine: Machine,
+    game_memories: GameMemoryStore,
+) -> None:
+    rom("zork1")
+    await machine.new_game("zork1")
+    signature = machine._story_signature
+    west = machine._location
+    await machine.type_text("north")
+    north = machine._location
+    await machine.type_text("east")
+    behind = machine._location
+    machine.reboot()
+    game_memories.write_map(
+        "zork1",
+        signature,
+        {
+            (west[0], "West House"): {(north[0], "North House"): "north"},
+            (north[0], "North House"): {behind: "east"},
+        },
+    )
+    await machine.new_game("zork1")
+    assert machine._known_map == {west: {north: "north"}, north: {behind: "east"}}
+    _screen, remarks = await machine.type_text("north")
+    assert "first time you've entered this room in the current run" in remarks
+    assert "'east' previously led to 'Behind House'" in remarks
+    assert game_memories.read_map("zork1", signature) == machine._known_map

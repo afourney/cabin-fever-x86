@@ -272,3 +272,51 @@ def test_unmeasured_frame_flags_are_rejected(tmp_path: Path, version: int, flags
     malformed = (native[0], stack, *native[2:])
     with pytest.raises(ValueError, match="frame metadata"):
         bridge.from_jericho(malformed)
+
+
+async def test_invalid_legacy_instruction_is_reported_without_losing_live_game(
+    tmp_path: Path,
+) -> None:
+    games, store, _ = captured(tmp_path)
+    machine = Machine(games_dir=games, saves=store)
+    await machine.new_game("probe")
+    screen = machine.screen()
+    state = machine._env.get_state()
+    autosave = store.path(AUTOSAVE).read_bytes()
+    source = store.path("probe_0001").read_bytes()
+    native = store.read("probe_0001").state
+    path = games / "probe.z3"
+    rom = bytearray(path.read_bytes())
+    rom[native[2]] = 0xFF  # Zero operands on sread raises Fernz ExecutionError.
+    path.write_bytes(rom)
+    assert "cannot be converted" in await machine.load("probe_0001")
+    assert machine.screen() == screen
+    assert machine._env.get_state() == state
+    assert store.path(AUTOSAVE).read_bytes() == autosave
+    assert store.path("probe_0001").read_bytes() == source
+    machine.reboot()
+
+
+@pytest.mark.parametrize(
+    "platform,byteorder", [("darwin", "little"), ("win32", "little"), ("linux", "big")]
+)
+def test_legacy_layout_is_independent_of_reader_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str, byteorder: str
+) -> None:
+    import sys
+
+    from fernz import Story
+
+    from cabin_fever_x86_core.server._state_bridge import StateBridge
+
+    games, store, _ = captured(tmp_path, "v8_discard_wide")
+    native = store.read("probe_0001").state
+    story = Story.from_file(games / "probe.z8")
+    expected = StateBridge(story, native, seed=42).from_jericho(native)
+    # The fixed little-endian file encoding must not depend on host markers.
+    # This tests the codec; it does not claim end-to-end Windows app validation.
+    with monkeypatch.context() as context:
+        context.setattr(sys, "platform", platform)
+        context.setattr(sys, "byteorder", byteorder)
+        actual = StateBridge(story, native, seed=42).from_jericho(native)
+    assert actual == expected

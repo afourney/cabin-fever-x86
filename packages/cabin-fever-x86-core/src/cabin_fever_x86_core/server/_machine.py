@@ -17,7 +17,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from fernz import FernzEnv, Story
+from fernz import FernzEnv
 from fernz._state import StoredInputRequest
 
 from cabin_fever_x86_core.hints import has_hints
@@ -214,15 +214,7 @@ class Machine:
 
         self.reboot()
         try:
-            env = await asyncio.to_thread(
-                FernzEnv,
-                str(path),
-                seed=_fresh_seed(),
-                save_handler=partial(self._saves.write_quetzal, path.stem) if self._saves else None,
-                restore_handler=partial(self._saves.read_quetzal, path.stem)
-                if self._saves
-                else None,
-            )
+            env = await asyncio.to_thread(self._create_env, path)
             observation, info = await asyncio.to_thread(env.reset)
         except Exception as exc:
             logger.exception("Could not load %s", path)
@@ -238,6 +230,15 @@ class Machine:
         self._hint_availability_pending = True
         logger.info("Loaded %s", path.stem)
         return self.screen()
+
+    def _create_env(self, path: Path) -> FernzEnv:
+        """Create an interpreter with session-local storage, without running it."""
+        return FernzEnv(
+            str(path),
+            seed=_fresh_seed(),
+            save_handler=partial(self._saves.write_quetzal, path.stem) if self._saves else None,
+            restore_handler=partial(self._saves.read_quetzal, path.stem) if self._saves else None,
+        )
 
     async def new_game(self, name: str) -> str:
         """Start *name* from the beginning, dropping whatever was running.
@@ -268,7 +269,9 @@ class Machine:
             request = self._env.get_state().input_request if self._env and not self._done else None
             if not isinstance(request, StoredInputRequest) or not request.character:
                 return self.screen(), None
-            text = original_text  # A space is an actual key at a character prompt.
+            # A literal space is a key; line endings/control whitespace mean
+            # Enter, represented by an empty action in Fernz's edited-input API.
+            text = " " if " " in original_text else ""
 
         # Before anything reaches the interpreter, and whether or not a game is
         # running: at the DOS prompt these are not games either.
@@ -288,7 +291,21 @@ class Machine:
             observation, _reward, done, info = await asyncio.to_thread(self._env.step, text)
         except Exception as exc:
             logger.exception("%r failed on %s", text, self._game)
-            return f"The machine locks up for a moment: {exc}", None
+            try:
+                self._env.get_state()
+            except RuntimeError:
+                # Execution errors invalidate Fernz's machine. Drop that dead
+                # environment without touching the last successful autosave.
+                self.reboot()
+                return (
+                    (
+                        f"The machine stopped: {exc}\n"
+                        "It has returned to the DOS prompt. The last autosave is unchanged; "
+                        f"use `{LoadGameTool.name}` to restore it."
+                    ),
+                    None,
+                )
+            return f"The machine could not accept that input: {exc}", None
 
         self._observation, self._info = observation.text, dict(info)
         self._done = done or _episode_done(self._env)
@@ -382,82 +399,89 @@ class Machine:
             return f"That save will not load: {exc}", False
         name = filed.stem
 
-        legacy = isinstance(snapshot.state, tuple)
-        if legacy:
-            path = self._find(snapshot.game)
-            if path is None:
-                return f"{name} is a save of {snapshot.game}, which is not on the disk.", False
-            try:
-                story = await asyncio.to_thread(Story.from_file, path)
-                bridge = StateBridge(story, snapshot.state, seed=_fresh_seed())
-                state = await asyncio.to_thread(bridge.from_jericho, snapshot.state)
-                snapshot = replace(snapshot, state=state)
-            except (OSError, ValueError, TypeError, IndexError, NotImplementedError) as exc:
-                logger.warning("Could not convert legacy save %s: %s", name, exc)
-                return f"That legacy save cannot be converted: {exc}", False
-
-        # The state only means anything to the game it came out of, and handing
-        # one game's RAM to another would corrupt the interpreter outright.
-        if snapshot.game != self._game:
-            booted = await self._boot(snapshot.game)
-            if self._game != snapshot.game:
-                return f"{name} is a save of {snapshot.game}, which will not load:\n{booted}", False
-
-        env = self._env
-        if env is None:
-            return f"The machine will not come up to load {name}.", False
-
-        # Check our listing metadata first; Fernz also validates the complete
-        # story hash and checkpoint before changing the interpreter.
-        if (
-            snapshot.story_signature is not None
-            and snapshot.story_signature != self._story_signature
-        ):
-            logger.warning(
-                "Save %s belongs to story %r, loaded %r",
-                name,
-                snapshot.story_signature,
-                self._story_signature,
-            )
-            return (
-                (
-                    f"That save was written by a different build of {snapshot.game} "
-                    "and will not load on this one."
-                ),
-                False,
-            )
-
-        state = snapshot.state
-        if state.rng.period == 0:
-            seed = _fresh_seed()
-            state = replace(
-                state,
-                rng=replace(state.rng, host_seed=seed, state=seed, python_state=None),
-            )
+        path = self._find(snapshot.game)
+        if path is None:
+            return f"{name} is a save of {snapshot.game}, which is not on the disk.", False
         try:
-            await asyncio.to_thread(env.set_state, state)
+            env = await asyncio.to_thread(self._create_env, path)
         except Exception as exc:
-            logger.exception("Could not restore %s", name)
-            return f"The machine chokes on that save: {exc}", False
+            logger.exception("Could not open the story for %s", name)
+            return f"The machine will not come up to load {name}: {exc}", False
 
-        # Taken from the restored interpreter rather than the file: the header
-        # is what the screen said, the env is what is actually true now.
-        self._observation = snapshot.observation
-        self._info = {}
-        for key, query in (("score", env.get_score), ("moves", env.get_moves)):
-            with contextlib.suppress(NotImplementedError):
-                self._info[key] = query()
-        self._done = _episode_done(env)
-        self._location = _player_location(env)
-        self._run_map = snapshot.personal_map or {}
-        if legacy:
-            # Jericho shortened some display names (e.g. "West House"). Keep
-            # the saved routes attached to the same room objects in Fernz.
-            self._run_map = _rename_legacy_rooms(env, self._run_map)
-            self._known_map = _rename_legacy_rooms(env, self._known_map)
-        if merge_maps(self._known_map, self._run_map) or legacy:
-            await self._persist_known_map()
-        logger.info("Restored %s from %s", self._game, name)
+        # Prepare a separate interpreter. Do not boot a fresh game or change
+        # the live machine until the complete checkpoint has been accepted.
+        legacy = isinstance(snapshot.state, tuple)
+        try:
+            if legacy:
+                try:
+
+                    def convert():
+                        bridge = StateBridge(env.story, snapshot.state, seed=_fresh_seed())
+                        return bridge.from_jericho(snapshot.state)
+
+                    state = await asyncio.to_thread(convert)
+                    snapshot = replace(snapshot, state=state)
+                except (OSError, ValueError, TypeError, IndexError, RuntimeError) as exc:
+                    logger.warning("Could not convert legacy save %s: %s", name, exc)
+                    return f"That legacy save cannot be converted: {exc}", False
+
+            signature = await asyncio.to_thread(_story_signature, path)
+            if snapshot.story_signature is not None and snapshot.story_signature != signature:
+                logger.warning(
+                    "Save %s belongs to story %r, loaded %r",
+                    name,
+                    snapshot.story_signature,
+                    signature,
+                )
+                return (
+                    (
+                        f"That save was written by a different build of {snapshot.game} "
+                        "and will not load on this one."
+                    ),
+                    False,
+                )
+
+            state = snapshot.state
+            if state.rng.period == 0:
+                seed = _fresh_seed()
+                state = replace(
+                    state,
+                    rng=replace(state.rng, host_seed=seed, state=seed, python_state=None),
+                )
+            try:
+                await asyncio.to_thread(env.set_state, state)
+                info = {}
+                for key, query in (("score", env.get_score), ("moves", env.get_moves)):
+                    with contextlib.suppress(NotImplementedError):
+                        info[key] = query()
+                done = _episode_done(env)
+                location = _player_location(env)
+            except Exception as exc:
+                logger.exception("Could not restore %s", name)
+                return f"The machine chokes on that save: {exc}", False
+
+            same_story = self._game == snapshot.game and self._story_signature == signature
+            known_map = self._known_map
+            map_writable = self._known_map_writable
+            hint_pending = self._hint_availability_pending
+            self.reboot()
+            self._env, self._game, self._story_signature = env, snapshot.game, signature
+            self._observation, self._info = snapshot.observation, info
+            self._done, self._location = done, location
+            self._hint_availability_pending = hint_pending if same_story else True
+            if same_story:
+                self._known_map, self._known_map_writable = known_map, map_writable
+            else:
+                self._known_map = self._load_known_map()
+            self._run_map = snapshot.personal_map or {}
+            if legacy:
+                self._run_map = _rename_legacy_rooms(env, self._run_map)
+            if merge_maps(self._known_map, self._run_map) or legacy:
+                await self._persist_known_map()
+            logger.info("Restored %s from %s", self._game, name)
+        finally:
+            if self._env is not env:
+                env.close()
 
         # The autosave has to follow the machine, or a resume after this would
         # quietly rewind to before the load.
@@ -542,11 +566,15 @@ class Machine:
         """Snapshot the running game under *name*. Runs off the event loop."""
         if self._env is None or self._saves is None or self._game is None:
             raise SaveError("nothing is running")
+        try:
+            state = self._env.get_state()
+        except (RuntimeError, ValueError) as exc:
+            raise SaveError(f"the interpreter cannot be saved: {exc}") from exc
         return self._saves.write(
             name,
             Snapshot(
                 game=self._game,
-                state=self._env.get_state(),
+                state=state,
                 observation=self._observation,
                 score=self._info.get("score"),
                 moves=self._info.get("moves"),
@@ -564,7 +592,8 @@ class Machine:
         if self._game_memories is None or self._game is None or self._story_signature is None:
             return {}
         try:
-            return self._game_memories.read_map(self._game, self._story_signature)
+            routes = self._game_memories.read_map(self._game, self._story_signature)
+            return _rename_legacy_rooms(self._env, routes) if self._env is not None else routes
         except GameMemoryError as exc:
             # Do not overwrite an unreadable file with a fresh empty map after
             # the next move. Keep playing, but leave that artifact untouched.
@@ -669,7 +698,7 @@ def _player_location(env: FernzEnv) -> Location | None:
     """Return Fernz's stable object number and display name for the room."""
     try:
         location = env.get_player_location()
-    except (AttributeError, RuntimeError):
+    except (AttributeError, RuntimeError, ValueError):
         return None
     if location is None:
         return None

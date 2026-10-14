@@ -31,7 +31,6 @@ the import template themselves; its header is used only when exporting.
 # SOFTWARE.
 
 import struct
-import sys
 from dataclasses import replace
 from hashlib import sha256
 from operator import index
@@ -73,15 +72,12 @@ class StateBridge:
 
     def __init__(self, story, template, *, seed):
         """Bind a story, native header template, and explicit host-seed policy."""
-        if sys.platform != "linux" or sys.byteorder != "little":
-            raise ValueError("The measured adapter supports little-endian Linux only")
         if story.header.version not in (3, 4, 5, 8):
             raise ValueError("State interchange supports V3, V4, V5, and V8")
         self.story = story
         self.seed = integer(seed, 0, 2**31 - 1, "host seed")
         ram, *_ = self._parts(template)
         self._native_header = ram[:64]
-        self._import_memory(ram)  # Check the template against the supplied story.
 
     def _parts(self, state):
         if type(state) is not tuple or len(state) != 9:
