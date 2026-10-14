@@ -1,6 +1,6 @@
 """The beige PC in the corner of the cabin.
 
-Wraps one Jericho interpreter: which game is in the drive, what it last put on
+Wraps one Fernz interpreter: which game is in the drive, what it last put on
 the screen, and the score. Nothing is running until a game is typed in at the
 prompt, and a reboot puts it back that way.
 """
@@ -8,13 +8,17 @@ prompt, and a reboot puts it back that way.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import secrets
+from dataclasses import replace
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from jericho import FrotzEnv
+from fernz import FernzEnv
+from fernz._state import StoredInputRequest
 
 from cabin_fever_x86_core.hints import has_hints
 from cabin_fever_x86_core.server._game_memories import (
@@ -62,8 +66,8 @@ class VisitKind(Enum):
     FIRST_EVER = "first_ever"
 
 
-def _fresh_rng_a() -> int:
-    """Return a portable, nonzero state for Frotz's normal RNG mode."""
+def _fresh_seed() -> int:
+    """Return a portable, nonzero state for Fernz's host-seeded RNG."""
     return secrets.randbelow(0x7FFFFFFF) + 1
 
 
@@ -129,7 +133,7 @@ class Machine:
         self._games_dir = games_dir
         self._saves = saves
         self._game_memories = game_memories
-        self._env: FrotzEnv | None = None
+        self._env: FernzEnv | None = None
         self._game: str | None = None
         self._story_signature: StorySignature | None = None
         self._observation = ""
@@ -176,7 +180,12 @@ class Machine:
         parts = [f"GAME: {self._game}"]
         score, moves = self._info.get("score"), self._info.get("moves")
         if score is not None and self._env is not None:
-            parts.append(f"Score {score}/{self._env.get_max_score()}")
+            try:
+                maximum = self._env.get_max_score()
+            except NotImplementedError:
+                parts.append(f"Score {score}")
+            else:
+                parts.append(f"Score {score}/{maximum}")
         if moves is not None:
             parts.append(f"Moves {moves}")
         header = " | ".join(parts)
@@ -204,7 +213,15 @@ class Machine:
 
         self.reboot()
         try:
-            env = await asyncio.to_thread(FrotzEnv, str(path), seed=_fresh_rng_a())
+            env = await asyncio.to_thread(
+                FernzEnv,
+                str(path),
+                seed=_fresh_seed(),
+                save_handler=partial(self._saves.write_quetzal, path.stem) if self._saves else None,
+                restore_handler=partial(self._saves.read_quetzal, path.stem)
+                if self._saves
+                else None,
+            )
             observation, info = await asyncio.to_thread(env.reset)
         except Exception as exc:
             logger.exception("Could not load %s", path)
@@ -212,7 +229,8 @@ class Machine:
 
         self._env, self._game = env, path.stem
         self._story_signature = _story_signature(path)
-        self._observation, self._info, self._done = observation, dict(info), False
+        self._observation, self._info = observation.text, dict(info)
+        self._done = _episode_done(env)
         self._location = _player_location(env)
         self._run_map = {}
         self._known_map = self._load_known_map()
@@ -243,9 +261,13 @@ class Machine:
 
     async def type_text(self, text: str) -> tuple[str, str | None]:
         """Type a line and return its screen plus any private contextual remarks."""
+        original_text = text
         text = text.strip()
         if not text:
-            return self.screen(), None
+            request = self._env.get_state().input_request if self._env and not self._done else None
+            if not isinstance(request, StoredInputRequest) or not request.character:
+                return self.screen(), None
+            text = original_text  # A space is an actual key at a character prompt.
 
         # Before anything reaches the interpreter, and whether or not a game is
         # running: at the DOS prompt these are not games either.
@@ -267,7 +289,8 @@ class Machine:
             logger.exception("%r failed on %s", text, self._game)
             return f"The machine locks up for a moment: {exc}", None
 
-        self._observation, self._info, self._done = observation, dict(info), bool(done)
+        self._observation, self._info = observation.text, dict(info)
+        self._done = done or _episode_done(self._env)
         self._location = await asyncio.to_thread(_player_location, self._env)
         moved = (
             old_location is not None
@@ -369,9 +392,8 @@ class Machine:
         if env is None:
             return f"The machine will not come up to load {name}.", False
 
-        # Old CFX86SAVE2 files do not carry this optional field and must remain
-        # loadable. When it is present, validate the precise story build before
-        # handing its RAM to the interpreter.
+        # Check our listing metadata first; Fernz also validates the complete
+        # story hash and checkpoint before changing the interpreter.
         if (
             snapshot.story_signature is not None
             and snapshot.story_signature != self._story_signature
@@ -390,35 +412,27 @@ class Machine:
                 False,
             )
 
-        expected = len(snapshot.state[0])
-        actual = await asyncio.to_thread(env.frotz_lib.getRAMSize)
-        if expected != actual:
-            logger.warning(
-                "Save %s expects %d bytes of RAM, %s has %d", name, expected, self._game, actual
+        state = snapshot.state
+        if state.rng.period == 0:
+            seed = _fresh_seed()
+            state = replace(
+                state,
+                rng=replace(state.rng, host_seed=seed, state=seed, python_state=None),
             )
-            return (
-                (
-                    f"That save was written by a different build of {snapshot.game} "
-                    "and will not load on this one."
-                ),
-                False,
-            )
-
         try:
-            await asyncio.to_thread(env.set_state, snapshot.state)
+            await asyncio.to_thread(env.set_state, state)
         except Exception as exc:
             logger.exception("Could not restore %s", name)
             return f"The machine chokes on that save: {exc}", False
 
-        _a, interval, counter = snapshot.state[7]
-        if interval == 0:
-            env.frotz_lib.setRng(_fresh_rng_a(), interval, counter)
-
         # Taken from the restored interpreter rather than the file: the header
         # is what the screen said, the env is what is actually true now.
         self._observation = snapshot.observation
-        self._info = {"score": env.get_score(), "moves": env.get_moves()}
-        self._done = env.game_over() or env.victory()
+        self._info = {}
+        for key, query in (("score", env.get_score), ("moves", env.get_moves)):
+            with contextlib.suppress(NotImplementedError):
+                self._info[key] = query()
+        self._done = _episode_done(env)
         self._location = _player_location(env)
         self._run_map = snapshot.personal_map or {}
         if merge_maps(self._known_map, self._run_map):
@@ -603,8 +617,18 @@ def _instead_of_typing(text: str) -> str | None:
     return None
 
 
-def _player_location(env: FrotzEnv) -> Location | None:
-    """Return Jericho's stable object number and display name for the room."""
+def _episode_done(env: FernzEnv) -> bool:
+    """Stop on interpreter quit or a known story's reported ending."""
+    if env.done:
+        return True
+    try:
+        return env.game_over() or env.victory()
+    except NotImplementedError:
+        return False  # Unknown stories still support the interpreter's quit flag.
+
+
+def _player_location(env: FernzEnv) -> Location | None:
+    """Return Fernz's stable object number and display name for the room."""
     try:
         location = env.get_player_location()
     except (AttributeError, RuntimeError):

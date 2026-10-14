@@ -1,22 +1,16 @@
 """Saved games for the machine in the corner.
 
-Jericho does not hand its state out as bytes: :meth:`FrotzEnv.get_state`
-returns a tuple of ``(ram, stack, pc, sp, fp, frame_count, opcode, rng,
-narrative)`` — two numpy ``uint8`` arrays, six integers, a triple of them, and
-the last thing the game printed. All of it writes down flat, so a save is typed
-JSON records and the three byte runs they describe::
+Fernz checkpoints are immutable dataclasses. We store their execution fields
+as JSON and dynamic memory as a byte run, without pickle or executable data::
 
-    CFX86SAVE2
-    {"type": "metadata", "game": "zork1", "score": 10, ...}
+    CFX86SAVE3
+    {"type": "metadata", "game": "zork1", "checkpoint": {...}, ...}
     {"type": "personal_map", "edges": [...]}
     CFX86DATA
-    <ram bytes><stack bytes><narrative bytes>
+    <ram bytes>
 
-Spelled out rather than pickled: a save is data, and nothing read back off the
-disk should be able to run code. It also means a listing costs two lines per
-file rather than a full decode, a save can be read with ``head -2``, and a
-change to Jericho's tuple fails loudly here instead of quietly restoring
-nonsense.
+The format is tied to Fernz's schema-5 checkpoint. Jericho's CFX86SAVE2 files
+remain listable, but cannot be restored by this interpreter.
 
 The header also carries the screen as it was left. ``set_state`` restores the
 interpreter but tells us nothing about what was last printed, and a machine
@@ -40,12 +34,13 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 
-import numpy as np
+from fernz import GameState
+from fernz._state import FrameState, InputRequest, OutputState, RandomState, StoredInputRequest
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +63,9 @@ _SAFE_GAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 # First line of every file, so a file that is not one of ours — or is from a
 # format we no longer read — is refused before anything is made of its bytes.
-MAGIC = b"CFX86SAVE2"
+MAGIC = b"CFX86SAVE3"
+LEGACY_MAGIC = b"CFX86SAVE2"
+CHECKPOINT_VERSION = 5
 DATA_SENTINEL = b"CFX86DATA"
 METADATA = "metadata"
 PERSONAL_MAP = "personal_map"
@@ -80,12 +77,6 @@ KnownMap = dict[Location, dict[Location, str]]
 # Kept as a public alias while callers and old save records still use the
 # original name. In a save, this is the map of the run at that restore point.
 PersonalMap = RunMap
-
-# Jericho's state tuple, in the order get_state() returns it and set_state()
-# unpacks it. The two buffers and the rng triple are handled on their own; the
-# rest are plain integers that go straight into the header.
-STATE_LENGTH = 9
-SCALARS = ("pc", "sp", "fp", "frame_count", "opcode")
 
 
 class SaveError(Exception):
@@ -126,7 +117,7 @@ class Snapshot:
     """One moment on the machine: the interpreter's state, and the screen with it."""
 
     game: str
-    state: tuple[Any, ...]
+    state: GameState
     observation: str
     score: int | None
     moves: int | None
@@ -134,8 +125,7 @@ class Snapshot:
     location: str | None = None
     comment: str | None = None
     personal_map: PersonalMap | None = None
-    # Absent in legacy CFX86SAVE2 files. A missing signature deliberately skips
-    # story identity validation so every existing save remains loadable.
+    # Optional listing metadata; Fernz always validates its own story hash.
     story_signature: StorySignature | None = None
 
 
@@ -248,6 +238,40 @@ class SaveStore:
             raise SaveError(f"All {LAST_SLOT} of {game}'s save slots are full.")
         return f"{game}_{slot:04d}"
 
+    def _quetzal_path(self, game: str) -> Path:
+        """Keep built-in saves beside this session's checkpoints, one per ROM."""
+        if not _SAFE_GAME.fullmatch(game):
+            raise SaveError(f"{game!r} is not a name a save can be filed under")
+        return self.dir / f"{game}.qzl"
+
+    def write_quetzal(self, game: str, data: bytes) -> bool:
+        """Handle a story's save opcode, replacing its Quetzal file atomically."""
+        temporary: Path | None = None
+        try:
+            path = self._quetzal_path(game)
+            self.dir.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".qzl.part")
+            temporary.write_bytes(data)
+            os.replace(temporary, path)
+        except (OSError, SaveError) as exc:
+            logger.warning("Could not write Quetzal save for %s: %s", game, exc)
+            return False
+        finally:
+            if temporary is not None:
+                with contextlib.suppress(OSError):
+                    temporary.unlink(missing_ok=True)
+        return True
+
+    def read_quetzal(self, game: str) -> bytes | None:
+        """Handle a story's restore opcode; absent or unreadable saves fail normally."""
+        try:
+            return self._quetzal_path(game).read_bytes()
+        except FileNotFoundError:
+            return None
+        except (OSError, SaveError) as exc:
+            logger.warning("Could not read Quetzal save for %s: %s", game, exc)
+            return None
+
     def write(self, name: str, snapshot: Snapshot) -> str:
         """Write one save and return the name it went under.
 
@@ -348,61 +372,72 @@ class SaveStore:
         return found
 
 
-def _encode_state(state: tuple[Any, ...]) -> tuple[dict[str, Any], bytes]:
-    """Flatten Jericho's state tuple into a header and the bytes behind it."""
-    if len(state) != STATE_LENGTH:
-        raise SaveError(
-            f"expected {STATE_LENGTH} fields of machine state, got {len(state)}; "
-            "this build of Jericho keeps its state differently"
-        )
-    ram, stack, *scalars, rng, narrative = state
-    ram, stack = bytes(bytearray(ram)), bytes(bytearray(stack))
-    narrative = bytes(narrative or b"")
-
-    header: dict[str, Any] = dict(zip(SCALARS, (int(value) for value in scalars), strict=True))
-    header |= {
-        "rng": [int(value) for value in rng],
-        "ram_size": len(ram),
-        "stack_size": len(stack),
-        "narrative_size": len(narrative),
-    }
-    return header, ram + stack + narrative
+def _encode_state(state: GameState) -> tuple[dict[str, Any], bytes]:
+    """Flatten the pinned Fernz checkpoint schema without executable serialization."""
+    if not isinstance(state, GameState) or state.format_version != CHECKPOINT_VERSION:
+        raise SaveError("expected a Fernz schema-5 checkpoint")
+    checkpoint = asdict(state)
+    ram = checkpoint.pop("ram")
+    return {"checkpoint": checkpoint, "ram_size": len(ram)}, ram
 
 
-def _decode_state(header: dict[str, Any], handle: BinaryIO, path: Path) -> tuple[Any, ...]:
-    """Rebuild the state tuple ``set_state`` wants from a header and an open file.
-
-    The buffers come back as writeable arrays because ``set_state`` hands them
-    to ctypes, which refuses a read-only view of a ``bytes``.
-    """
+def _decode_state(header: dict[str, Any], handle: BinaryIO, path: Path) -> GameState:
+    """Rebuild immutable checkpoint records; Fernz validates them against the story."""
     try:
-        scalars = [int(header[name]) for name in SCALARS]
-        rng = tuple(int(value) for value in header["rng"])
-        sizes = [int(header[name]) for name in ("ram_size", "stack_size", "narrative_size")]
-    except (KeyError, TypeError, ValueError) as exc:
-        raise SaveError(f"{path.name} is missing part of its machine state: {exc}") from exc
-    if len(rng) != 3:
-        raise SaveError(f"{path.name} has an unreadable random seed")
-
-    runs: list[bytes] = []
-    for size in sizes:
-        run = handle.read(size)
-        if len(run) != size:
+        size = header["ram_size"]
+        checkpoint = dict(header["checkpoint"])
+        if type(size) is not int or size < 0:
+            raise ValueError("invalid RAM size")
+        if checkpoint["format_version"] != CHECKPOINT_VERSION:
+            raise ValueError("unsupported Fernz checkpoint version")
+        ram = handle.read(size)
+        if len(ram) != size:
             raise SaveError(f"{path.name} is truncated: it stops partway through the state")
-        runs.append(run)
-    ram, stack, narrative = runs
+        if handle.read(1):
+            raise ValueError("unexpected bytes after the checkpoint")
+        frames = tuple(
+            FrameState(
+                **(frame | {"locals": tuple(frame["locals"]), "stack": tuple(frame["stack"])})
+            )
+            for frame in checkpoint.pop("frames")
+        )
+        rng = checkpoint.pop("rng")
+        if rng["python_state"] is not None:
+            version, words, gaussian = rng["python_state"]
+            rng["python_state"] = (version, tuple(words), gaussian)
+        request = checkpoint.pop("input_request")
+        if request is not None:
+            request = (
+                StoredInputRequest(**request) if "store" in request else InputRequest(**request)
+            )
+        output = checkpoint.pop("output")
+        for key in ("cursors", "colours", "memory_streams"):
+            output[key] = tuple(tuple(pair) for pair in output[key])
+        for key in ("fonts", "styles"):
+            output[key] = tuple(output[key])
+        return GameState(
+            **checkpoint,
+            ram=ram,
+            frames=frames,
+            rng=RandomState(**rng),
+            input_request=request,
+            output=OutputState(**output),
+        )
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise SaveError(
+            f"{path.name} is missing part of its machine state or is invalid: {exc}"
+        ) from exc
 
-    return (_buffer(ram), _buffer(stack), *scalars, rng, narrative)
 
-
-def _buffer(run: bytes) -> np.ndarray[Any, np.dtype[np.uint8]]:
-    """Wrap *run* in a writeable ``uint8`` array, which is what ctypes will take."""
-    return np.frombuffer(bytearray(run), dtype=np.uint8)
-
-
-def _read_metadata(handle: BinaryIO, path: Path) -> dict[str, Any]:
+def _read_metadata(handle: BinaryIO, path: Path, *, allow_legacy: bool = True) -> dict[str, Any]:
     """Read the magic and first, listing-friendly metadata record."""
-    if handle.readline().rstrip(b"\n") != MAGIC:
+    magic = handle.readline().rstrip(b"\n")
+    if magic == LEGACY_MAGIC and not allow_legacy:
+        raise SaveError(
+            f"{path.name} is a Jericho save and cannot be loaded by Fernz; "
+            "use the previous Jericho-based release to continue that game"
+        )
+    if magic not in (MAGIC, LEGACY_MAGIC):
         raise SaveError(f"{path.name} is not a save from this machine")
     record = _read_json_record(handle.readline(), path)
     if record.get("type") != METADATA:
@@ -412,7 +447,7 @@ def _read_metadata(handle: BinaryIO, path: Path) -> dict[str, Any]:
 
 def _read_records(handle: BinaryIO, path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     """Read typed records through the data sentinel, skipping unknown types."""
-    metadata = _read_metadata(handle, path)
+    metadata = _read_metadata(handle, path, allow_legacy=False)
     records = {METADATA: metadata}
     while True:
         line = handle.readline()

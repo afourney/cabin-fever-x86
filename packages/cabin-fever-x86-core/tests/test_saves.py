@@ -1,6 +1,6 @@
 """Saved games: the store's file format, and the machine driving it.
 
-The store is tested on its own with a made-up state tuple, so the format and
+The store is tested on its own with a made-up Fernz checkpoint, so the format and
 the naming are pinned down without a ROM. The tests that need a real
 interpreter skip themselves when the games have not been downloaded, which is
 how CI runs.
@@ -14,6 +14,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from fernz import GameState, Observation
+from fernz._state import FrameState, InputRequest, OutputState, RandomState, StoredInputRequest
 
 from cabin_fever_x86_core.server._game_memories import RELOAD_REASONS_FILE, GameMemoryStore
 from cabin_fever_x86_core.server._machine import GAMES_DIR, NO_GAME, USE_THE_TOOLS, Machine
@@ -41,9 +43,16 @@ from cabin_fever_x86_core.server._tools import (
     TypeTool,
 )
 
-# Shaped like what Jericho hands out — (ram, stack, pc, sp, fp, frame_count,
-# opcode, rng, narrative) — without needing Jericho to hand it out.
-FAKE_STATE = (b"\x01\x02\x03\x04", b"\x05\x06", 22797, 989, 1000, 2, 228, (-146906654, 0, 0), b"hi")
+FAKE_STATE = GameState(
+    story_sha256="a" * 64,
+    ram=b"\x01\x02\x03\x04",
+    pc=22797,
+    frames=(FrameState((), (), None, None), FrameState((1, 2), (3,), 1234, 16, 1)),
+    rng=RandomState(host_seed=42, state=12345, period=0, position=0),
+    input_request=InputRequest(text=100, parse=200, instruction_address=22790),
+    screen_enabled=True,
+    halted=False,
+)
 FAKE_SIGNATURE = StorySignature(release=88, serial="840726", checksum=0x1234)
 
 
@@ -87,11 +96,29 @@ async def test_a_game_boots_with_a_fresh_random_seed(
     called_with: dict[str, object] = {}
 
     class FakeEnv:
-        def __init__(self, story_file: str, *, seed: int) -> None:
+        def __init__(
+            self,
+            story_file: str,
+            *,
+            seed: int,
+            save_handler: object = None,
+            restore_handler: object = None,
+        ) -> None:
             called_with.update(story_file=story_file, seed=seed)
 
-        def reset(self) -> tuple[str, dict[str, int]]:
-            return "West of House", {"score": 0, "moves": 0}
+        done = False
+
+        def reset(self) -> tuple[Observation, dict[str, int]]:
+            return Observation(stream="West of House", text="West of House"), {
+                "score": 0,
+                "moves": 0,
+            }
+
+        def game_over(self) -> bool:
+            return False
+
+        def victory(self) -> bool:
+            return False
 
         def get_player_location(self) -> None:
             return None
@@ -102,8 +129,8 @@ async def test_a_game_boots_with_a_fresh_random_seed(
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("cabin_fever_x86_core.server._machine.FrotzEnv", FakeEnv)
-    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_rng_a", lambda: 123456789)
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine.FernzEnv", FakeEnv)
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_seed", lambda: 123456789)
 
     machine = Machine(games_dir=tmp_path)
     await machine.new_game("zork1")
@@ -156,14 +183,7 @@ def test_a_save_round_trips(tmp_path: Path) -> None:
     assert read.comment == "about to do something dumb"
     assert read.personal_map == {(180, "West of House"): {(181, "North of House"): "north"}}
 
-    ram, stack, *scalars, rng, narrative = read.state
-    assert bytes(ram) == FAKE_STATE[0]
-    assert bytes(stack) == FAKE_STATE[1]
-    assert scalars == list(FAKE_STATE[2:7])
-    assert rng == FAKE_STATE[7]
-    assert narrative == FAKE_STATE[8]
-    # set_state hands the buffers to ctypes, which will not take a read-only view.
-    assert ram.flags.writeable and stack.flags.writeable
+    assert read.state == FAKE_STATE
 
 
 def test_a_story_signature_is_optional_and_round_trips_when_present(tmp_path: Path) -> None:
@@ -178,7 +198,7 @@ def test_a_story_signature_is_optional_and_round_trips_when_present(tmp_path: Pa
 def test_a_state_of_the_wrong_shape_is_refused_on_the_way_in(tmp_path: Path) -> None:
     store = SaveStore(tmp_path / "saves")
     bad = Snapshot(game="zork1", state=(b"", b"", 1), observation="", score=0, moves=0, done=False)
-    with pytest.raises(SaveError, match="fields of machine state"):
+    with pytest.raises(SaveError, match="Fernz schema-5 checkpoint"):
         store.write("zork1_0001", bad)
 
 
@@ -230,16 +250,16 @@ def test_a_save_starts_with_listing_metadata_and_typed_records(tmp_path: Path) -
     assert header["type"] == "metadata"
     assert header["game"] == "zork1"
     assert header["moves"] == 3
-    assert header["pc"] == FAKE_STATE[2]
-    assert header["rng"] == list(FAKE_STATE[7])
-    assert header["ram_size"] == len(FAKE_STATE[0])
+    assert header["checkpoint"]["pc"] == FAKE_STATE.pc
+    assert header["checkpoint"]["rng"]["state"] == FAKE_STATE.rng.state
+    assert header["ram_size"] == len(FAKE_STATE.ram)
     assert "saved_at" in header
     assert header["location"] == "West of House"
     assert header["comment"] == "about to do something dumb"
     assert map_record["type"] == "personal_map"
     assert map_record["edges"][0]["command"] == "north"
 
-    assert path.read_bytes().endswith(FAKE_STATE[0] + FAKE_STATE[1] + FAKE_STATE[8])
+    assert path.read_bytes().endswith(FAKE_STATE.ram)
 
 
 def test_a_signed_save_adds_only_optional_header_metadata(tmp_path: Path) -> None:
@@ -255,7 +275,7 @@ def test_a_signed_save_adds_only_optional_header_metadata(tmp_path: Path) -> Non
 
     assert header["story_signature"] == FAKE_SIGNATURE.as_record()
     assert map_record["type"] == "personal_map"
-    assert path.read_bytes().endswith(FAKE_STATE[0] + FAKE_STATE[1] + FAKE_STATE[8])
+    assert path.read_bytes().endswith(FAKE_STATE.ram)
 
 
 def test_a_finished_save_leaves_no_working_file(tmp_path: Path) -> None:
@@ -403,10 +423,10 @@ def test_a_save_that_is_not_there(tmp_path: Path) -> None:
 
 def rom(name: str) -> Path:
     """A game to test against, or a skip if the disk was never filled."""
-    path = GAMES_DIR / f"{name}.z5"
-    if not path.is_file():
-        pytest.skip(f"no {path}; run the download to test against a real game")
-    return path
+    paths = sorted(GAMES_DIR.glob(f"{name}.z[0-9]"))
+    if not paths:
+        pytest.skip(f"no {name} in {GAMES_DIR}; run the download to test against a real game")
+    return paths[0]
 
 
 @pytest.fixture
@@ -460,7 +480,9 @@ async def test_a_save_comes_back_where_it_was_left(machine: Machine) -> None:
     assert machine.screen() == was
 
 
-async def test_a_legacy_unsigned_save_still_loads(machine: Machine, store: SaveStore) -> None:
+async def test_a_fernz_save_without_listing_signature_still_loads(
+    machine: Machine, store: SaveStore
+) -> None:
     rom("zork1")
     await machine.type_text("zork1")
     legacy = replace(store.read(AUTOSAVE), story_signature=None)
@@ -500,13 +522,15 @@ async def test_loading_an_ordinary_rng_state_gives_it_a_fresh_future(
     rom("zork1")
     await machine.type_text("zork1")
     await machine.save()
-    saved_rng = store.read("zork1_0001").state[7]
-    assert saved_rng[1] == 0
-    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_rng_a", lambda: 123456789)
+    saved_rng = store.read("zork1_0001").state.rng
+    assert saved_rng.period == 0
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_seed", lambda: 123456789)
 
     await machine.load("zork1_0001")
 
-    assert store.read(AUTOSAVE).state[7] == (123456789, saved_rng[1], saved_rng[2])
+    assert store.read(AUTOSAVE).state.rng == replace(
+        saved_rng, host_seed=123456789, state=123456789
+    )
 
 
 async def test_loading_a_predictable_rng_state_preserves_it(
@@ -515,14 +539,14 @@ async def test_loading_a_predictable_rng_state_preserves_it(
     rom("zork1")
     await machine.type_text("zork1")
     original = store.read(AUTOSAVE)
-    predictable_rng = (original.state[7][0], 12, 4)
-    state = (*original.state[:7], predictable_rng, original.state[8])
+    predictable_rng = replace(original.state.rng, period=12, position=4)
+    state = replace(original.state, rng=predictable_rng)
     store.write("zork1_0001", replace(original, state=state))
-    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_rng_a", lambda: 123456789)
+    monkeypatch.setattr("cabin_fever_x86_core.server._machine._fresh_seed", lambda: 123456789)
 
     await machine.load("zork1_0001")
 
-    assert store.read(AUTOSAVE).state[7] == predictable_rng
+    assert store.read(AUTOSAVE).state.rng == predictable_rng
 
 
 async def test_the_personal_map_appears_only_after_moving_to_a_known_room(
@@ -540,7 +564,7 @@ async def test_the_personal_map_appears_only_after_moving_to_a_known_room(
     assert "personal map using paper and pencil" in (remarks or "")
     assert "visited this room before in the current run" in (remarks or "")
     assert "'north'" in (remarks or "")
-    assert "'North House'" in (remarks or "")
+    assert "'North of House'" in (remarks or "")
     assert "(current run)" in (remarks or "")
     opened, opened_remarks = await machine.type_text("open mailbox")
     assert "Personal map" not in opened
@@ -559,7 +583,7 @@ async def test_a_loaded_save_restores_the_personal_map(machine: Machine) -> None
     moved, remarks = await machine.type_text("north")
     assert "personal map" not in moved.casefold()
     assert "'southwest'" in (remarks or "")
-    assert "'West House'" in (remarks or "")
+    assert "'West of House'" in (remarks or "")
 
 
 async def test_loading_an_older_run_keeps_routes_known_from_later_play(
@@ -736,7 +760,7 @@ async def test_a_same_run_revisit_distinguishes_current_and_earlier_routes(
     await machine.type_text("zork1")
     await machine.save(comment="before exploring")
 
-    # Teach the Known Map two ways out of North House in the abandoned branch.
+    # Teach the Known Map two ways out of North of House in the abandoned branch.
     await machine.type_text("north")
     await machine.type_text("east")
     await machine.type_text("north")
@@ -750,7 +774,7 @@ async def test_a_same_run_revisit_distinguishes_current_and_earlier_routes(
 
     assert "visited this room before in the current run" in (remarks or "")
     assert "'east' led to 'Behind House' (current run)" in (remarks or "")
-    assert "'southwest' previously led to 'West House' (earlier run only)" in (remarks or "")
+    assert "'southwest' previously led to 'West of House' (earlier run only)" in (remarks or "")
 
 
 async def test_a_known_map_survives_reconstructing_the_machine(
@@ -825,7 +849,7 @@ async def test_save_and_listing_tools_carry_comments(machine: Machine) -> None:
     assert "note: before opening the trapdoor" in listing.content
     detailed = await ListSavedGamesTool(machine).execute({"save_name": "zork1_0001"})
     assert "Comment: before opening the trapdoor" in detailed.content
-    assert "Location: West House" in detailed.content
+    assert "Location: West of House" in detailed.content
 
 
 async def test_a_save_outlives_a_reboot(machine: Machine) -> None:
@@ -959,7 +983,9 @@ async def test_a_games_own_noise_words_cannot_slip_one_past(machine: Machine, li
     assert await type_text(machine, line) == USE_THE_TOOLS
 
 
-async def test_no_quetzal_file_is_left_anywhere(machine: Machine, tmp_path: Path) -> None:
+async def test_intercepted_save_commands_do_not_write_quetzal(
+    machine: Machine, tmp_path: Path
+) -> None:
     rom("zork1")
     await machine.type_text("zork1")
     before = sorted(Path.cwd().glob("*.qzl"))
@@ -1103,3 +1129,255 @@ async def test_nothing_to_save_is_said_rather_than_raised(machine: Machine) -> N
     assert "nothing to save" in await machine.save()
     assert "will not load" in await machine.load("zork1_0001")
     assert machine.list_saves() == []
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        replace(FAKE_STATE, input_request=StoredInputRequest(100, 200, 22790, 16)),
+        replace(FAKE_STATE, input_request=StoredInputRequest(0, 0, 22790, 16, True)),
+        replace(FAKE_STATE, input_request=None, halted=True, game_over=True, victory=True),
+        replace(
+            FAKE_STATE,
+            output=OutputState(
+                window=1,
+                split_lines=2,
+                cursors=((3, 4), (1, 2)),
+                fonts=(1, 4),
+                memory_streams=((100, 20),),
+                styles=(2, 1),
+                colours=(("red", "black"), ("#abcdef", "blue")),
+                buffered=False,
+            ),
+        ),
+    ],
+)
+def test_checkpoint_continuations_round_trip(tmp_path: Path, state: GameState) -> None:
+    store = SaveStore(tmp_path)
+    store.write(AUTOSAVE, replace(snapshot(), state=state))
+    assert store.read(AUTOSAVE).state == state
+
+
+def test_python_rng_checkpoint_round_trips(tmp_path: Path) -> None:
+    from random import Random
+
+    rng = RandomState(None, 0, 0, 0, Random(42).getstate())
+    store = SaveStore(tmp_path)
+    store.write(AUTOSAVE, replace(snapshot(), state=replace(FAKE_STATE, rng=rng)))
+    restored = store.read(AUTOSAVE).state.rng
+    assert restored == rng
+    generator = Random()
+    generator.setstate(restored.python_state)
+    assert generator.random() == Random(42).random()
+
+
+@pytest.mark.parametrize("field,value", [("ram_size", -1), ("ram_size", "4"), ("checkpoint", [])])
+def test_invalid_checkpoint_metadata_is_refused(tmp_path: Path, field: str, value: object) -> None:
+    store = SaveStore(tmp_path)
+    store.write(AUTOSAVE, snapshot())
+    path = store.path(AUTOSAVE)
+    magic, header, rest = path.read_bytes().split(b"\n", 2)
+    metadata = json.loads(header)
+    metadata[field] = value
+    path.write_bytes(magic + b"\n" + json.dumps(metadata).encode() + b"\n" + rest)
+    with pytest.raises(SaveError):
+        store.read(AUTOSAVE)
+
+
+async def test_jericho_saves_are_listable_but_refused_without_changing_the_machine(
+    tmp_path: Path,
+) -> None:
+    store = SaveStore(tmp_path)
+    path = store.path("zork1_0001")
+    header = {
+        "type": "metadata",
+        "game": "zork1",
+        "score": 5,
+        "moves": 4,
+        "saved_at": "2026-01-01T00:00:00+00:00",
+    }
+    old_save = b"CFX86SAVE2\n" + json.dumps(header).encode() + b"\nCFX86DATA\nold state"
+    path.write_bytes(old_save)
+    assert store.list()[0].moves == 4
+    machine = Machine(saves=store)
+    assert "Jericho save and cannot be loaded by Fernz" in await machine.load("zork1_0001")
+    assert machine.screen() == NO_GAME
+    assert path.read_bytes() == old_save
+
+
+@pytest.mark.parametrize("game", ["zork1", "trinity", "curses", "anchor"])
+async def test_real_checkpoints_restore_and_continue_across_story_versions(
+    game: str,
+    store: SaveStore,
+) -> None:
+    story = rom(game)
+    first = Machine(games_dir=story.parent, saves=store)
+    second = Machine(games_dir=story.parent, saves=store)
+    try:
+        await first.new_game(game)
+        assert first.game == game
+        # These stories may pause at a title screen for character input.
+        for _ in range(4):
+            request = store.read(AUTOSAVE).state.input_request
+            if not isinstance(request, StoredInputRequest) or not request.character:
+                break
+            await first.type_text(" ")
+        await first.type_text("look")
+        expected = first.screen()
+        assert await second.resume() is not None
+        assert second.screen() == expected
+        result, _ = await second.type_text("look")
+        assert "locks up" not in result
+        assert store.read(AUTOSAVE).observation
+    finally:
+        first.reboot()
+        second.reboot()
+
+
+@pytest.mark.parametrize("game", ["zork1", "905"])
+async def test_unprofiled_stories_can_play_save_and_resume(
+    game: str,
+    tmp_path: Path,
+    store: SaveStore,
+) -> None:
+    # Change the story identity so Fernz cannot select a known game's profile.
+    story = bytearray(rom(game).read_bytes())
+    story[0x12:0x18] = b"999999"
+    (tmp_path / f"{game}.z5").write_bytes(story)
+    first = Machine(games_dir=tmp_path, saves=store)
+    second = Machine(games_dir=tmp_path, saves=store)
+    try:
+        opening = await first.new_game(game)
+        assert first.game == game
+        assert "/350" not in opening
+        await first.type_text("look")
+        assert "Restored" in (await second.resume() or "")
+        assert first.screen() == second.screen()
+        result, _ = await second.type_text("look")
+        assert "locks up" not in result
+        assert store.read(AUTOSAVE).observation
+    finally:
+        first.reboot()
+        second.reboot()
+
+
+async def test_fernz_story_hash_rejects_another_build_without_listing_signature(
+    machine: Machine,
+    store: SaveStore,
+) -> None:
+    rom("zork1")
+    await machine.new_game("zork1")
+    original = store.read(AUTOSAVE)
+    store.write(
+        "zork1_0001",
+        replace(
+            original, story_signature=None, state=replace(original.state, story_sha256="0" * 64)
+        ),
+    )
+    was = machine.screen()
+    assert "different story image" in await machine.load("zork1_0001")
+    assert machine.screen() == was
+    assert store.read(AUTOSAVE) == original
+    assert "North of House" in (await machine.type_text("north"))[0]
+
+
+async def test_a_halted_checkpoint_stays_finished_after_resume(
+    machine: Machine,
+    store: SaveStore,
+) -> None:
+    rom("zork1")
+    await machine.new_game("zork1")
+    original = store.read(AUTOSAVE)
+    store.write(
+        "zork1_0001",
+        replace(original, state=replace(original.state, input_request=None, halted=True)),
+    )
+    assert "The game has ended" in await machine.load("zork1_0001")
+    assert store.read(AUTOSAVE).done
+    was = machine.screen()
+    assert (await machine.type_text("north"))[0] == was
+
+
+def test_quetzal_storage_is_scoped_to_the_session_and_rom(tmp_path: Path) -> None:
+    first = SaveStore(tmp_path / "alice" / "session1" / "saves")
+    second = SaveStore(tmp_path / "alice" / "session2" / "saves")
+    other_user = SaveStore(tmp_path / "bob" / "session1" / "saves")
+    assert first.read_quetzal("zork1") is None
+    assert not first.dir.exists()
+    assert first.write_quetzal("zork1", b"first")
+    assert first.write_quetzal("905", b"other game")
+    assert first.write_quetzal("zork1", b"replacement")
+    assert (first.dir / "zork1.qzl").read_bytes() == b"replacement"
+    assert first.read_quetzal("905") == b"other game"
+    assert second.read_quetzal("zork1") is None
+    assert other_user.read_quetzal("zork1") is None
+    assert first.list() == []
+    assert first.next_name("zork1") == "zork1_0001"
+    assert not list(first.dir.glob("*.part"))
+    assert not first.write_quetzal("../../escape", b"no")
+    assert first.read_quetzal("../../escape") is None
+
+
+def test_failed_quetzal_write_preserves_previous_save(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SaveStore(tmp_path / "saves")
+    assert store.write_quetzal("zork1", b"original")
+
+    def fail_replace(*args: object) -> None:
+        raise OSError("disk failure")
+
+    monkeypatch.setattr("cabin_fever_x86_core.server._saves.os.replace", fail_replace)
+    assert not store.write_quetzal("zork1", b"replacement")
+    assert store.read_quetzal("zork1") == b"original"
+    assert not list(store.dir.glob("*.part"))
+
+
+def test_unavailable_quetzal_storage_reports_failure(tmp_path: Path) -> None:
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_bytes(b"occupied")
+    store = SaveStore(blocked)
+    assert not store.write_quetzal("zork1", b"state")
+    assert store.read_quetzal("zork1") is None
+
+
+@pytest.mark.parametrize("game", ["zork1", "905", "trinity", "lostpig"])
+async def test_builtin_quetzal_callbacks_restore_gameplay_across_reboot(
+    game: str,
+    machine: Machine,
+    store: SaveStore,
+) -> None:
+    rom(game)
+    await machine.new_game(game)
+    for _ in range(4):
+        request = store.read(AUTOSAVE).state.input_request
+        if not isinstance(request, StoredInputRequest) or not request.character:
+            break
+        await machine.type_text(" ")
+    await machine.type_text("look")
+    assert machine._env is not None
+    # Exercise the actual opcodes beneath the normal command interception.
+    machine._env.step("save")
+    path = store.dir / f"{game}.qzl"
+    data = path.read_bytes()
+    assert data[:4] == b"FORM"
+    assert data[8:12] == b"IFZS"
+    saved_moves = machine._env.get_moves()
+    machine._env.step("look")
+    machine._env.step("look")
+    assert machine._env.get_moves() > saved_moves
+    machine.reboot()
+    await machine.new_game(game)
+    for _ in range(4):
+        request = store.read(AUTOSAVE).state.input_request
+        if not isinstance(request, StoredInputRequest) or not request.character:
+            break
+        await machine.type_text(" ")
+    assert machine._env is not None
+    machine._env.step("restore")
+    assert machine._env.get_moves() == saved_moves
+    screen, _ = await machine.type_text("look")
+    assert "locks up" not in screen
+    assert store.read(AUTOSAVE).moves == saved_moves + 1
+    assert path.read_bytes() == data

@@ -1,17 +1,16 @@
 # cabin-fever-x86-core
 
-The native, Linux-only runtime for [Cabin Fever x86](https://github.com/afourney/cabin-fever-x86): the game server, AI companion, Z-machine interpreter, web radio, and text client.
+The native runtime for [Cabin Fever x86](https://github.com/afourney/cabin-fever-x86): the game server, AI companion, Z-machine interpreter, web radio, and text client.
 
-This package is intended for Linux users who want to run the services directly, expose the web gateway to a LAN, customize the configuration, or develop Cabin Fever itself. It builds [jericho](https://github.com/microsoft/jericho) and its frotz fork from source, so a C toolchain is required and other operating systems are not supported.
+This package is intended for Linux users who want to run the services directly, expose the web gateway to a LAN, customize the configuration, or develop Cabin Fever itself. It uses [Fernz](https://pypi.org/project/fernz/), a pure Python Z-machine interpreter, so the interpreter requires no C toolchain. The core integration is currently tested on Linux.
 
-For a self-contained installation on Linux, macOS, or Windows, use the sandboxed [`cabin-fever-x86`](https://pypi.org/project/cabin-fever-x86/) launcher instead. It runs this package inside a QEMU VM, keeping the memory-unsafe interpreter and downloaded game files off the host.
+For a self-contained installation on Linux, macOS, or Windows, use the sandboxed [`cabin-fever-x86`](https://pypi.org/project/cabin-fever-x86/) launcher instead. It runs this package inside a QEMU VM, keeping the runtime and downloaded game files inside the VM.
 
 ## Native installation
 
-Cabin Fever x86 Core requires Linux, Python 3.12 or newer, and standard C build tools. On Debian or Ubuntu, for example:
+Cabin Fever x86 Core requires Python 3.12 or newer. On Linux, for example:
 
 ```bash
-sudo apt-get install build-essential python3-dev
 python3 -m venv .venv
 source .venv/bin/activate
 pip install cabin-fever-x86-core
@@ -50,7 +49,7 @@ cf86-telegram
 cf86-zello
 ```
 
-Each command accepts `--help`. The server, gateways, and text client can be run on different Linux machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. To bind the web gateway for an HTTPS reverse proxy:
+Each command accepts `--help`. The server, gateways, and text client can be run on different machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. To bind the web gateway for an HTTPS reverse proxy:
 
 ```bash
 cf86-web --web-host 0.0.0.0
@@ -338,9 +337,33 @@ shared in `data/games/`. No data migration is performed.
 
 ## Z-machine games
 
-When `cf86-server` runs directly, it looks for `.z3`–`.z8` game files in `data/games/` relative to its working directory. If that directory contains nothing playable, the server downloads the [z-machine-games](https://github.com/BYU-PCCL/z-machine-games) archive and unpacks only the 57 games in its `jericho-game-suite` folder.
+When `cf86-server` runs directly, it looks for Z-machine game files in `data/games/` relative to its working directory. If that directory contains nothing playable, the server downloads the [z-machine-games](https://github.com/BYU-PCCL/z-machine-games) archive and unpacks only the 57 games in its `jericho-game-suite` folder.
+
+Fernz 0.0.3 runs V3, V4, V5, and V8 stories; support is determined by the story header, not its filename extension. Some Z-machine features and story-specific metadata are not implemented. When a score limit or room location is unavailable, the server omits it.
 
 Add other games by copying them into `data/games/` before starting the server. Only use game files you have the right to run.
+
+### Save compatibility
+
+Fernz saves use `CFX86SAVE3`, including the complete checkpoint, last screen,
+and personal map. Autosave and session resume work with this format. The Fernz
+dependency is pinned to 0.0.3 because the checkpoint codec targets its schema 5.
+
+As a fallback, Fernz's built-in save and restore callbacks use one Quetzal file
+per ROM at `data/users/<user_id>/sessions/<session_id>/server/saves/<romname>.qzl`.
+A successful built-in save atomically replaces that file; a missing or unreadable
+file reports restore failure to the game. These files contain interpreter state,
+not the companion's maps or conversation, and are separate from numbered `.bin`
+saves and autosave. Typed `save` and `restore` commands still direct the companion
+to the normal tools; the callbacks cover other routes to the story's save/restore
+opcodes.
+
+Old `CFX86SAVE2` Jericho saves remain visible in save listings, but Fernz cannot
+restore them. Loading one reports a compatibility error and leaves the file
+untouched. Use the previous Jericho-based release to continue those games.
+Resuming a session with a Jericho autosave leaves the machine at the DOS prompt;
+starting a new game in that session replaces its autosave, so keep a backup or
+start a separate session if you intend to return to the Jericho release.
 
 ## Development
 

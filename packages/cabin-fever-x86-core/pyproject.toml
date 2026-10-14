@@ -1,20 +1,18 @@
 [project]
 name = "cabin-fever-x86-core"
 version = "0.0.1a11"
-description = "A shared game night with an AI companion over a simulated radio: play old text adventures together. Runs the game natively; Linux only."
+description = "A shared game night with an AI companion over a simulated radio: play old text adventures together. Runs the game natively with a pure Python Z-machine."
 readme = "README.md"
 authors = [
     { name = "Adam Fourney", email = "adam.fourney@gmail.com" }
 ]
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["text-adventure", "interactive-fiction", "zmachine", "jericho", "voice", "llm"]
+keywords = ["text-adventure", "interactive-fiction", "zmachine", "fernz", "voice", "llm"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
-    # jericho builds a frotz fork from source and ships no wheels. Upstream
-    # supports Linux and nothing else, so neither does this.
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -32,7 +30,8 @@ dependencies = [
     "pyyaml",
     "uvicorn",
     "websockets",
-    "jericho",
+    # Checkpoint serialization targets Fernz schema 5 in this release.
+    "fernz==0.0.3",
     "argon2-cffi>=25.1.0",
     "itsdangerous>=2.2.0",
 ]
