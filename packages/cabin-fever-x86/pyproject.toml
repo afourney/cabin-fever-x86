@@ -23,9 +23,8 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    # The agent image is quicksand-ubuntu plus a Python 3.12 environment, uv,
-    # and build-essential — which the guest needs anyway, since installing the
-    # game compiles a frotz fork from source.
+    # The agent image is quicksand-ubuntu plus a Python 3.12 environment and
+    # uv, which the guest uses to install the core package.
     "quick-sandbox[qemu,agent]",
     "pip",
     "packaging",

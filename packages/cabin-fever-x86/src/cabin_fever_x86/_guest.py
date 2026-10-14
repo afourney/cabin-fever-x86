@@ -5,8 +5,8 @@ shell. Piping it in rather than copying a file over means there is nothing to
 place, nothing to chmod, and nothing left behind — and the script stays
 editable in a checkout without rebuilding anything.
 
-Init is slow: it builds a frotz fork from source and installs sixty packages.
-So it runs once. When the script reports success the disk is saved under the
+Init is slow: it creates a virtual environment and installs the core package
+with all its dependencies. So it runs once. When the script reports success the disk is saved under the
 home directory's ``vm`` folder, and every later start boots from that save
 instead. Delete the save to force a rebuild.
 """
@@ -58,7 +58,7 @@ def _default_package_locator(version: str) -> str:
 
 DEFAULT_PACKAGE_LOCATOR = _default_package_locator(__version__)
 
-#: Long enough to build jericho from source on a slow machine, short enough
+#: Long enough to install core on a slow machine and connection, short enough
 #: that a wedged guest does not hang the launcher forever.
 INIT_TIMEOUT = 900.0
 UPDATE_TIMEOUT = 300.0

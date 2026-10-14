@@ -6,7 +6,7 @@ The books are finished. The rain isn’t. Somewhere deep in the Olympic Peninsul
 
 **Cabin Fever x86** is a shared game night with an AI companion over a simulated radio. You explore old text adventures together, trading ideas, debating questionable decisions, and occasionally doing something foolish just to see what happens. The game is only part of the fun—the rest is the banter, the arguments, the running jokes, and the personality on the other end of the channel.
 
-Under-the-hood, Cabin Fever x86 uses GPT-5.4 for inference, ElevenLabs for voice synthesis and recognition, and [jericho](https://github.com/microsoft/jericho) for Z-machine game emulation.
+Under-the-hood, Cabin Fever x86 uses GPT-5.4 for inference, ElevenLabs for voice synthesis and recognition, and [Fernz](https://pypi.org/project/fernz/), a pure-Python Z-machine interpreter inspired by [Jericho](https://github.com/microsoft/jericho), for Z-machine game emulation.
 
 ## Demo
 

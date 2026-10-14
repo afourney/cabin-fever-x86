@@ -57,9 +57,9 @@ jobs:
             unzip -l "${wheels[0]}" | grep -q "$name" || { echo "missing from wheel: $name"; exit 1; }
           done
 
-      # This package exists to install where core cannot. A dependency on core
-      # would put jericho — an sdist that compiles a frotz fork, Linux only —
-      # back in front of every macOS and Windows user.
+      # Core is installed inside the guest, not on the host, where it is only
+      # tested on Linux. A dependency on core would install it on every macOS
+      # and Windows host as well.
       - name: Check the launcher does not depend on core
         run: |
           mapfile -t wheels < <(ls -1 dist/*.whl)
