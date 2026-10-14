@@ -220,7 +220,7 @@ __marimo__/
 # Session data (transcripts, per-session logs)
 data/
 
-# Quetzal saves from dfrotz
+# Quetzal saves from the interpreter's built-in save opcode
 *.qzl
 
 # Local config; it may hold API keys. Start from config.example.yaml.

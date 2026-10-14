@@ -1,6 +1,6 @@
 """The beige PC in the corner of the cabin.
 
-Wraps one Jericho interpreter: which game is in the drive, what it last put on
+Wraps one Fernz interpreter: which game is in the drive, what it last put on
 the screen, and the score. Nothing is running until a game is typed in at the
 prompt, and a reboot puts it back that way.
 """
@@ -8,13 +8,16 @@ prompt, and a reboot puts it back that way.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import secrets
+from dataclasses import replace
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from jericho import FrotzEnv
+from fernz import FernzEnv, Story
 
 from cabin_fever_x86_core.hints import has_hints
 from cabin_fever_x86_core.server._game_memories import (
@@ -33,6 +36,7 @@ from cabin_fever_x86_core.server._saves import (
     Snapshot,
     StorySignature,
 )
+from cabin_fever_x86_core.server._state_bridge import StateBridge
 from cabin_fever_x86_core.server._tools import (
     ListGamesTool,
     ListSavedGamesTool,
@@ -48,10 +52,8 @@ GAMES_DIR = Path("data/games")
 
 # Fixed fields in every Z-machine story-file header. Together these are the
 # conventional identity used by Quetzal saves to distinguish story builds.
-_RELEASE = slice(0x02, 0x04)
 _SERIAL = slice(0x12, 0x18)
 _CHECKSUM = slice(0x1C, 0x1E)
-_HEADER_NEEDED = 0x1E
 
 
 class VisitKind(Enum):
@@ -62,8 +64,8 @@ class VisitKind(Enum):
     FIRST_EVER = "first_ever"
 
 
-def _fresh_rng_a() -> int:
-    """Return a portable, nonzero state for Frotz's normal RNG mode."""
+def _fresh_seed() -> int:
+    """Return a portable, nonzero state for Fernz's host-seeded RNG."""
     return secrets.randbelow(0x7FFFFFFF) + 1
 
 
@@ -129,7 +131,7 @@ class Machine:
         self._games_dir = games_dir
         self._saves = saves
         self._game_memories = game_memories
-        self._env: FrotzEnv | None = None
+        self._env: FernzEnv | None = None
         self._game: str | None = None
         self._story_signature: StorySignature | None = None
         self._observation = ""
@@ -176,7 +178,12 @@ class Machine:
         parts = [f"GAME: {self._game}"]
         score, moves = self._info.get("score"), self._info.get("moves")
         if score is not None and self._env is not None:
-            parts.append(f"Score {score}/{self._env.get_max_score()}")
+            try:
+                maximum = self._env.get_max_score()
+            except NotImplementedError:
+                parts.append(f"Score {score}")
+            else:
+                parts.append(f"Score {score}/{maximum}")
         if moves is not None:
             parts.append(f"Moves {moves}")
         header = " | ".join(parts)
@@ -193,9 +200,8 @@ class Machine:
     async def _boot(self, name: str) -> str:
         """Load a game and return its opening screen.
 
-        The primitive the public ways in are built from: it power-cycles the
-        machine but leaves no restore point, so :meth:`load` can bring a game up
-        without the autosave following it there.
+        Power-cycle the machine without writing an autosave. Restores use a
+        separate candidate interpreter and never execute this opening path.
         """
         path = self._find(name)
         if path is None:
@@ -204,21 +210,31 @@ class Machine:
 
         self.reboot()
         try:
-            env = await asyncio.to_thread(FrotzEnv, str(path), seed=_fresh_rng_a())
+            env = await asyncio.to_thread(self._create_env, path)
             observation, info = await asyncio.to_thread(env.reset)
         except Exception as exc:
             logger.exception("Could not load %s", path)
             return f"The machine refuses to load {path.stem}: {exc}"
 
         self._env, self._game = env, path.stem
-        self._story_signature = _story_signature(path)
-        self._observation, self._info, self._done = observation, dict(info), False
+        self._story_signature = _story_signature(env.story)
+        self._observation, self._info = observation.text, dict(info)
+        self._done = _episode_done(env)
         self._location = _player_location(env)
         self._run_map = {}
         self._known_map = self._load_known_map()
         self._hint_availability_pending = True
         logger.info("Loaded %s", path.stem)
         return self.screen()
+
+    def _create_env(self, path: Path, story: Story | None = None) -> FernzEnv:
+        """Create an interpreter with session-local storage, without running it."""
+        return FernzEnv(
+            story if story is not None else Story.from_file(path),
+            seed=_fresh_seed(),
+            save_handler=partial(self._saves.write_quetzal, path.stem) if self._saves else None,
+            restore_handler=partial(self._saves.read_quetzal, path.stem) if self._saves else None,
+        )
 
     async def new_game(self, name: str) -> str:
         """Start *name* from the beginning, dropping whatever was running.
@@ -243,9 +259,14 @@ class Machine:
 
     async def type_text(self, text: str) -> tuple[str, str | None]:
         """Type a line and return its screen plus any private contextual remarks."""
+        original_text = text
         text = text.strip()
         if not text:
-            return self.screen(), None
+            if self._env is None or self._done or not self._env.awaiting_character:
+                return self.screen(), None
+            # A literal space is a key; line endings/control whitespace mean
+            # Enter, represented by an empty action in Fernz's edited-input API.
+            text = " " if " " in original_text else ""
 
         # Before anything reaches the interpreter, and whether or not a game is
         # running: at the DOS prompt these are not games either.
@@ -265,9 +286,22 @@ class Machine:
             observation, _reward, done, info = await asyncio.to_thread(self._env.step, text)
         except Exception as exc:
             logger.exception("%r failed on %s", text, self._game)
-            return f"The machine locks up for a moment: {exc}", None
+            if not self._env.initialized:
+                # Execution errors invalidate Fernz's machine. Drop that dead
+                # environment without touching the last successful autosave.
+                self.reboot()
+                return (
+                    (
+                        f"The machine stopped: {exc}\n"
+                        "It has returned to the DOS prompt. The last autosave is unchanged; "
+                        f"use `{LoadGameTool.name}` to restore it."
+                    ),
+                    None,
+                )
+            return f"The machine could not accept that input: {exc}", None
 
-        self._observation, self._info, self._done = observation, dict(info), bool(done)
+        self._observation, self._info = observation.text, dict(info)
+        self._done = done or _episode_done(self._env)
         self._location = await asyncio.to_thread(_player_location, self._env)
         moved = (
             old_location is not None
@@ -350,7 +384,7 @@ class Machine:
             return "This machine has no disk to read saves from.", False
 
         try:
-            snapshot = await asyncio.to_thread(self._saves.read, name)
+            info = await asyncio.to_thread(self._saves.info, name)
             # What it is actually called, so a save asked for by number is
             # reported back the way the listing shows it.
             filed = await asyncio.to_thread(self._saves.path, name)
@@ -358,72 +392,94 @@ class Machine:
             return f"That save will not load: {exc}", False
         name = filed.stem
 
-        # The state only means anything to the game it came out of, and handing
-        # one game's RAM to another would corrupt the interpreter outright.
-        if snapshot.game != self._game:
-            booted = await self._boot(snapshot.game)
-            if self._game != snapshot.game:
-                return f"{name} is a save of {snapshot.game}, which will not load:\n{booted}", False
-
-        env = self._env
-        if env is None:
-            return f"The machine will not come up to load {name}.", False
-
-        # Old CFX86SAVE2 files do not carry this optional field and must remain
-        # loadable. When it is present, validate the precise story build before
-        # handing its RAM to the interpreter.
-        if (
-            snapshot.story_signature is not None
-            and snapshot.story_signature != self._story_signature
-        ):
-            logger.warning(
-                "Save %s belongs to story %r, loaded %r",
-                name,
-                snapshot.story_signature,
-                self._story_signature,
-            )
-            return (
-                (
-                    f"That save was written by a different build of {snapshot.game} "
-                    "and will not load on this one."
-                ),
-                False,
-            )
-
-        expected = len(snapshot.state[0])
-        actual = await asyncio.to_thread(env.frotz_lib.getRAMSize)
-        if expected != actual:
-            logger.warning(
-                "Save %s expects %d bytes of RAM, %s has %d", name, expected, self._game, actual
-            )
-            return (
-                (
-                    f"That save was written by a different build of {snapshot.game} "
-                    "and will not load on this one."
-                ),
-                False,
-            )
-
+        path = self._find(info.game)
+        if path is None:
+            return f"{name} is a save of {info.game}, which is not on the disk.", False
         try:
-            await asyncio.to_thread(env.set_state, snapshot.state)
+            story = self._env.story if self._env is not None and self._game == info.game else None
+            env = await asyncio.to_thread(self._create_env, path, story)
         except Exception as exc:
-            logger.exception("Could not restore %s", name)
-            return f"The machine chokes on that save: {exc}", False
+            logger.exception("Could not open the story for %s", name)
+            return f"The machine will not come up to load {name}: {exc}", False
 
-        _a, interval, counter = snapshot.state[7]
-        if interval == 0:
-            env.frotz_lib.setRng(_fresh_rng_a(), interval, counter)
+        # Prepare a separate interpreter. Do not boot a fresh game or change
+        # the live machine until the complete checkpoint has been accepted.
+        try:
+            try:
+                snapshot = await asyncio.to_thread(self._saves.read, name, story=env.story)
+            except SaveError as exc:
+                return f"That save will not load: {exc}", False
+            legacy = isinstance(snapshot.state, tuple)
+            if legacy:
+                try:
 
-        # Taken from the restored interpreter rather than the file: the header
-        # is what the screen said, the env is what is actually true now.
-        self._observation = snapshot.observation
-        self._info = {"score": env.get_score(), "moves": env.get_moves()}
-        self._done = env.game_over() or env.victory()
-        self._location = _player_location(env)
-        self._run_map = snapshot.personal_map or {}
-        if merge_maps(self._known_map, self._run_map):
-            await self._persist_known_map()
-        logger.info("Restored %s from %s", self._game, name)
+                    def convert():
+                        bridge = StateBridge(env.story, snapshot.state, seed=_fresh_seed())
+                        return bridge.from_jericho(snapshot.state)
+
+                    state = await asyncio.to_thread(convert)
+                    snapshot = replace(snapshot, state=state)
+                except (OSError, ValueError, TypeError, IndexError, RuntimeError) as exc:
+                    logger.warning("Could not convert legacy save %s: %s", name, exc)
+                    return f"That legacy save cannot be converted: {exc}", False
+
+            signature = _story_signature(env.story)
+            if snapshot.story_signature is not None and snapshot.story_signature != signature:
+                logger.warning(
+                    "Save %s belongs to story %r, loaded %r",
+                    name,
+                    snapshot.story_signature,
+                    signature,
+                )
+                return (
+                    (
+                        f"That save was written by a different build of {snapshot.game} "
+                        "and will not load on this one."
+                    ),
+                    False,
+                )
+
+            state = snapshot.state
+            if state.rng.period == 0:
+                seed = _fresh_seed()
+                state = replace(
+                    state,
+                    rng=replace(state.rng, host_seed=seed, state=seed, python_state=None),
+                )
+            try:
+                await asyncio.to_thread(env.set_state, state)
+                info = {}
+                for key, query in (("score", env.get_score), ("moves", env.get_moves)):
+                    with contextlib.suppress(NotImplementedError):
+                        info[key] = query()
+                done = _episode_done(env)
+                location = _player_location(env)
+            except Exception as exc:
+                logger.exception("Could not restore %s", name)
+                return f"The machine chokes on that save: {exc}", False
+
+            same_story = self._game == snapshot.game and self._story_signature == signature
+            known_map = self._known_map
+            map_writable = self._known_map_writable
+            hint_pending = self._hint_availability_pending
+            self.reboot()
+            self._env, self._game, self._story_signature = env, snapshot.game, signature
+            self._observation, self._info = snapshot.observation, info
+            self._done, self._location = done, location
+            self._hint_availability_pending = hint_pending if same_story else True
+            if same_story:
+                self._known_map, self._known_map_writable = known_map, map_writable
+            else:
+                self._known_map = self._load_known_map()
+            self._run_map = snapshot.personal_map or {}
+            if legacy:
+                self._run_map = _rename_legacy_rooms(env, self._run_map)
+            if merge_maps(self._known_map, self._run_map) or legacy:
+                await self._persist_known_map()
+            logger.info("Restored %s from %s", self._game, name)
+        finally:
+            if self._env is not env:
+                env.close()
 
         # The autosave has to follow the machine, or a resume after this would
         # quietly rewind to before the load.
@@ -488,8 +544,8 @@ class Machine:
         except SaveError:
             return None  # no autosave, which is the ordinary case
 
-        screen = await self.load(AUTOSAVE)
-        if self._game is None:
+        screen, loaded = await self._load(AUTOSAVE)
+        if not loaded:
             logger.warning("Nothing came back from the autosave: %s", screen)
             return None
         return screen
@@ -508,11 +564,15 @@ class Machine:
         """Snapshot the running game under *name*. Runs off the event loop."""
         if self._env is None or self._saves is None or self._game is None:
             raise SaveError("nothing is running")
+        try:
+            state = self._env.get_state()
+        except (RuntimeError, ValueError) as exc:
+            raise SaveError(f"the interpreter cannot be saved: {exc}") from exc
         return self._saves.write(
             name,
             Snapshot(
                 game=self._game,
-                state=self._env.get_state(),
+                state=state,
                 observation=self._observation,
                 score=self._info.get("score"),
                 moves=self._info.get("moves"),
@@ -530,7 +590,8 @@ class Machine:
         if self._game_memories is None or self._game is None or self._story_signature is None:
             return {}
         try:
-            return self._game_memories.read_map(self._game, self._story_signature)
+            routes = self._game_memories.read_map(self._game, self._story_signature)
+            return _rename_legacy_rooms(self._env, routes) if self._env is not None else routes
         except GameMemoryError as exc:
             # Do not overwrite an unreadable file with a fresh empty map after
             # the next move. Keep playing, but leave that artifact untouched.
@@ -570,8 +631,19 @@ class Machine:
         except Exception:
             logger.exception("Could not autosave %s", self._game)
 
-    def reboot(self) -> str:
-        """Drop whatever is running and come back up at the prompt."""
+    def reboot(self, *, discard_autosave: bool = False) -> str:
+        """Drop whatever is running and come back up at the prompt.
+
+        The autosave is kept by default, since this is also how a session shuts
+        down and the resume point must survive it. Pass *discard_autosave* when
+        the reboot was asked for, so a resume does not bring back the game that
+        was quit.
+        """
+        if discard_autosave and self._saves is not None:
+            try:
+                self._saves.discard(AUTOSAVE)
+            except SaveError:
+                logger.exception("Could not discard the autosave after a reboot")
         was = self._game
         if self._env is not None:
             try:
@@ -603,32 +675,53 @@ def _instead_of_typing(text: str) -> str | None:
     return None
 
 
-def _player_location(env: FrotzEnv) -> Location | None:
-    """Return Jericho's stable object number and display name for the room."""
+def _episode_done(env: FernzEnv) -> bool:
+    """Stop on interpreter quit or a known story's reported ending."""
+    if env.done:
+        return True
+    try:
+        return env.game_over() or env.victory()
+    except NotImplementedError:
+        return False  # Unknown stories still support the interpreter's quit flag.
+
+
+def _rename_legacy_rooms(env: FernzEnv, route_map: RunMap) -> RunMap:
+    """Preserve legacy route commands while adopting Fernz's room display names."""
+
+    def location(old: Location) -> Location:
+        try:
+            room = env.get_object(old[0])
+        except (ValueError, RuntimeError):
+            room = None
+        return (old[0], room.name) if room is not None else old
+
+    renamed: RunMap = {}
+    for origin, routes in route_map.items():
+        renamed.setdefault(location(origin), {}).update(
+            (location(target), command) for target, command in routes.items()
+        )
+    return renamed
+
+
+def _player_location(env: FernzEnv) -> Location | None:
+    """Return Fernz's stable object number and display name for the room."""
     try:
         location = env.get_player_location()
-    except (AttributeError, RuntimeError):
+    except (AttributeError, RuntimeError, ValueError):
         return None
     if location is None:
         return None
     return location.num, location.name
 
 
-def _story_signature(path: Path) -> StorySignature | None:
-    """Read the conventional identity fields from a Z-machine story header."""
-    try:
-        with path.open("rb") as handle:
-            header = handle.read(_HEADER_NEEDED)
-    except OSError:
-        logger.exception("Could not read the story header from %s", path)
-        return None
-    if len(header) < _HEADER_NEEDED:
-        logger.warning("Story file %s is too short to carry a signature", path)
-        return None
+def _story_signature(story: Story) -> StorySignature:
+    """Identify the loaded image, keeping the existing save/map signature encoding."""
+    # Preserve Latin-1 serials and the raw checksum even for early V3 stories
+    # whose parsed header reports no checksum. Existing saves use these bytes.
     return StorySignature(
-        release=int.from_bytes(header[_RELEASE], "big"),
-        serial=header[_SERIAL].decode("latin-1"),
-        checksum=int.from_bytes(header[_CHECKSUM], "big"),
+        release=story.header.release,
+        serial=story.data[_SERIAL].decode("latin-1"),
+        checksum=int.from_bytes(story.data[_CHECKSUM], "big"),
     )
 
 

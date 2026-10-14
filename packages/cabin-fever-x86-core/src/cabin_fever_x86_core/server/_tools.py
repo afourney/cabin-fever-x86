@@ -594,7 +594,7 @@ class RebootTool(Tool):
         self._machine = machine
 
     async def execute(self, args: dict[str, Any]) -> ToolOutput:
-        return ToolOutput(self._machine.reboot())
+        return ToolOutput(self._machine.reboot(discard_autosave=True))
 
 
 def _afk_delay(value: Any) -> float:

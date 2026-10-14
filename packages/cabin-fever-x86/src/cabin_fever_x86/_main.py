@@ -38,9 +38,8 @@ from cabin_fever_x86._home import (
 )
 from cabin_fever_x86._updates import print_upgrade_notice
 
-#: What the guest boots: quicksand-ubuntu plus Python 3.12, uv, and a C
-#: toolchain. The toolchain is not optional — installing the game builds a
-#: frotz fork from source, since jericho ships no wheels.
+#: What the guest boots: quicksand-ubuntu plus Python 3.12 and uv, which the
+#: guest uses to install the core package.
 IMAGE = "quicksand-agent"
 
 DEFAULT_WEB_PORT = 8000

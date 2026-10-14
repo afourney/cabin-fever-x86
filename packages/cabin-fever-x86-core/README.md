@@ -1,17 +1,16 @@
 # cabin-fever-x86-core
 
-The native, Linux-only runtime for [Cabin Fever x86](https://github.com/afourney/cabin-fever-x86): the game server, AI companion, Z-machine interpreter, web radio, and text client.
+The native runtime for [Cabin Fever x86](https://github.com/afourney/cabin-fever-x86): the game server, AI companion, Z-machine interpreter, web radio, and text client.
 
-This package is intended for Linux users who want to run the services directly, expose the web gateway to a LAN, customize the configuration, or develop Cabin Fever itself. It builds [jericho](https://github.com/microsoft/jericho) and its frotz fork from source, so a C toolchain is required and other operating systems are not supported.
+This package is intended for Linux users who want to run the services directly, expose the web gateway to a LAN, customize the configuration, or develop Cabin Fever itself. It uses [Fernz](https://pypi.org/project/fernz/), a pure Python Z-machine interpreter, so the interpreter requires no C toolchain. The core integration is currently tested on Linux.
 
-For a self-contained installation on Linux, macOS, or Windows, use the sandboxed [`cabin-fever-x86`](https://pypi.org/project/cabin-fever-x86/) launcher instead. It runs this package inside a QEMU VM, keeping the memory-unsafe interpreter and downloaded game files off the host.
+For a self-contained installation on Linux, macOS, or Windows, use the sandboxed [`cabin-fever-x86`](https://pypi.org/project/cabin-fever-x86/) launcher instead. It runs this package inside a QEMU VM, keeping the runtime and downloaded game files inside the VM.
 
 ## Native installation
 
-Cabin Fever x86 Core requires Linux, Python 3.12 or newer, and standard C build tools. On Debian or Ubuntu, for example:
+Cabin Fever x86 Core requires Python 3.12 or newer. On Linux, for example:
 
 ```bash
-sudo apt-get install build-essential python3-dev
 python3 -m venv .venv
 source .venv/bin/activate
 pip install cabin-fever-x86-core
@@ -50,7 +49,7 @@ cf86-telegram
 cf86-zello
 ```
 
-Each command accepts `--help`. The server, gateways, and text client can be run on different Linux machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. To bind the web gateway for an HTTPS reverse proxy:
+Each command accepts `--help`. The server, gateways, and text client can be run on different machines by setting their interfaces, hosts, and ports in `config.yaml` or with command-line options. To bind the web gateway for an HTTPS reverse proxy:
 
 ```bash
 cf86-web --web-host 0.0.0.0
@@ -338,9 +337,58 @@ shared in `data/games/`. No data migration is performed.
 
 ## Z-machine games
 
-When `cf86-server` runs directly, it looks for `.z3`–`.z8` game files in `data/games/` relative to its working directory. If that directory contains nothing playable, the server downloads the [z-machine-games](https://github.com/BYU-PCCL/z-machine-games) archive and unpacks only the 57 games in its `jericho-game-suite` folder.
+When `cf86-server` runs directly, it looks for Z-machine game files in `data/games/` relative to its working directory. If that directory contains nothing playable, the server downloads the [z-machine-games](https://github.com/BYU-PCCL/z-machine-games) archive and unpacks only the 57 games in its `jericho-game-suite` folder.
+
+The integration targets Fernz 0.0.4 and runs V3, V4, V5, and V8 stories; support is determined by the story header, not its filename extension. Some Z-machine features and story-specific metadata are not implemented. When a score limit or room location is unavailable, the server omits it.
 
 Add other games by copying them into `data/games/` before starting the server. Only use game files you have the right to run.
+
+### Save compatibility
+
+Fernz saves use `CFX86SAVE3`, including the complete checkpoint, last screen,
+and personal map. Below Cabin Fever's metadata and map records, the payload is
+Fernz's public JSON checkpoint from `GameState.to_json()`; only its RAM field is
+Base64-encoded. `GameState.from_json(..., story=...)` validates the checkpoint
+against the matching story before restore. Autosave and session resume use the
+same format. The earlier unpublished `CFX86SAVE3` layout is not supported.
+
+Fernz 0.0.4 supplies the public checkpoint codec, `initialized` and
+`awaiting_character` queries, and construction from an already-loaded `Story`.
+Restore candidates reuse the live story when available and remain separate from
+the running interpreter until validation succeeds.
+
+As a fallback, Fernz's built-in save and restore callbacks use one Quetzal file
+per ROM at `data/users/<user_id>/sessions/<session_id>/server/saves/<romname>.qzl`.
+A successful built-in save atomically replaces that file; a missing or unreadable
+file reports restore failure to the game. These files contain interpreter state,
+not the companion's maps or conversation, and are separate from numbered `.bin`
+saves and autosave. Typed `save` and `restore` commands still direct the companion
+to the normal tools; the callbacks cover other routes to the story's save/restore
+opcodes.
+
+Old `CFX86SAVE2` saves can be imported for **V3, V4, V5, and V8 stories at line-input
+boundaries**
+using the measured Jericho 3.3.1 little-endian Linux layout. The converter is
+included in core; importing requires no Jericho installation. It preserves the
+saved screen and route commands, updates legacy room names to Fernz's names,
+and writes the next autosave in `CFX86SAVE3`. Numbered legacy files are left
+untouched; resuming a legacy autosave upgrades that autosave after a successful
+restore.
+
+Keep the exact original story file available. Legacy saves have no full story
+hash; the importer validates their memory/header fields and any saved story
+signature, then records the loaded story's hash in the new checkpoint. Ordinary
+reloads use fresh randomness as before, and saved counting cycles retain their
+period and position. The original host-seed policy and display state were not
+stored: imports choose a fresh host seed and use the converter's default display
+state.
+
+Character-input, active timed-input, or halted checkpoints, and unsupported or
+malformed layouts remain unsupported. The converter reads the measured
+little-endian Linux save layout independently of the reader's OS and byte order,
+and assumes screen output was enabled. Failed restores leave the running game,
+source save, and autosave untouched. Use the previous Jericho-based
+release to continue unsupported saves.
 
 ## Development
 
